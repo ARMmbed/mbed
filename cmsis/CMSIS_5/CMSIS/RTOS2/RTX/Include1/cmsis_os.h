@@ -438,26 +438,25 @@ uint32_t osKernelSysTick (void);
 /// Create a Thread Definition with function, priority, and stack requirements.
 /// \param         name          name of the thread function.
 /// \param         priority      initial priority of the thread function.
-/// \param         instances     number of possible thread instances.
 /// \param         stacksz       stack size (in bytes) requirements for the thread function.
 #if defined (osObjectsExternal)  // object is external
-#define osThreadDef(name, priority, instances, stacksz) \
+#define osThreadDef(name, priority, stacksz) \
 extern const osThreadDef_t os_thread_def_##name
 #else                            // define the object
 #if (osCMSIS < 0x20000U)
-#define osThreadDef(name, priority, instances, stacksz) \
+#define osThreadDef(name, priority, stacksz) \
 const osThreadDef_t os_thread_def_##name = \
-{ (name), (priority), (instances), (stacksz) }
+{ (name), (priority), 1, (stacksz) }
 #else
-#define osThreadDef(name, priority, instances, stacksz) \
-static uint64_t os_thread_stack##name[(stacksz)?(((stacksz+7)/8)):1] __attribute__((section(".bss.os.thread.stack"))); \
+#define osThreadDef(name, priority, stacksz) \
+uint64_t os_thread_stack##name[(stacksz)?(((stacksz+7)/8)):1] __attribute__((section(".bss.os.thread.stack"))); \
 static osRtxThread_t os_thread_cb_##name __attribute__((section(".bss.os.thread.cb"))); \
 const osThreadDef_t os_thread_def_##name = \
 { (name), \
   { NULL, osThreadDetached, \
-    (instances == 1) ? (&os_thread_cb_##name) : NULL,\
-    (instances == 1) ? osRtxThreadCbSize : 0U, \
-    ((stacksz) && (instances == 1)) ? (&os_thread_stack##name) : NULL, \
+    &os_thread_cb_##name,\
+    osRtxThreadCbSize, \
+    (stacksz) ? (&os_thread_stack##name) : NULL, \
     8*((stacksz+7)/8), \
     (priority), 0U, 0U } }
 #endif
