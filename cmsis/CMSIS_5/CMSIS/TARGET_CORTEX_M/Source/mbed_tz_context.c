@@ -22,6 +22,8 @@
  * limitations under the License.
  */
 
+#if defined (__ARM_FEATURE_CMSE) &&  (__ARM_FEATURE_CMSE == 3U)
+
 #include "RTE_Components.h"
 #include CMSIS_device_header
 #include "tz_context.h"
@@ -198,3 +200,4 @@ uint32_t TZ_StoreContext_S (TZ_MemoryId_t id) {
 
   return 1U;    // Success
 }
+#endif
