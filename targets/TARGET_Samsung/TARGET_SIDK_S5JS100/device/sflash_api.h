@@ -32,14 +32,14 @@ extern "C" {
 #define S5JS100_FLASH_BLOCK_SIZE        4096
 #define S5JS100_FLASH_PADDR             (0x40000000)
 
-
 #define S5JS100_FLASH_FS_PADDR          0x40EF5000
 #define S5JS100_FLASH_FS_SIZE          256*1024
-
+#define S5JS100_FLASH_QSPI_TEST_PADDR   0x406AE000 //used for hal_qspi
 
 #define S5JS100_FLASH_SIZE              (16 * 1024 * 1024)
 #define S5JS100_OS_ENV_OFFSET_16MB      (0x2E000)
 #define S5JS100_OS_ENV_OFFSET_8MB       (0x3B000)
+#define S5JS100_RTC_RET_OFFSET          (0x7FF000) //will be 4K for RTC retention
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -216,6 +216,7 @@ extern void sflash_os_env_parser(void);
 extern char *get_env(const char *name);
 
 extern int up_progmem_erasepage(unsigned int page);
+extern int up_progmem_early_erasepage(unsigned int page);
 extern unsigned int up_progmem_blocksize(void);
 extern unsigned int up_progmem_write(unsigned int addr, const void *buf, unsigned int count);
 

@@ -161,7 +161,7 @@ void rtc_range_test()
 {
     static const RealTimeClock::time_point starts[] = {
         RealTimeClock::time_point{0x00000000s},
-        RealTimeClock::time_point{0xEFFFFFFFs},
+        RealTimeClock::time_point{0x7ffffffas},   //0xEFFFFFFF had already overflow, the max is 0x7FFFFFFF, time_t is 32bit and signed
         RealTimeClock::time_point{0x00001000s},
         RealTimeClock::time_point{0x00010000s},
     };

@@ -32,56 +32,15 @@
 #include "PinNames.h"
 #include "mbed_error.h"
 #include "gpio_api.h"
+#include "PeripheralPins.h"
 
 #include "mbed_assert.h"
-
+#include "s5js100.h"
 
 
 void usi_serial_init(void *obj, PinName tx, PinName rx);
 void pl011_serial_init(void *obj, PinName tx, PinName rx);
 void dummy_serial_init(void *obj, PinName tx, PinName rx);
-
-/******************************************************************************
- * INITIALIZATION
- ******************************************************************************/
-
-static const PinMap PinMap_UART_TX[] = {
-    {UART_TX0, UART_0, UART_TX0},
-    {UART_TX1, UART_1, UART_TX1},
-    {UART_TX2, UART_2, UART_TX2},
-    {UART_TX3, UART_3, UART_TX3},
-    {UART_TX4, UART_4, UART_TX4},
-    {UART_TX5, UART_5, UART_TX5},
-    {NC, NC, NC}
-};
-static const PinMap PinMap_UART_RX[] = {
-    {UART_RX0, UART_0, UART_RX0},
-    {UART_RX1, UART_1, UART_RX1},
-    {UART_RX2, UART_2, UART_RX2},
-    {UART_RX3, UART_3, UART_RX3},
-    {UART_RX4, UART_4, UART_RX4},
-    {UART_RX5, UART_5, UART_RX5},
-    {NC, NC, NC}
-};
-
-/*
-static const PinMap PinMap_UART_CTS[] = {
-    {UART0_CTS, UART_0, UART0_CTS},
-    {UART1_CTS, UART_1, UART1_CTS},
-    {UART2_CTS, UART_2, UART2_CTS},
-    {UART3_CTS, UART_3, UART3_CTS},
-    {NC, NC, NC}
-};
-
-static const PinMap PinMap_UART_RTS[] = {
-    {UART0_RTS, UART_0, UART0_RTS},
-    {UART1_RTS, UART_1, UART1_RTS},
-    {UART2_RTS, UART_2, UART2_RTS},
-    {UART3_RTS, UART_3, UART3_RTS},
-    {NC, NC, NC}
-};
-*/
-
 
 /* Used in platform/mbed_retarget.cpp  */
 /* What shall I do with it??? What is it for? */
@@ -93,6 +52,9 @@ void serial_init(serial_t *obj, PinName tx, PinName rx)
 {
     struct serial_s *priv = (struct serial_s *)obj;
 
+    if (!obj) {
+        return;
+    }
     // determine the UART to use ???
     // Shall we check if it is already allocated ???
     UARTName uart_tx = (UARTName)pinmap_peripheral(tx, PinMap_UART_TX);
@@ -101,30 +63,65 @@ void serial_init(serial_t *obj, PinName tx, PinName rx)
     if ((PinName)uart == NC) {
         error("Serial pinout mapping failed");
     }
-    if ((PinName)uart_tx != NC) {
-        s5js100_configgpio(pinmap_find_function(tx, PinMap_UART_TX));
+
+    int peripheral = uart;
+    int tx_function = pinmap_function(tx, PinMap_UART_TX);
+    int rx_function = pinmap_function(rx, PinMap_UART_RX);
+
+    const serial_pinmap_t pinmap = {peripheral,
+                                    tx,
+                                    tx_function,
+                                    rx,
+                                    rx_function,
+                                    0
+                                   };
+
+    serial_init_direct(obj, &pinmap);
+}
+
+void serial_init_direct(serial_t *obj, const serial_pinmap_t *pinmap)
+{
+    struct serial_s *priv = (struct serial_s *)obj;
+    PinName tx_pin = pinmap->tx_pin;
+    PinName rx_pin = pinmap->rx_pin;
+    UARTName uart = (UARTName)pinmap->peripheral;
+
+    if (!obj || !pinmap) {
+        return;
     }
 
-    if ((PinName)uart_rx != NC) {
-        s5js100_configgpio(pinmap_find_function(rx, PinMap_UART_RX));
+    if (pinmap->tx_function != NC) {
+        s5js100_configgpio(pinmap->tx_function);
+    } else {
+        error("Serial tx pin function error");
+    }
+
+    if (pinmap->rx_function != NC) {
+        s5js100_configgpio(pinmap->rx_function);
+    } else {
+        error("Serial rx pin function error");
     }
 
     /* BAD Pointer assignment!!! Better to redesign*/
     priv->uart = (void *)uart;
+    if (uart == NC) {
+        error("Serial peripheral error");
+    }
+
     switch (uart) {
         case UART_0:
         case UART_1:
-            usi_serial_init(obj, tx, rx);
+            usi_serial_init(obj, tx_pin, rx_pin);
             break;
 
         case UART_2:
         case UART_3:
-            pl011_serial_init(obj, tx, rx);
+            pl011_serial_init(obj, tx_pin, rx_pin);
             break;
 
         case UART_4:
         case UART_5:
-            dummy_serial_init(obj, tx, rx);
+            dummy_serial_init(obj, tx_pin, rx_pin);
             break;
     }
 
@@ -141,6 +138,45 @@ void serial_init(serial_t *obj, PinName tx, PinName rx)
 void serial_free(serial_t *obj)
 {
     //needs release serial
+    struct serial_s *priv = (struct serial_s *)obj;
+    IRQn_Type irq_n = (IRQn_Type)0;
+
+    if (!obj) {
+        return;
+    }
+
+    switch ((int)priv->uart) {
+        case UART_0:
+            irq_n = S5JS100_IRQ_USI0;
+            break;
+        case UART_1:
+            irq_n = S5JS100_IRQ_USI1;
+            break;
+        case UART_2:
+            irq_n = S5JS100_IRQ_UART0;
+            break;
+        case UART_3:
+            irq_n = S5JS100_IRQ_UART1;
+            break;
+        default:
+            break;
+    }
+
+    NVIC_DisableIRQ(irq_n);
+
+    priv->ops.serial_baud = NULL;
+    priv->ops.serial_format = NULL;
+    priv->ops.serial_irq_handler = NULL;
+    priv->ops.serial_irq_set = NULL;
+    priv->ops.serial_putc =  NULL;
+    priv->ops.serial_writable =  NULL;
+    priv->ops.serial_getc = NULL;
+    priv->ops.serial_readable = NULL;
+#if DEVICE_SERIAL_FC
+    priv->ops.serial_set_flow_control = NULL;
+#endif
+
+    priv->uart = NULL;
 }
 
 // serial_baud
@@ -175,6 +211,10 @@ void serial_set_flow_control(serial_t *obj, FlowControl type,
 {
     struct serial_s *priv = (struct serial_s *)obj;
 
+    if (!obj) {
+        return;
+    }
+
     UARTName uart_rts = (UARTName)pinmap_peripheral(rxflow, PinMap_UART_RTS);
     UARTName uart_cts = (UARTName)pinmap_peripheral(txflow, PinMap_UART_CTS);
     UARTName uart = (UARTName)pinmap_merge(uart_rts, uart_cts);
@@ -186,32 +226,60 @@ void serial_set_flow_control(serial_t *obj, FlowControl type,
         error("Serial pinout mapping failed");
     }
 
+    int peripheral = uart;
+    int tx_function = pinmap_function(txflow, PinMap_UART_TX);
+    int rx_function = pinmap_function(rxflow, PinMap_UART_RX);
+
+    const serial_pinmap_t pinmap = {peripheral,
+                                    txflow,
+                                    tx_function,
+                                    rxflow,
+                                    rx_function,
+                                    0
+                                   };
+
+    serial_set_flow_control_direct(obj, type, &pinmap);
+}
+
+void serial_set_flow_control_direct(serial_t *obj, FlowControl type,
+                                    const serial_fc_pinmap_t *pinmap)
+{
+    struct serial_s *priv = (struct serial_s *)obj;
+    PinName rxflow = pinmap->rx_pin;
+    PinName txflow = pinmap->tx_pin;
+
+    if (!obj || !pinmap) {
+        return;
+    }
+
+    rxflow = pinmap->rx_pin;
+    txflow = pinmap->tx_pin;
 
     if (type == FlowControlRTS) {
         // Enable RTS
-        MBED_ASSERT(uart_rts != (UARTName)NC);
+        MBED_ASSERT(((UARTName))pinmap->tx_function != (UARTName)NC);
         // Enable the pin for RTS function
-        s5js100_configgpio(pinmap_find_function(rxflow, PinMap_UART_RTS));
+        s5js100_configgpio(pinmap->tx_function);
     }
     if (type == FlowControlCTS) {
         // Enable CTS
-        MBED_ASSERT(uart_cts != (UARTName)NC);
+        MBED_ASSERT(((UARTName))pinmap->rx_function != (UARTName)NC);
         // Enable the pin for CTS function
-        s5js100_configgpio(pinmap_find_function(txflow, PinMap_UART_CTS));
+        s5js100_configgpio(pinmap->rx_function);
     }
     if (type == FlowControlRTSCTS) {
         // Enable CTS & RTS
-        MBED_ASSERT(uart_rts != (UARTName)NC);
-        MBED_ASSERT(uart_cts != (UARTName)NC);
+        MBED_ASSERT(((UARTName))pinmap->tx_function != (UARTName)NC);
+        MBED_ASSERT(((UARTName))pinmap->rx_function != (UARTName)NC);
         // Enable the pin for CTS function
-        s5js100_configgpio(pinmap_find_function(txflow, PinMap_UART_CTS));
+        s5js100_configgpio(pinmap->tx_function);
         // Enable the pin for RTS function
-        s5js100_configgpio(pinmap_find_function(rxflow, PinMap_UART_RTS));
+        s5js100_configgpio(pinmap->rx_function);
     }
-
 
     obj->ops.serial_set_flow_control(obj, type, rxflow, txflow);
 }
+
 #endif
 
 
@@ -309,6 +377,16 @@ const PinMap *serial_tx_pinmap()
 const PinMap *serial_rx_pinmap()
 {
     return PinMap_UART_RX;
+}
+
+const PinMap *serial_cts_pinmap(void)
+{
+    return PinMap_UART_CTS;
+}
+
+const PinMap *serial_rts_pinmap(void)
+{
+    return PinMap_UART_RTS;
 }
 
 #endif // DEVICE_SERIAL

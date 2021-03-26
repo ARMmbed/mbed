@@ -1,0 +1,10 @@
+{
+    "name": "S5JS100_RIL",
+    "config": {
+        "ril_header" : {
+            "help": "ril.h including extensions for S5JS100",
+            "macro_name": "CELLULAR_RIL_HEADER",
+            "value": "\"SAMSUNG_S5JS100_RIL_HEADER.h\""
+        }
+    }
+}

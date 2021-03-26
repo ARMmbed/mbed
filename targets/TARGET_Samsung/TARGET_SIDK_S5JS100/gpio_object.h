@@ -21,45 +21,32 @@
 #define MBED_GPIO_OBJECT_H
 
 #include "cmsis.h"
+#include "mbed_assert.h"
 #include "PortNames.h"
 #include "PeripheralNames.h"
 #include "PinNames.h"
+#include "s5js100_gpio.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 typedef struct {
-    PinName  pin;
-    unsigned int mask;
-
-    __IO unsigned int *reg_dir;
-    __IO unsigned int *reg_out;
-    __I unsigned int *reg_in;
+    PinName pin;
+    uint32_t pincfg;
 } gpio_t;
 
 static inline void gpio_write(gpio_t *obj, int value)
 {
-    if (obj->reg_out == (void *)0) {
-        return;
-    }
-    if (value == 1) {
-        *(obj->reg_out) |= (obj->mask);
-    } else if (value == 0) {
-        *(obj->reg_out) &= ~(obj->mask);
-    }
+    MBED_ASSERT(obj->pin != (PinName) NC);
+    s5js100_gpiowrite(obj->pincfg, (unsigned int) value);
 }
 
 static inline int gpio_read(gpio_t *obj)
 {
-    if (obj->reg_out == (void *)0) {
-        return 0;
-    }
-    if (*(obj->reg_dir) & obj->mask) {
-        return ((*(obj->reg_in) & obj->mask) ? 1 : 0);
-    } else {
-        return ((*(obj->reg_out) & obj->mask) ? 1 : 0);
-    }
+    MBED_ASSERT(obj->pin != (PinName) NC);
+    return s5js100_gpioread(obj->pincfg);
 }
 
 #ifdef __cplusplus

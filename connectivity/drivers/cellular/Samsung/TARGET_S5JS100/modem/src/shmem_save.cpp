@@ -20,8 +20,8 @@
 /****************************************************************************
  * Included Files
  ****************************************************************************/
-#include "mbed.h"
 #include "shmem_save.h"
+#include "platform/mbed_interface.h"
 #include "modem_io_device.h"
 #include "s5js100_pwr.h"
 #include "sflash_api.h"
@@ -335,9 +335,11 @@ extern "C" {
     {
         char mio_name[32] = "shmem_save";
 
-        cur_save_target = REQ_CS_MSG;
-        shmem_mio = getModemIoDeviceByName(mio_name);
-        shmem_mio->register_ReadCb(shmem_initiate_cb, NULL);
+        if (!cur_save_target) {
+            cur_save_target = REQ_CS_MSG;
+            shmem_mio = getModemIoDeviceByName(mio_name);
+            shmem_mio->register_ReadCb(shmem_initiate_cb, NULL);
+        }
     }
 
     void shmem_save_stop(void)

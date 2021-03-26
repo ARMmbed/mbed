@@ -53,20 +53,14 @@ extern "C" {
  *        secure TFM service.
  *
  */
+void disable_counter(void);
+void up_systemreset(void);
+void pmu_test_auto(int sleep_time_msec);
 __NO_RETURN __STATIC_INLINE void __NVIC_TFMSystemReset(void)
 {
-    putreg32(0x1, 0x8301100C);
-    putreg32(0x1 << 1, 0x82020018);
-
-    putreg32(0x4, 0x83011000); // enable watchdog
-    putreg32(0x1, 0x83011010);
-    putreg32(0x1, 0x83011020);
-    putreg32(327, 0x83011004);  //set 10ms to be reset , 1 sec=32768
-    putreg32(0xFF, 0x83011008); // force to load value to be reset
-
-    /* Wait for the reset */
-    for (;;) {
-    }
+    up_systemreset();
+//  disable_counter();
+//  pmu_test_auto(3000);
 }
 
 #ifdef __cplusplus

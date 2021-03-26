@@ -16,25 +16,3 @@
  * language governing permissions and limitations under the License.
  *
  ****************************************************************************/
-
-#include "mbed.h"
-#include "s5js100_pwr.h"
-#include "modem_link_device_shmem.h"
-#include "modem_io_device.h"
-
-
-extern "C" {
-
-    void s5js100_modem_start(void)
-    {
-        pShmemLinkDevice = new ShmemLinkDevice();
-        pShmemLinkDevice->ShmemLinkDevice_start();
-    }
-
-    void s5js100_modem_stop(void)
-    {
-        delete pShmemLinkDevice;
-    }
-
-}
-

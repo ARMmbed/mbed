@@ -37,6 +37,8 @@
 #include "mbed_wait_api.h"
 #include "mbed_thread.h"
 
+#define USI1_RX_OFFSET    0x0130
+#define USI1_TX_OFFSET    0x0134
 #define USI_PTR(ptr) ((S5JS100_USI_UART_TypeDef *)(ptr))
 static uart_irq_handler irq_handler[USI_MAX_PORTS];
 static uint32_t serial_irq_id[USI_MAX_PORTS] = {0};
@@ -281,7 +283,8 @@ void usi_serial_init(void *obj, PinName tx, PinName rx)
                 /* UART NOT SUPPORTED */
                 while (1);
             }
-
+            putreg32(0x6001, TOP_MUX_BASE + USI1_RX_OFFSET);
+            putreg32(0x7001, TOP_MUX_BASE + USI1_TX_OFFSET);
             S5JS100_USI1_REG->CON = USI_CON_RST;
             S5JS100_SYSCFG_USI1_CONF = USI_CONFIG_UART;
             S5JS100_USI1_REG->CON &= ~USI_CON_RST;
@@ -304,7 +307,7 @@ void usi_serial_init(void *obj, PinName tx, PinName rx)
                         UART_UINTP_ERROR | UART_UINTP_RXD;
 
     // reset FIFO and set interrupt trigger level
-    p_USI_UART->UFCON = UART_UFCON_TX_FIFO_TRIG_14BYTES | UART_UFCON_RX_FIFO_TRIG_14BYTES |
+    p_USI_UART->UFCON = UART_UFCON_TX_FIFO_TRIG_0BYTE | UART_UFCON_RX_FIFO_TRIG_14BYTES |
                         UART_UFCON_TX_FIFO_RESET | UART_UFCON_RX_FIFO_RESET |
                         UART_UFCON_FIFO_ENABLE ;
 

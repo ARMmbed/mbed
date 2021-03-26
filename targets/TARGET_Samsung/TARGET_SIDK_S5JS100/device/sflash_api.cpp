@@ -18,7 +18,7 @@
  ****************************************************************************/
 
 #include <string.h>
-#include "mbed.h"
+#include "rtos/rtos.h"
 #include "stdlib.h"
 #include "cmsis.h"
 #include "mbed_wait_api.h"
@@ -50,6 +50,12 @@ static void hw_delay_us(unsigned int Value)
     for (i = 0; i < (Value * 2); i++)
         for (j = 0; j < 100; j++);
 }
+
+unsigned int up_progmem_pagesize(void)
+{
+    return S5JS100_FLASH_PAGE_SIZE;
+}
+
 
 unsigned int up_progmem_blocksize(void)
 {
@@ -88,6 +94,8 @@ static void s5js100_sflash_disable_wp(void)
 static void s5js100_sflash_enable_wp(void)
 {
     modifyreg32(S5JS100_SFLASH_SFCON, SFLASH_SFCON_WP_MASK, SFLASH_SFCON_WP_ENABLE);
+    // command 3. RDSR1 read Status Register 1
+    modifyreg32(0x85020024, 0xFFFF, 0x0505);  
 }
 
 static uint8_t s5js100_sflash_read_status(void)
@@ -141,20 +149,22 @@ int s5js100_sflash_write_protect(eQSPI_PROTECTION_AREA area)
 void SFlash_DriverInitialize()
 {
     putreg32(0x8660060A, S5JS100_SFLASH_SFCON); /*disable write protect for FLASH stage changing*/
+#if !DEVICE_QSPI 
     modifyreg32(0x85020074, 0x1, 1);    /*Set FAST READ */
 
     /* Enable Quad Read */
     putreg32(0x4, S5JS100_SFLASH_IO_MODE);
     putreg32(0x8, S5JS100_SFLASH_PERF_MODE);
 
-    // command 3. RDSR2 read winbond Status Register 2
+    // command 3. RDSR2 read Status Register 2
     modifyreg32(0x85020024, 0xFF, 0x35);    //Set QE to Status2
 
     while (!(getreg8(S5JS100_SFLASH_BASE + 0xDC) & (0x1 << 1))) {
     };  /* Check FLASH has Quad Enabled */
 
     cal_clk_setrate(d1_qspi, 100000000);
-    putreg32(0x0660061A, S5JS100_SFLASH_SFCON); //enable write protect + winbond + byte program
+#endif
+    putreg32(0x0660061A, S5JS100_SFLASH_SFCON); //enable write protect + byte program
 
     /* change drive strength */
     modifyreg32(0x82021070, 0x3 << 8, 0x0 << 8);    //Drive strength CS to  (0x0)2mA
@@ -163,8 +173,9 @@ void SFlash_DriverInitialize()
     modifyreg32(0x8202107C, 0x3 << 8, 0x0 << 8);    //Drive strength SO to  (0x0)2mA
     modifyreg32(0x82021080, 0x3 << 8, 0x0 << 8);    //Drive strength WP to  (0x0)2mA
     modifyreg32(0x82021084, 0x3 << 8, 0x0 << 8);    //Drive strength HLD to  (0x0)2mA
-
+#if !DEVICE_QSPI 
     s5js100_sflash_write_protect(SFLASH_PROTECTION_NONE);
+#endif
 }
 
 extern "C" {
@@ -281,6 +292,38 @@ static int _is_erased(unsigned int address, int size)
     }
 
     return 1;
+}
+
+int up_progmem_early_erasepage(unsigned int page)
+{
+    int addr;
+
+    if (page >= up_progmem_npages()) {
+        return -1;
+    }
+
+    addr = up_progmem_getaddress(page);
+    /* skip erased block */
+    if (_is_erased(addr, up_progmem_blocksize())) {
+        return 0;
+    }
+
+    s5js100_sflash_disable_wp();
+
+    /* Set sector address and then send erase command */
+    putreg32(addr - S5JS100_FLASH_PADDR, S5JS100_SFLASH_ERASE_ADDRESS);
+    putreg8(0xff, S5JS100_SFLASH_SE);
+
+    /* Wait for the completion */
+    while (s5js100_sflash_read_status() & 0x1) {
+    };
+
+    /* Invalidate cache */
+    invalidate_dcache_by_addr((uint32_t *)(addr & CACHE_LINE_MASK)/* + S5JS100_FLASH_PADDR*/, up_progmem_blocksize());
+    s5js100_sflash_enable_wp();
+
+
+    return 0;
 }
 
 int up_progmem_erasepage(unsigned int page)

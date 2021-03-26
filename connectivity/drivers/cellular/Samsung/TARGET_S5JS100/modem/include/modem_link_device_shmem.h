@@ -43,10 +43,10 @@ enum modem_io {
 };
 
 typedef struct {
-    unsigned int *head;
-    unsigned int *tail;
-    unsigned char *buff;
-    unsigned int size;
+    volatile int *head;
+    volatile int *tail;
+    volatile unsigned int *buff;
+    int size;
 } shmem_circ;
 
 typedef struct {
@@ -130,6 +130,13 @@ public:
 class ShmemLinkDevice : public ExynosMboxIpc {
 private:
     modem_state state;
+    int shmem_start;
+
+    void rx_cmd_phone_start(void);
+    void rx_cmd_cp_crash(void);
+    void cmd_handler(unsigned int cmd);
+    void msg_handler(void);
+    void mcpu_failed_to_start(void);
 
 public:
     ShmemIpcDevice *ipc_device[MAX_IPC_DEV];
@@ -145,13 +152,24 @@ public:
 
     Semaphore *ipc_rx_sem;
     Queue<mio_buf, 32> ipc_rxq;
+    void(*fail_cb)(void);
+
+    EventQueue *modem_link_device_wqueue;
+    Thread *msgrxwork;
+    Thread *irqwork;
+    int mcpu_failed_to_start_id;
+
 
 public:
     ShmemLinkDevice();
     ~ShmemLinkDevice();
+    int ShmemLinkDevice_stop(void);
     int ShmemLinkDevice_start(void);
-    unsigned short get_mbx_cp2ap_msg(void);
-    unsigned short get_mbx_ap2cp_msg(void);
+    int ShmemLinkDevice_restart(void);
+    unsigned int get_mbx_cp2ap_msg(void);
+    unsigned int get_mbx_ap2cp_msg(void);
+    unsigned int get_mbx_cp2ap_status(void);
+    unsigned int get_mbx_ap2cp_status(void);
     unsigned int get_mbx_magic(void);
     unsigned int get_mbx_access(void);
     void send_int2cp(unsigned short mask);
@@ -181,6 +199,11 @@ public:
         return (state == STATE_NV_CS_SAVE);
     }
     int init_shmem_save(void);
+
+    void ipc_rx_task(void);
+    void msg_rx_work(void);
+    void ipc_shmem_save_task(void);
+    void mcpu_wd_task(void);
 };
 
 extern ShmemLinkDevice *pShmemLinkDevice;
@@ -216,27 +239,27 @@ extern ShmemLinkDevice *pShmemLinkDevice;
 #define SHM_64K_RAW_RX_BUFF_SZ  0x4000
 
 struct shmem_64KB_phys_map {
-    unsigned int magic;
-    unsigned int access;
+    volatile unsigned int magic;
+    volatile unsigned int access;
 
-    unsigned int fmt_tx_head;
-    unsigned int fmt_tx_tail;
+    volatile  int fmt_tx_head;
+    volatile  int fmt_tx_tail;
 
-    unsigned int fmt_rx_head;
-    unsigned int fmt_rx_tail;
+    volatile  int fmt_rx_head;
+    volatile  int fmt_rx_tail;
 
-    unsigned int raw_tx_head;
-    unsigned int raw_tx_tail;
+    volatile  int raw_tx_head;
+    volatile  int raw_tx_tail;
 
-    unsigned int raw_rx_head;
-    unsigned int raw_rx_tail;
+    volatile  int raw_rx_head;
+    volatile  int raw_rx_tail;
 
-    unsigned char reserved[SHM_64K_RESERVED_SZ];
+    volatile unsigned int reserved[SHM_64K_RESERVED_SZ / sizeof(unsigned int)];
 
-    unsigned char fmt_tx_buff[SHM_64K_FMT_TX_BUFF_SZ];
-    unsigned char fmt_rx_buff[SHM_64K_FMT_RX_BUFF_SZ];
+    volatile unsigned int fmt_tx_buff[SHM_64K_FMT_TX_BUFF_SZ / sizeof(unsigned int)];
+    volatile unsigned int fmt_rx_buff[SHM_64K_FMT_RX_BUFF_SZ / sizeof(unsigned int)];
 
-    unsigned char raw_tx_buff[SHM_64K_RAW_TX_BUFF_SZ];
-    unsigned char raw_rx_buff[SHM_64K_RAW_RX_BUFF_SZ];
+    volatile unsigned int raw_tx_buff[SHM_64K_RAW_TX_BUFF_SZ / sizeof(unsigned int)];
+    volatile unsigned int raw_rx_buff[SHM_64K_RAW_RX_BUFF_SZ / sizeof(unsigned int)];
 } __attribute__((packed));
 #endif

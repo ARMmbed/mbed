@@ -26,6 +26,7 @@
 #include "pinmap.h"
 #include "mbed_error.h"
 #include "mbed_wait_api.h"
+#include "PeripheralPins.h"
 
 /*
  * Driver private data structure that should not be shared by multiple
@@ -36,30 +37,6 @@ typedef struct {
 } private_spi_t;
 
 int s5js100_configgpio(uint32_t cfgset);
-
-static const PinMap PinMap_SPI_SCLK[] = {
-    {SPI0_CLK, SPI_0, 0},
-    {SPI1_CLK, SPI_1, 0},
-    {NC, NC, 0}
-};
-
-static const PinMap PinMap_SPI_MOSI[] = {
-    {SPI0_MOSI, SPI_0, 0},
-    {SPI1_MOSI, SPI_1, 0},
-    {NC, NC, 0}
-};
-
-static const PinMap PinMap_SPI_MISO[] = {
-    {SPI0_MISO, SPI_0, 0},
-    {SPI1_MISO, SPI_1, 0},
-    {NC, NC, 0}
-};
-
-static const PinMap PinMap_SPI_SSEL[] = {
-    {SPI0_CSN, SPI_0, 0},
-    {SPI1_CSN, SPI_1, 0},
-    {NC, NC, 0}
-};
 
 /*
  * Retrieve the private data of the instance related to a given IP
@@ -165,14 +142,21 @@ static uint32_t ssp_setfrequency(spi_t *priv, uint32_t frequency)
     uint32_t scr;
     uint32_t regval;
     uint32_t actual;
+    uint32_t actual_frequency;
 
     /* Check if the requested frequency is the same as the frequency selection */
 
-    if (!(priv && frequency <= SSP_CLOCK / 2)) {
-        error("SSP Frequency error");
+    if (!priv) {
+        error("priv null");
     }
 
-    if (priv->frequency == frequency) {
+    if (frequency > SPI_MAX_FREQUENCY) {
+        actual_frequency = SPI_MAX_FREQUENCY;
+    } else {
+        actual_frequency = frequency;
+    }
+
+    if (priv->frequency == actual_frequency) {
         /* We are already at this frequency.  Return the actual. */
 
         return priv->actual;
@@ -190,23 +174,20 @@ static uint32_t ssp_setfrequency(spi_t *priv, uint32_t frequency)
      * (SCR+1) in the above equation. (2) On slower s5jxx parts, SCR
      * will probably always be zero.
      */
-
     for (scr = 1; scr <= 256; scr++) {
         /* CPSDVSR = SSP_CLOCK / (SCR + 1) / frequency */
 
-        cpsdvsr = (SSP_CLOCK / scr) / frequency;
+        cpsdvsr = (SSP_CLOCK / scr) / actual_frequency;
 
         /* Break out on the first solution we find with the smallest value
          * of SCR and with CPSDVSR within the maximum range or 254.
          */
-
         if (cpsdvsr < 255) {
             break;
         }
     }
 
     if (!(scr <= 256 && cpsdvsr <= 255)) {
-        error("SSP Frequency error");
     }
 
     /* "In master mode, CPSDVSRmin = 2 or larger (even numbers only)" */
@@ -222,7 +203,6 @@ static uint32_t ssp_setfrequency(spi_t *priv, uint32_t frequency)
     }
 
     /* Force even */
-
     cpsdvsr = (cpsdvsr + 1) & ~1;
 
     /* Save the new CPSDVSR and SCR values */
@@ -239,7 +219,7 @@ static uint32_t ssp_setfrequency(spi_t *priv, uint32_t frequency)
     actual = (SSP_CLOCK / cpsdvsr) / scr;
     /* Save the frequency setting */
 
-    priv->frequency = frequency;
+    priv->frequency = actual_frequency;
     priv->actual = actual;
 
     return actual;
@@ -347,6 +327,21 @@ void ssp_select(spi_t *priv, int selected)
 }
 void spi_free(spi_t *obj)
 {
+    if (!obj) {
+        return;
+    }
+
+    /* Disable the SSP and all interrupts (we'll poll for all data) */
+    ssp_putreg(obj, S5JS100_SSP_CR1_OFFSET, 0);
+    ssp_putreg(obj, S5JS100_SSP_IMSC_OFFSET, 0);
+
+    obj->spi = NULL;
+    obj->base = 0;
+    obj->freqid = 0;
+    obj->nbits = 0;
+    obj->mode = 0;
+    obj->frequency = 0;
+    obj->actual = 0;
 }
 
 void spi_select(spi_t *obj, int selected)
@@ -435,30 +430,42 @@ int spi_busy(spi_t *obj)
     return 0;
 }
 
-
-void spi_init(spi_t *obj, PinName mosi,
-              PinName miso, PinName sclk, PinName ssel)
+void spi_get_capabilities(PinName ssel, bool slave, spi_capabilities_t *cap)
 {
-    // determine the SPI to use
-    SPIName spi_mosi = (SPIName)pinmap_peripheral(mosi, PinMap_SPI_MOSI);
-    SPIName spi_miso = (SPIName)pinmap_peripheral(miso, PinMap_SPI_MISO);
-    SPIName spi_sclk = (SPIName)pinmap_peripheral(sclk, PinMap_SPI_SCLK);
-    SPIName spi_ssel = (SPIName)pinmap_peripheral(ssel, PinMap_SPI_SSEL);
-    SPIName spi_data = (SPIName)pinmap_merge(spi_mosi, spi_miso);
-    SPIName spi_cntl = (SPIName)pinmap_merge(spi_sclk, spi_ssel);
-    obj->spi = (SPI_TypeDef *)pinmap_merge(spi_data, spi_cntl);
-    if ((int)obj->spi == NC) {
-        error("SPI pinout mapping failed");
+    uint32_t peripheral = pinmap_peripheral(ssel, PinMap_SPI_SSEL);
+    uint32_t ssp_cr0 = ssp_getreg((spi_t *)peripheral, S5JS100_SSP_CR0_OFFSET);
+    uint32_t ssp_cr1 = ssp_getreg((spi_t *)peripheral, S5JS100_SSP_CR1_OFFSET);
+
+    if (!cap) {
+        return;
     }
+
+    cap->minimum_frequency = SSP_MIN_FREQUENCE;
+    cap->maximum_frequency = SSP_MAX_FREQUENCE;
+    cap->word_length = 0xFF;
+    cap->slave_delay_between_symbols_ns = 0;
+    cap->clk_modes = 0xF;
+    cap->support_slave_mode = true;
+    cap->hw_cs_handle = false;
+    cap->async_mode = false;
+    cap->tx_rx_buffers_equal_length = true;
+}
+
+void spi_init_direct(spi_t *obj, const spi_pinmap_t *pinmap)
+{
+    uint32_t regval = 0;
+
+    if (!obj || !pinmap) {
+        return;
+    }
+
+    obj->spi = (SPI_TypeDef *)pinmap->peripheral;
     obj->base = SPI0_BASE;
 
-    uint32_t regval;
-    uint32_t i;
-
-    s5js100_configgpio(sclk);
-    s5js100_configgpio(ssel);
-    s5js100_configgpio(miso);
-    s5js100_configgpio(mosi);
+    s5js100_configgpio(pinmap->mosi_function);
+    s5js100_configgpio(pinmap->miso_function);
+    s5js100_configgpio(pinmap->sclk_function);
+    s5js100_configgpio(pinmap->ssel_function);
 
     switch (CONFIG_EXAMPLES_SPI_BUS_NUM) {
         case 0 :
@@ -482,15 +489,45 @@ void spi_init(spi_t *obj, PinName mosi,
     /* Set the initial SSP configuration */
     spi_setmode(obj, SPIDEV_MODE0);
     spi_setbits(obj, 8);
-    spi_frequency(obj, 1000000);
+    spi_frequency(obj, SSP_MAX_FREQUENCE);
 
     regval = ssp_getreg(obj, S5JS100_SSP_CR1_OFFSET);
 
     ssp_putreg(obj, S5JS100_SSP_CR1_OFFSET, regval | SSP_CR1_SSE | SSP_CR1_CSE);
 
-    for (i = 0; i < S5JS100_SSP_FIFOSZ; i++) {
+    for (uint32_t i = 0; i < S5JS100_SSP_FIFOSZ; i++) {
         (void)ssp_getreg(obj, S5JS100_SSP_DR_OFFSET);
     }
+}
+
+void spi_init(spi_t *obj, PinName mosi,
+              PinName miso, PinName sclk, PinName ssel)
+{
+    if (!obj) {
+        return;
+    }
+
+    uint32_t mosi_function = pinmap_function(mosi, PinMap_SPI_MOSI);
+    uint32_t miso_function = pinmap_function(miso, PinMap_SPI_MISO);
+    uint32_t sclk_function = pinmap_function(sclk, PinMap_SPI_SCLK);
+    uint32_t ssel_function = pinmap_function(ssel, PinMap_SPI_SSEL);
+
+    uint32_t spi_mosi = pinmap_peripheral(mosi, PinMap_SPI_MOSI);
+    uint32_t spi_miso = pinmap_peripheral(miso, PinMap_SPI_MISO);
+    uint32_t spi_sclk = pinmap_peripheral(sclk, PinMap_SPI_SCLK);
+    uint32_t spi_ssel = pinmap_peripheral(ssel, PinMap_SPI_SSEL);
+    uint32_t spi_data = pinmap_merge(spi_mosi, spi_miso);
+    uint32_t spi_cntl = pinmap_merge(spi_sclk, spi_ssel);
+
+    uint32_t spi_peripheral = pinmap_merge(spi_data, spi_cntl);
+
+    const spi_pinmap_t pinmap = {spi_peripheral,
+                                 mosi, mosi_function,
+                                 miso, miso_function,
+                                 sclk, sclk_function,
+                                 ssel, ssel_function
+                                };
+    spi_init_direct(obj, &pinmap);
 }
 
 const PinMap *spi_master_mosi_pinmap()
@@ -532,5 +569,30 @@ const PinMap *spi_slave_cs_pinmap()
 {
     return PinMap_SPI_SSEL;
 }
+
+#if DEVICE_SPI_ASYNCH
+void spi_master_transfer(spi_t *obj, const void *tx, size_t tx_length,
+                         void *rx, size_t rx_length, uint8_t bit_width,
+                         uint32_t handler, uint32_t event, DMAUsage hint)
+{
+    return;
+}
+
+uint32_t spi_irq_handler_asynch(spi_t *obj)
+{
+    return 0;
+}
+
+uint8_t spi_active(spi_t *obj)
+{
+    return 0;
+}
+
+void spi_abort_asynch(spi_t *obj)
+{
+    return;
+}
+
+#endif // DEVICE_SPI_ASYNCH
 
 #endif // DEVICE_SPI

@@ -42,7 +42,7 @@ int trng_get_bytes(trng_t *obj, uint8_t *output, size_t length, size_t *output_l
     unsigned int ret = 0;
 
     stRANDOM.pu08Data = (u08 *)output;
-	//generate an approximation of 1
+    //generate an approximation of 1
     ret = sss_generate_rawrandom(&stRANDOM, length);
 
     *output_length = (size_t)stRANDOM.u32DataByteLen;

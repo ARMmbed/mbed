@@ -17,7 +17,8 @@
  *
  ****************************************************************************/
 
-#include "mbed.h"
+#include "rtos/rtos.h"
+#include "s5js100.h"
 #include "s5js100_dcxo.h"
 #include "s5js100_type.h"
 #include "mbed_trace.h"

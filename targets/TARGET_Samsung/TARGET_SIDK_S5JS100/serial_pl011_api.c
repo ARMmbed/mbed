@@ -36,6 +36,7 @@
 
 #define UART_PTR(ptr)   ((S5JS100_UART_TypeDef *)(ptr))
 static uart_irq_handler irq_handler[PL011_UART_MAX];
+static uint32_t serial_irq_id[PL011_UART_MAX] = {0};
 
 struct serial_context_data_s {
     uint32_t serial_irq_id;
@@ -54,36 +55,32 @@ static inline void uart_irq(t_pl011_ports_enum index,
                             UARTName uart)
 {
     S5JS100_UART_TypeDef *p_PL011_UART = UART_PTR(uart);
-    int irq_type = 0xFFFF; /* type none */
+    int irq_MIS =  p_PL011_UART->MIS; /* type none */
+    int irq_IMSC =  p_PL011_UART->IMSC;
 
-    if (!(p_PL011_UART->FR & 1u << 5)) {
-        if (p_PL011_UART->IMSC & 1u << 5) {
-            irq_type = TxIrq;
-        }
-    }
 
-    if (p_PL011_UART->MIS & (1u << 4) || p_PL011_UART->MIS & (1u << 6)) {
+    if (irq_MIS & (1u << 4) || irq_MIS & (1u << 6)) {
         /*
                 Rx Interrupt & Rx Timeout Interrupt
                 The receive timeout interrupt is asserted when the receive FIFO is not empty,
             and no further data is received over a 32-bit period.
         */
-        irq_type = RxIrq;
-    }
-
-    if (irq_type  == RxIrq) {
-        if (uart_data[index].rx_irq_set_api) {
-            (irq_handler[index])(uart_data[index].serial_irq_id, irq_type);
+        if (irq_handler[index]) {
+            (irq_handler[index])(serial_irq_id[index], RxIrq);
         }
     }
 
-    if (irq_type == TxIrq) {
-        /* Clear the TX interrupt Flag */
-        /* UART TX */
-    } else {
-        /* Clear the Rx interupt Flag */
-        /* UART RX */
+
+    if (irq_IMSC & 1u << 5) {
+        if (irq_handler[index]) {
+            (irq_handler[index])(serial_irq_id[index], TxIrq);
+        }
+        p_PL011_UART->ICR = 0x0;
     }
+
+    /* Shall we clean pending bits anywhere ???*/
+    // p_PL011_UART->ICR = irq_MIS;
+
 }
 
 
@@ -96,26 +93,6 @@ static void uart3_irq()
 {
     uart_irq(PL011_UART1_ID, UART_3);
 }
-
-
-static void pl011_serial_irq_set_internal(void *obj, SerialIrq irq, uint32_t enable)
-{
-    struct serial_s *priv = (struct serial_s *)obj;
-    S5JS100_UART_TypeDef *p_PL011_UART = UART_PTR(priv->uart);
-
-
-
-    if (enable) {
-        p_PL011_UART->IMSC = 0x50; //interrupt by Rx Timeout & Rx (for fifo mode)
-
-    } else if ((irq == TxIrq) || (uart_data[priv->index].rx_irq_set_api
-                                  + uart_data[priv->index].rx_irq_set_flow == 0)) {
-        p_PL011_UART->IMSC = 0; //interrupt by Rx Timeout & Rx (for fifo mode)
-
-    }
-}
-
-
 
 // serial_baud
 // set the baud rate, taking in to account the current SystemFrequency
@@ -193,7 +170,6 @@ static void pl011_serial_format(void *obj, int data_bits,
     /* Enable FIFO */
     reg |= 1 << 4;
 
-
     p_PL011_UART->LCRH = reg;
 }
 
@@ -201,22 +177,32 @@ static void pl011_serial_irq_handler(void *obj, uart_irq_handler handler, uint32
 {
     struct serial_s *priv = (struct serial_s *)obj;
 
+    serial_irq_id[priv->index] = id;
     irq_handler[priv->index] = handler;
-    uart_data[priv->index].serial_irq_id = id;
 }
-
-
-
 
 static void pl011_serial_irq_set(void *obj, SerialIrq irq, uint32_t enable)
 {
     struct serial_s *priv = (struct serial_s *)obj;
+    S5JS100_UART_TypeDef *p_PL011_UART = UART_PTR(priv->uart);
 
-    if (RxIrq == irq) {
-        uart_data[priv->index].rx_irq_set_api = enable;
+    switch (irq) {
+        case RxIrq:
+            if (enable) {
+                p_PL011_UART->IMSC |= 0x50; //interrupt by Rx Timeout & Rx (for fifo mode)
+            } else {
+                p_PL011_UART->IMSC &= ~0x50; //interrupt by Rx Timeout & Rx (for fifo mode)
+            }
+            break;
+        case TxIrq:
+            if (enable) {
+                p_PL011_UART->IMSC |= 0x20; //interrupt by Tx (for fifo mode)
+                *(int *)0xE000E204 = *(int *)0xE000E204 | 1;
+            } else {
+                p_PL011_UART->IMSC &= ~0x20; //interrupt by Tx (for fifo mode)
+            }
+            break;
     }
-
-    pl011_serial_irq_set_internal(obj, irq, enable);
 }
 
 
@@ -243,7 +229,6 @@ static int pl011_serial_getc(void *obj)
     int data;
     while (!serial_readable(priv));
     data = p_PL011_UART->DR & 0xFF;
-
     return data;
 }
 
@@ -290,13 +275,16 @@ void pl011_serial_init(void *obj, PinName tx, PinName rx)
     /* Enable UART and RX/TX path*/
     p_PL011_UART->CR = 0x301;
     /* RX/TX fifo half full interrupt*/
-    p_PL011_UART->IFLS = (2 << 3) | 2;
+    p_PL011_UART->IFLS = (2 << 3) | 6;
     /* clear all interrupts mask */
     p_PL011_UART->IMSC = 0x0;
     /* Clear all interripts */
-    p_PL011_UART->ICR = 0x7FF;
+    p_PL011_UART->ICR = 0x0;
     /* MODESEL as default UART*/
     p_PL011_UART->MODESEL = 0x0;
+    // disbale RX/TX fifo, in serial_format able
+    p_PL011_UART->LCRH = 0x60;
+
 
     priv->ops.serial_baud = pl011_serial_baud;
     priv->ops.serial_format = pl011_serial_format;

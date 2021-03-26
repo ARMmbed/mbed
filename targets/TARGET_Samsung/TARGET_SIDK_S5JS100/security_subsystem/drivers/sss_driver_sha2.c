@@ -147,7 +147,7 @@ int sss_SHA2_512(
     if (ret != SSSR_SUCCESS) {
         return ret;
     }
-    
+
     //! assign hash_byte_len to compare returned result from sss_fw after hash operation
     object_id = OID_SHA2_512;
     block_byte_len = 128;

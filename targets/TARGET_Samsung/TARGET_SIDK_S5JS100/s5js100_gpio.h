@@ -19,6 +19,9 @@
 #ifndef __ARCH_ARM_SRC_S5JS100_CHIP_S5JS100_GPIO_H__
 #define __ARCH_ARM_SRC_S5JS100_CHIP_S5JS100_GPIO_H__
 
+#include <stdbool.h>
+#include <stdint.h>
+
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
@@ -177,6 +180,16 @@
 #define GPIO_ICG_REG            (GPIO_BASE + 0x0800)
 #define GPIO_CPU_SEL_REG        (GPIO_BASE + 0x0900)
 
+enum level_ {
+    LOW = 0,
+    HIGH = 1,
+};
+
+enum dir_ {
+    OUT = 0,
+    IN = 1,
+};
+
 enum gpio_int_type_ {
     LEVEL_LOW,
     LEVEL_HIGH,
@@ -198,6 +211,11 @@ enum drive_strength_ {
     DS_12mA,
 };
 
+enum slew_rate_ {
+    SR_FAST = 0,
+    SR_SLOW,
+};
+
 enum in_enable_ {
     IN_DIS = 0,
     IN_EN,
@@ -208,6 +226,7 @@ enum out_enable_ {
     OUT_EN,
 };
 
+// bit postion in top_mux register
 enum bitpos_topmux_ {
     BITPOS_FUNC = 0,
     BITPOS_DS = 8,              //drive strengh
@@ -240,19 +259,42 @@ enum gpio_id_ {
     GPIO71, GPIO72, GPIO_MAX,
 };
 
-
-// function to enable the GPIO pin
-struct tmux_range_ {
-    uint16_t addr;
-    uint8_t start_num;
-    uint8_t end_num;
-};
+#define SetBits(uAddr, uBaseBit, uMaskValue, uSetValue) \
+    putreg32((getreg32(uAddr) & ~((uMaskValue)<<(uBaseBit))) | (((uMaskValue)&(uSetValue))<<(uBaseBit)), uAddr)
+#define GetBits(uAddr, uBaseBit, uMaskValue) \
+    ((getreg32(uAddr)>>(uBaseBit))&(uMaskValue))
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 int s5js100_configgpio(uint32_t cfgset);
+
+/****************************************************************************
+ * Name: s5js100_gpiowrite
+ *
+ * Description:
+ *   Write one or zero to the selected GPIO pin
+ *
+ ****************************************************************************/
+void s5js100_gpiowrite(uint32_t cfgset, bool value);
+
+/****************************************************************************
+ * Name: s5js100_gpioread
+ *
+ * Description:
+ *   Read one or zero to the selected GPIO pin
+ *
+ ****************************************************************************/
+bool s5js100_gpioread(uint32_t cfgset);
+
 void gpio_set_func(enum gpio_id_ id, enum nmux_func_ func);
+enum pull_up_down_ gpio_get_pupd(enum gpio_id_ id);
+
+void s5js100_pullup(uint32_t cfgset);
+int s5js100_configinput(uint32_t cfgset);
+int s5js100_configoutput(uint32_t cfgset);
+int s5js100_unconfiggpio(uint32_t cfgset);
+
 #ifdef __cplusplus
 }
 #endif

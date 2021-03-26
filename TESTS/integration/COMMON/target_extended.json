@@ -206,6 +206,15 @@
         },
         "_CY8CPROTO_062S3_4343W": {
             "no_led"                                    : "1"
+        },
+        "S5JS100": {
+            "target.network-default-interface-type"     : "CELLULAR",
+            "target.components_add"                     : ["SPIF"],
+            "spif-driver.SPI_MOSI": "SPI0_TXD",
+            "spif-driver.SPI_MISO": "SPI0_RXD",
+            "spif-driver.SPI_CLK":  "SPI0_CLK",
+            "spif-driver.SPI_CS":   "P05",
+            "spif-driver.SPI_FREQ": 40000000
         }
     },
     "config": {

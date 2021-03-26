@@ -20,12 +20,13 @@
 /****************************************************************************
  * Included Files
  ****************************************************************************/
-
-#include "mbed.h"
+#include "rtos/rtos.h"
 #include "s5js100_mbox_ipc.h"
 #include "s5js100_type.h"
 #include "s5js100_error.h"
 #include "shmem_save.h"
+#include "s5js100_pwr.h"
+#include "s5js100.h"
 
 #define S5JS100_MBOX_IPC_DBG_ON     0
 #define S5JS100_MBOX_IPC_DBG        if (S5JS100_MBOX_IPC_DBG_ON) printf

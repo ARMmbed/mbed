@@ -28,6 +28,14 @@
             "target.macros_add": [
                 "UART_7BITS_PARITY_NONE_NOT_SUPPORTED"
             ]
+        },
+        "S5JS100": {
+            "target.macros_add": [
+                "UART_7BITS_PARITY_NONE_NOT_SUPPORTED",
+                "UART_9BITS_PARITY_NONE_NOT_SUPPORTED",
+                "UART_7BITS_NOT_SUPPORTED",
+                "UART_9BITS_NOT_SUPPORTED"
+            ]
         }
     }
 }

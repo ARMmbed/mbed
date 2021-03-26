@@ -14,6 +14,10 @@ add_subdirectory(RiotMicro)
 add_subdirectory(TELIT)
 add_subdirectory(UBLOX)
 
+if("Samsung" IN_LIST MBED_TARGET_LABELS)
+add_subdirectory(Samsung)
+endif()
+
 target_include_directories(mbed-cellular
     INTERFACE
         .

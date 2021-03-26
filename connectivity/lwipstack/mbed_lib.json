@@ -226,6 +226,11 @@
         },
         "MTS_DRAGONFLY_F411RE": {
             "tcpip-thread-stacksize": 1600
+        },
+        "S5JS100": {
+            "mem-size": 8192,
+            "tcpip-thread-stacksize": 2048,
+            "l3ip-enabled": true
         }
     }
 }

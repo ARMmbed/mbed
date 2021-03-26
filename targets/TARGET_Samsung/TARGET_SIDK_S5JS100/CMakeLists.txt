@@ -15,21 +15,27 @@ target_include_directories(mbed-s5js100
     INTERFACE
         .
         device
-        modem
         security_subsystem
         security_subsystem/drivers
 )
 
 target_sources(mbed-s5js100
     INTERFACE
+        analogin_api.c
         gpio_api.c
         gpio_irq_api.c
         i2c_api.c
         
         mbed_sdk_init.c
+        PeripheralPins.c
         pinmap.c
+        pwmout_api.c
+        qspi_api.c
         rtc_api.c
         s5js100_dcxo.cpp
+        s5js100_gpio.c
+        s5js100_hal_qspi.c
+        s5js100_i2c.c
         s5js100_pmip.c
         s5js100_pwr.c
         s5js100_watchdog.c

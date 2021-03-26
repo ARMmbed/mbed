@@ -36,7 +36,7 @@
 #define TRACE_GROUP "PWR"
 
 #ifndef S5JS100_PWR_DBG_ON
-#define S5JS100_PWR_DBG_ON        0
+#define S5JS100_PWR_DBG_ON        1
 #endif
 #define S5JS100_PWR_DBG        if (S5JS100_PWR_DBG_ON) tr_info
 
@@ -671,6 +671,7 @@ void s5js100_pmu_init(void)
         pmu_alive_slpclk_cfg = 0;
     }
 #endif
+    pmu_alive_slpclk_cfg = 0;
 
     alvgpio_init();
     alvgpio_interrupt_enable();
@@ -747,19 +748,31 @@ void conver_nbsleep_to_aspsleep_counter(unsigned int nbsleep_cnt)
 
 void enable_counter(void)
 {
+    unsigned int retry = 1000;
     if (getreg32(PMU_ALIVE_APSLPCNT_CFG0) & (0x1 << 1)) {
         //lldbg("APSLP cnt already enabled\n");
     } else {
         putreg32(0, PMU_ALIVE_APSLPCNT_CFG1);
         putreg32(1, PMU_ALIVE_APSLPCNT_CFG2);
-        putreg32(0x3, PMU_ALIVE_APSLPCNT_CFG0);
         putreg32((15u << 6) + (1u << 3) + (0u << 2) + (1u << 1) + (1u << 0), PMU_ALIVE_APSLPCNT_CFG0);
+        while (!(getreg32(PMU_ALIVE_APSLPCNT_CFG3) & (0x1 << 31) >> 31)) {
+            retry--;
+            if (!retry) {
+                break;
+            }
+        }
+        while (getreg32(PMU_ALIVE_APSLPCNT_CFG3) == 0x123);
+        while (getreg32(PMU_ALIVE_APSLPCNT_CFG4) == 0x45678);
     }
 }
+
 void disable_counter(void)
 {
-    putreg32(0x3, PMU_ALIVE_APSLPCNT_CFG0);
+    putreg32(0x0, PMU_ALIVE_APSLPCNT_CFG0);
+    while (getreg32(PMU_ALIVE_APSLPCNT_CFG3) != 0x123);
+    while (getreg32(PMU_ALIVE_APSLPCNT_CFG4) != 0x45678);
 }
+
 long long get_counter(void)
 {
     long long current_count = 0;
@@ -1123,11 +1136,140 @@ void pmu_short_sleep(void)
     alvgpio_interrupt_enable();
 }
 
+void pmu_ap_short_sleep(int sleep_time_msec)
+{
+    unsigned int i;
+    PMU_SLEEP_INFO pmu_info;
+    unsigned int nvic[8];
+#ifdef PRINT_NBSLEEP_LOG
+    char __buffer[12];
+#endif
+
+#ifdef PRINT_NBSLEEP_LOG
+    convert2hex(__buffer, getreg32(0x81000000 + 0xE8));
+    direct_uart(nbsleep_msg, sizeof(nbsleep_msg));
+    direct_uart(__buffer, sizeof(__buffer));
+#endif
+
+    pmu_info.wakeup_src = APSLPCNT;
+    pmu_info.time_msec = sleep_time_msec;
+
+    //BUCK1, LDO0 on
+    modifyreg32(PMU_ALIVE_PMIPCTRL_OVRD, (1u << 0) + (1u << 1) + (1u << 7) + (1u << 8), (1u << 0) + (1u << 1) + (0 << 7) + (0 << 8));
+
+    //BUCK0, LDO3 on
+    modifyreg32(PMU_ALIVE_PMIPCTRL_OVRD, (1u << 4) + (1u << 6) + (1u << 11) + (1u << 13), (1u << 4) + (1u << 6) + (0 << 11) + (0 << 13));
+
+    /* LDO 1/2/4 ON/OFF */
+    // LDO1 ON/OFF
+    modifyreg32(PMU_ALIVE_PMIPCTRL_OVRD, (1u << 2), LDO1_ON << 2);
+    // LDO2 ON/OFF
+    modifyreg32(PMU_ALIVE_PMIPCTRL_OVRD, (1u << 3), LDO2_ON << 3);
+    // LDO4 ON/OFF
+    modifyreg32(PMU_ALIVE_PMIPCTRL_OVRD, (1u << 5), LDO4_ON << 5);
+
+    pmu_sys_cdc_clk_en(ON);        //CDC ON
+
+    putreg32((1u << 30) + (2u << 26) + (6u << 22), PMU_ALIVE_ALVSYSCTRLCFG);
+    modifyreg32(PMU_ALIVE_ALVSYSCTRLCFG, 0x3ff, 0x3ff);
+    modifyreg32(PMU_ALIVE_ALVSYSCTRLCFG, 1u << 6, 0);    // do not enable clamp cells
+
+    // Do PMIP off
+    modifyreg32(PMU_ALIVE_ALVSYSCTRLCFG, 1u << 3, LDO_PWR_ON << 3);
+    modifyreg32(PMU_ALIVE_ALVSYSCTRLCFG, (1u << 2), (DCXO_IP_ON << 2)); //DCXO_IP
+    modifyreg32(PMU_ALIVE_ALVSYSCTRLCFG, (1u << 1), (BUS_CLK_26MHZ << 1)); //BUS Clock 26MHZ
+    modifyreg32(PMU_ALIVE_ALVSYSCTRLCFG, (1u << 0), (SLEEP_CLK_32KHZ << 0)); //sleep_clock 32KHz
+
+    putreg32((1u << 1) + (1u << 0), PMU_ALIVE_PROFILERCTRL); //BlackboxClr=1, BlackboxEn=1
+    putreg32((1u << 1) + (1u << 0), PMU_SYS_PROFILERCTRL); //BlackboxClr=1, BlackboxEn=1
+
+    putreg32((1u << 1), PMU_SYS_ACPUCTRL_CFG0); //EfuseSenseReqDis=1
+
+    putreg32(pmu_info.wakeup_src, PMU_ALIVE_WKUPSRCEN);
+    modifyreg32(PMU_ALIVE_ALVSYSCTRLCFG, (0x7 << 7), (0x7 << 7));//    [0] :wakeup interrupt enable , [1]: sys_valid_int_en
+    putreg32((1u << 2) + (1u << 0) + (1u << 1), PMU_ALIVE_NSLEEP_CFG);//    [0] :wakeup interrupt enable , [1]: sys_valid_int_en
+
+    if ((pmu_info.wakeup_src & APSLPCNT) > 0) { // AP sleep counter setting
+        putreg32((1u << 5), PMU_ALIVE_APSLPCNT_CFG0);//5 : interrupt pending clear  , 0: SW reset.
+        set_sleep_counter(pmu_info.time_msec);
+        putreg32((15u << 6) + (1u << 3) + (0u << 2) + (1u << 1) + (1u << 0), PMU_ALIVE_APSLPCNT_CFG0);  //IgnoreReCalcLmt=15,IntMask_n=1,ReCalcUpdateMask=0,En=1,SwRst_n=1
+    }
+
+    for (i = 0; i < 8; i++) {
+        nvic[i] = getreg32(0xE000E100 + (0x4 * i));
+        putreg32(nvic[i], 0xE000E180 + (0x4 * i));//disable all interrupt
+    }
+#if 0
+    NVIC_EnableIRQ(S5JS100_IRQ_SLEEP); //NBSLEEP
+    alvgpio_interrupt_enable();
+
+    while (getreg32(PMU_SYS_MCPUMON) != 1); // waits for MCPU WFI
+#endif
+
+    putreg32(0x4, 0xE000E280);
+    while (getreg32(0xE000E200 + 0x4) & (0x80)) {
+        putreg32(0x80, 0xE000E284);//clear SLEEP pending, should be clear by CP first
+    }
+#ifdef PRINT_NBSLEEP_LOG
+    convert2hex(__buffer, getreg32(PMU_ALIVE_ALVSYSCTRLCFG));
+    direct_uart(__buffer, sizeof(__buffer));
+#endif
+
+    // PMU could control on/off of LDO6 if LDO6 SwMuxSel was zero.
+    // PMU power off LDO6
+    modifyreg32(PMU_ALIVE_PMIP_TCXO_LDO, 0x80000000, 0x0);
+
+    *(volatile unsigned *)(0x82000100) = 0x018c0d01; //system mux change PLL -> DCXO, PLL off
+
+    putreg32(0x1, PMU_ALIVE_SYSOFF);
+    putreg32(0x1, PMU_SYS_SYSCTRL_SYSOFF);
+    putreg32(1, PMU_ALIVE_BOOTFLAG);
+#if defined(__ICCARM__)
+#warning "ICCARM no support idle drx"
+#else
+    s5js100_enter_exit_idle_drx(); //cpu wfi
+#endif
+    while (getreg32(PMU_SYS_ACPUCTRL_FSM) != 0x14151600 && getreg32(PMU_SYS_ACPUCTRL_FSM) != 0);
+
+    /* DCXO ON */
+    if (!(DCXO_IP_ON)) {
+        s5js100_dcxo_force_initialize();    /* DCXO off -> on after short_sleep */
+    }
+
+    cal_init();
+    s5js100_sflash_reinit();
+
+    putreg32(0x0, PMU_ALIVE_SYSOFF);
+    putreg32(0x0, PMU_SYS_SYSCTRL_SYSOFF);
+
+    /* AP2CP mailbox interrupt generation */
+    /* MCPU back to work                  */
+    putreg32(0x3F80, PMU_ALIVE_PMIPCTRL_OVRD);
+
+    //wait MCPU wfi break
+    //   while(PMU_SYS_McpuMon == 0x1);
+    putreg32(0x2, 0x85023020);
+    putreg32(0x2, 0x8502301C);
+
+    for (i = 0; i < 8; i++) {
+        putreg32(nvic[i], 0xE000E100 + (0x4 * i));  //enable all interrupt
+    }
+
+    NVIC_DisableIRQ(S5JS100_IRQ_SLEEP);
+
+    pmu_sys_cdc_clk_en(OFF);        //CDC OFF
+    gpio_eint_mask(alv_wkup_src);   //IntEn=1
+    alvgpio_interrupt_enable();
+}
+
+
+
 void pmu_test_auto(int sleep_time_msec)
 {
     PMU_SLEEP_INFO pmu_info;
 
     S5JS100_PWR_DBG("%s...\n", __func__);
+    printf("\r\n%s...%d\n", __func__, sleep_time_msec);
 
     pmu_info.wakeup_src = APSLPCNT;
     pmu_info.time_msec = sleep_time_msec;

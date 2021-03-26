@@ -21,8 +21,9 @@
 #include "modem_io_device.h"
 #include "modem_prj.h"
 #include "modem_link_device_shmem.h"
-
 #include "mbed_trace.h"
+#include "rtos/rtos.h"
+
 #define TRACE_GROUP "IODEV"
 
 #ifndef MODEM_IO_DEVICE_DBG_ON
@@ -107,49 +108,30 @@ unsigned short ModemIoDevice::exynos_build_fr_config(unsigned int count)
     return fr_cfg;
 }
 
-void ModemIoDevice::exynos_build_header(unsigned char *buff, unsigned short cfg, unsigned char ctl, int count)
-{
-    unsigned short *exynos_header = (unsigned short *)(buff + EXYNOS_START_OFFSET);
-    //unsigned short *frame_seq = (unsigned short *)(buff + EXYNOS_FRAME_SEQ_OFFSET);
-    unsigned short *frag_cfg = (unsigned short *)(buff + EXYNOS_FRAG_CONFIG_OFFSET);
-    unsigned short *size = (unsigned short *)(buff + EXYNOS_LEN_OFFSET);
-
-    *exynos_header = EXYNOS_START_MASK;
-    //*frame_seq = ++(seq_num.frame_cnt);
-    *frag_cfg = cfg;
-    *size = (unsigned short)(EXYNOS_HEADER_SIZE + count);
-    buff[EXYNOS_CH_ID_OFFSET] = id;
-
-    if (cfg == EXYNOS_SINGLE_MASK) {
-        *frag_cfg = cfg;
-    }
-
-    buff[EXYNOS_CH_SEQ_OFFSET] = ++ch_cnt;
-}
-
 int ModemIoDevice::write(const char *buf, int count)
 {
     mio_buf *mio;
-    unsigned short fr_cfg;
-    size_t tailroom;
-    unsigned char header[EXYNOS_HEADER_SIZE];
 
     MODEM_IO_DEVICE_DBG("%s:%d count(%d)\n", __func__, __LINE__, count);
 
-    fr_cfg = exynos_build_fr_config(count);
-    tailroom = exynos_calc_padding_size(EXYNOS_HEADER_SIZE + count);
 
     mio = (mio_buf *)alloc_mio_buf(0);
     if (!mio) {
         return 0;
     }
 
-    exynos_build_header(header, fr_cfg, 0, count);
-    mio->header = header;
+    mio->header.hdr.start = EXYNOS_START_MASK;
+    mio->header.hdr.frm_seq = 0; //Handled later in IPC
+    mio->header.hdr.frag_cfg = exynos_build_fr_config(count);
+    mio->header.hdr.msg_len = (unsigned short)(EXYNOS_HEADER_SIZE + count);
+    mio->header.hdr.ch_id = id;
+    mio->header.hdr.ch_seq = ++ch_cnt;
+
+
     mio->data = (unsigned char *)buf;
     mio->len = count;
     mio->ch = id;
-    mio->pad = tailroom;
+    mio->pad = exynos_calc_padding_size(EXYNOS_HEADER_SIZE + count);
 
     ipc->send(mio);
     return count;

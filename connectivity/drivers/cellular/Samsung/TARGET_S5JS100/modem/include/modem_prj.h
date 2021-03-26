@@ -29,6 +29,8 @@
 #define INT_CMD(x)          (INT_MASK_VALID | INT_MASK_CMD | (x))
 #define INT_CMD_MASK(x)                 ((x) & 0x1F)
 
+#define STAT_LTE_ACTIVE     0x0020
+
 typedef enum {
     INT_CMD_INIT_START              = 0x1,
     INT_CMD_COLD_BOOT               = 0x2,
