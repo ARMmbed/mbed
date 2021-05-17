@@ -8077,6 +8077,61 @@
         "inherits": ["AMA3B1KK"],
         "components_add": ["lis2dh12", "hm01b0"]
     },
+    "RP2040": {
+        "inherits": ["Target"],
+        "components_add": ["FLASHIAP"],
+        "core": "Cortex-M0+",
+        "supported_toolchains": ["GCC_ARM"],
+        "extra_labels": [
+            "RASPBERRYPI",
+            "memmap_default"
+        ],
+        "release_versions": [
+            "5"
+        ],
+        "overrides": {
+            "xip-enable": true
+        },
+        "device_has": [
+            "ANALOGIN",
+            "FLASH",
+            "I2C",
+            "I2CSLAVE",
+            "INTERRUPTIN",
+            "PORT_IN",
+            "PORT_OUT",
+            "PWMOUT",
+            "SERIAL",
+            "SERIAL_FC",
+            "SPI",
+            "USTICKER",
+            "WATCHDOG",
+            "USBDEVICE",
+            "RESET_REASON"
+        ]
+    },
+    "NANO_RP2040_CONNECT": {
+        "inherits": ["RP2040"],
+        "macros_add": [
+            "PICO_RP2040_USB_DEVICE_ENUMERATION_FIX=1",
+            "PICO_NO_BINARY_INFO=1",
+            "MBED_MPU_CUSTOM",
+            "PICO_TIME_DEFAULT_ALARM_POOL_DISABLED",
+            "PICO_ON_DEVICE=1",
+            "PICO_UART_ENABLE_CRLF_SUPPORT=0"
+        ]
+    },
+    "RASPBERRY_PI_PICO": {
+        "inherits": ["RP2040"],
+        "macros_add": [
+            "PICO_RP2040_USB_DEVICE_ENUMERATION_FIX=1",
+            "PICO_NO_BINARY_INFO=1",
+            "MBED_MPU_CUSTOM",
+            "PICO_TIME_DEFAULT_ALARM_POOL_DISABLED",
+            "PICO_ON_DEVICE=1",
+            "PICO_UART_ENABLE_CRLF_SUPPORT=0"
+        ]
+    },
     "__build_tools_metadata__": {
         "version": "1",
         "public": false
