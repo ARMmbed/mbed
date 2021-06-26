@@ -60,7 +60,11 @@
 #define RANDOM_STATIC_ADDRESS_OFFSET    0x80
 #define LL_WITHOUT_HOST_OFFSET          0x2C
 
+#ifdef NDEBUG
 #define SPI_STACK_SIZE                  1024
+#else
+#define SPI_STACK_SIZE                  2048
+#endif
 
 #define IRQ_TIMEOUT_DURATION            100 //ms
 

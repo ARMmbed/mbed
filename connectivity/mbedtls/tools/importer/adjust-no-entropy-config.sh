@@ -37,3 +37,6 @@ add_code() {
 
 conf set MBEDTLS_CMAC_C
 conf unset MBEDTLS_CIPHER_MODE_XTS
+
+# potentially save flash space by not enabling self-tests by default
+conf unset MBEDTLS_SELF_TEST

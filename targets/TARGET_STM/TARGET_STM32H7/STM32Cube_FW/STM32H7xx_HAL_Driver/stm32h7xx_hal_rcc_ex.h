@@ -3210,7 +3210,7 @@ typedef struct
                   MODIFY_REG(RCC->D2CCIP2R, RCC_D2CCIP2R_CECSEL, (uint32_t)(__CECCLKSource__))
 #else
 #define __HAL_RCC_CEC_CONFIG(__CECCLKSource__) \
-                  MODIFY_REG(RCC->D2CCIP2R, RCC_CDCCIP2R_CECSEL, (uint32_t)(__CECCLKSource__))
+                  MODIFY_REG(RCC->CDCCIP2R, RCC_CDCCIP2R_CECSEL, (uint32_t)(__CECCLKSource__))
 #endif /* RCC_D2CCIP2R_CECSEL */
 
 /** @brief  macro to get the CEC clock source.
@@ -4302,8 +4302,6 @@ void     HAL_RCCEx_CRS_ErrorCallback(uint32_t Error);
 
 #define IS_RCC_PLL3VCO_VALUE(VALUE) (((VALUE) == RCC_PLL3VCOWIDE)  || \
                                     ((VALUE) == RCC_PLL3VCOMEDIUM))
-
-#define IS_RCC_PLLFRACN_VALUE(VALUE) ((VALUE) <=8191U)
 
 #define IS_RCC_LPTIM1CLK(SOURCE)       (((SOURCE) == RCC_LPTIM1CLKSOURCE_D2PCLK1)|| \
                                         ((SOURCE) == RCC_LPTIM1CLKSOURCE_PLL2)   || \

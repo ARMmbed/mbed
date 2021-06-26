@@ -317,6 +317,7 @@ void USBPhyHw::init(USBPhyEvents *events)
     hpcd.State = HAL_PCD_STATE_RESET;
     HAL_StatusTypeDef ret = HAL_PCD_Init(&hpcd);
     MBED_ASSERT(ret == HAL_OK);
+    __HAL_PCD_ENABLE(&hpcd);
 
     // Configure FIFOs
 #if (MBED_CONF_TARGET_USB_SPEED == USE_USB_NO_OTG)

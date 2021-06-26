@@ -45,9 +45,11 @@ int spi_get_clock_freq(spi_t *obj)
         case SPI_1:
             spi_hz = HAL_RCC_GetPCLK2Freq();
             break;
+#if defined SPI2_BASE
         case SPI_2:
             spi_hz = HAL_RCC_GetPCLK1Freq();
             break;
+#endif
         default:
             error("CLK: SPI instance not set");
             break;

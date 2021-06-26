@@ -16,6 +16,7 @@
  */
 
 #include "netsocket/TLSSocketWrapper.h"
+#include <new>
 #include "platform/Callback.h"
 #include "drivers/Timer.h"
 #include "events/mbed_events.h"
@@ -134,7 +135,10 @@ nsapi_error_t TLSSocketWrapper::set_client_cert_key(const void *client_cert, siz
 #else
 
     int ret;
-    mbedtls_x509_crt *crt = new mbedtls_x509_crt;
+    mbedtls_x509_crt *crt = new (std::nothrow) mbedtls_x509_crt;
+    if (!crt) {
+        return NSAPI_ERROR_NO_MEMORY;
+    }
     mbedtls_x509_crt_init(crt);
     if ((ret = mbedtls_x509_crt_parse(crt, static_cast<const unsigned char *>(client_cert),
                                       client_cert_len)) != 0) {
@@ -286,7 +290,11 @@ nsapi_error_t TLSSocketWrapper::continue_handshake()
 #if defined(MBEDTLS_X509_CRT_PARSE_C) && defined(FEA_TRACE_SUPPORT) && !defined(MBEDTLS_X509_REMOVE_INFO)
     /* Prints the server certificate and verify it. */
     const size_t buf_size = 1024;
-    char *buf = new char[buf_size];
+    char *buf = new (std::nothrow) char[buf_size];
+    if (!buf) {
+        print_mbedtls_error("new (std::nothrow) char[buf_size] failed in continue_handshake", NSAPI_ERROR_NO_MEMORY);
+        return NSAPI_ERROR_NO_MEMORY;
+    }
     mbedtls_x509_crt_info(buf, buf_size, "\r    ",
                           mbedtls_ssl_get_peer_cert(&_ssl));
     tr_debug("Server certificate:\r\n%s\r\n", buf);
@@ -427,10 +435,9 @@ void TLSSocketWrapper::print_mbedtls_error(MBED_UNUSED const char *name, MBED_UN
 {
 // Avoid pulling in mbedtls_strerror when trace is not enabled
 #if defined FEA_TRACE_SUPPORT && defined MBEDTLS_ERROR_C
-    char *buf = new char[128];
+    char buf[128];
     mbedtls_strerror(err, buf, 128);
     tr_err("%s() failed: -0x%04x (%d): %s", name, -err, err, buf);
-    delete[] buf;
 #else
     tr_err("%s() failed: -0x%04x (%d)", name, -err, err);
 #endif
@@ -569,7 +576,10 @@ mbedtls_ssl_config *TLSSocketWrapper::get_ssl_config()
 {
     if (!_ssl_conf) {
         int ret;
-        _ssl_conf = new mbedtls_ssl_config;
+        _ssl_conf = new (std::nothrow) mbedtls_ssl_config;
+        if (!_ssl_conf) {
+            return nullptr;
+        }
         mbedtls_ssl_config_init(_ssl_conf);
         _ssl_conf_allocated = true;
 

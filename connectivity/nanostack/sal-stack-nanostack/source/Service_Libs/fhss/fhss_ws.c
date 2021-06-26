@@ -499,16 +499,37 @@ static uint32_t fhss_ws_calculate_ufsi(fhss_structure_t *fhss_structure, uint32_
         }
     }
     cur_slot--;
-    uint32_t remaining_time_ms = 0;
-    if (fhss_structure->ws->unicast_timer_running == true) {
-        remaining_time_ms = US_TO_MS(get_remaining_slots_us(fhss_structure, fhss_unicast_handler, MS_TO_US(dwell_time) - NS_TO_US((int64_t)(fhss_structure->ws->drift_per_millisecond_ns * dwell_time))));
-    }
+
     uint32_t time_to_tx = 0;
     uint32_t cur_time = fhss_structure->callbacks.read_timestamp(fhss_structure->fhss_api);
-    if (cur_time < tx_time) {
+    // High time to TX value (1000ms) is because actual TX time already passed.
+    if (US_TO_MS(tx_time - cur_time) < 1000) {
         time_to_tx = US_TO_MS(tx_time - cur_time);
     }
-    uint64_t ms_since_seq_start = (cur_slot * dwell_time) + (dwell_time - remaining_time_ms) + time_to_tx;
+    uint64_t ms_since_seq_start;
+    if (fhss_structure->ws->unicast_timer_running == true) {
+        // Allow timer interrupt to delay max 10 seconds, otherwise assume next_uc_timeout overflowed
+        if ((fhss_structure->ws->next_uc_timeout < cur_time) && ((cur_time - fhss_structure->ws->next_uc_timeout) < 10000000)) {
+            // The unicast timer has already expired, so count all previous slots
+            // plus 1 completed slot
+            // plus the time from timer expiration to now
+            // plus the time until Tx
+            ms_since_seq_start = ((cur_slot + 1) * dwell_time) + US_TO_MS(cur_time - fhss_structure->ws->next_uc_timeout) + time_to_tx;
+        } else {
+            // The unicast timer is still running, so count all previous slots
+            // plus the remaining time in the slot
+            // plus the time until Tx
+            uint32_t remaining_time_ms  = US_TO_MS(fhss_structure->ws->next_uc_timeout - cur_time);
+            ms_since_seq_start = (cur_slot * dwell_time) + (dwell_time - remaining_time_ms) + time_to_tx;
+        }
+    } else {
+        // The unicast timer is not running. Act as if the slot has completed.
+        // count all previous slots
+        // plus 1 completed slot
+        // plus the time until Tx
+        ms_since_seq_start = ((cur_slot + 1) * dwell_time) + time_to_tx;
+    }
+
     uint32_t seq_length = 0x10000;
     if (fhss_structure->ws->fhss_configuration.ws_uc_channel_function == WS_TR51CF) {
         ms_since_seq_start %= (dwell_time * fhss_structure->number_of_uc_channels);

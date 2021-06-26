@@ -71,7 +71,13 @@ void us_ticker_init(void)
     uint32_t clk_timer = TIMER_GetModuleClock(timer_base);
     uint32_t prescale_timer = clk_timer / NU_TMRCLK_PER_SEC - 1;
     MBED_ASSERT((prescale_timer != (uint32_t) -1) && prescale_timer <= 127);
+    /* HIRC-clocked PLL fails to output 1MHz-aligned frequency
+     *
+     * PLL, clocked by HIRC instead of HXT, doesn't output 1MHz-aligned frequency.
+     */
+#if MBED_CONF_TARGET_HXT_PRESENT
     MBED_ASSERT((clk_timer % NU_TMRCLK_PER_SEC) == 0);
+#endif
     uint32_t cmp_timer = TMR_CMP_MAX;
     MBED_ASSERT(cmp_timer >= TMR_CMP_MIN && cmp_timer <= TMR_CMP_MAX);
     // NOTE: TIMER_CTL_CNTDATEN_Msk exists in NUC472, but not in M451. In M451, TIMER_CNT is updated continuously by default.

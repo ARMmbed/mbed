@@ -31,7 +31,11 @@
 /* Timer clock per lp_ticker tick */
 #define NU_TMRCLK_PER_TICK          1
 /* Timer clock per second */
+#if MBED_CONF_TARGET_LXT_PRESENT
 #define NU_TMRCLK_PER_SEC           (__LXT)
+#else
+#define NU_TMRCLK_PER_SEC           (__LIRC)
+#endif
 /* Timer max counter bit size */
 #define NU_TMR_MAXCNT_BITSIZE       24
 /* Timer max counter */
@@ -40,7 +44,11 @@
 static void tmr1_vec(void);
 
 /* NOTE: To wake the system from power down mode, timer clock source must be ether LXT or LIRC. */
+#if MBED_CONF_TARGET_LXT_PRESENT
 static const struct nu_modinit_s timer1_modinit = {TIMER_1, TMR1_MODULE, CLK_CLKSEL1_TMR1SEL_LXT, 0, TMR1_RST, TMR1_IRQn, (void *) tmr1_vec};
+#else
+static const struct nu_modinit_s timer1_modinit = {TIMER_1, TMR1_MODULE, CLK_CLKSEL1_TMR1SEL_LIRC, 0, TMR1_RST, TMR1_IRQn, (void *) tmr1_vec};
+#endif
 
 #define TIMER_MODINIT       timer1_modinit
 

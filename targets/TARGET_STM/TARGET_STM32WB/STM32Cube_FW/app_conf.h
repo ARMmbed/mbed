@@ -148,7 +148,11 @@
  * Maximum number of simultaneous connections that the device will support.
  * Valid values are from 1 to 8
  */
+#ifdef TARGET_MCU_STM32WB15xC
+#define CFG_BLE_NUM_LINK            4
+#else
 #define CFG_BLE_NUM_LINK            8
+#endif
 
 /**
  * Maximum number of Services that can be stored in the GATT database.

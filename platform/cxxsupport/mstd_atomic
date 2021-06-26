@@ -186,7 +186,7 @@ struct AtomicBaseRaw {
             T val;
         } ret;
         {
-            CriticalSectionLock lock;
+            mbed::CriticalSectionLock lock;
             memcpy(std::addressof(ret.val), const_cast<const T *>(std::addressof(data)), sizeof(T));
         }
         return std::move(ret.val);
@@ -194,19 +194,19 @@ struct AtomicBaseRaw {
     T load(memory_order order = memory_order_seq_cst) const noexcept
     {
         MBED_CHECK_LOAD_ORDER(order);
-        CriticalSectionLock lock;
+        mbed::CriticalSectionLock lock;
         return data;
     }
     void store(T desired, memory_order order = memory_order_seq_cst) volatile noexcept
     {
         MBED_CHECK_STORE_ORDER(order);
-        CriticalSectionLock lock;
+        mbed::CriticalSectionLock lock;
         memcpy(const_cast<T *>(std::addressof(data)), std::addressof(desired), sizeof(T));
     }
     void store(T desired, memory_order order = memory_order_seq_cst) noexcept
     {
         MBED_CHECK_STORE_ORDER(order);
-        CriticalSectionLock lock;
+        mbed::CriticalSectionLock lock;
         data = std::move(desired); // MoveAssignable
     }
     T exchange(T desired, memory_order = memory_order_seq_cst) volatile noexcept
@@ -217,7 +217,7 @@ struct AtomicBaseRaw {
             T val;
         } old;
         {
-            CriticalSectionLock lock;
+            mbed::CriticalSectionLock lock;
             memcpy(std::addressof(old.val), const_cast<const T *>(std::addressof(data)), sizeof(T));
             memcpy(const_cast<T *>(std::addressof(data)), std::addressof(desired), sizeof(T));
         }
@@ -225,7 +225,7 @@ struct AtomicBaseRaw {
     }
     T exchange(T desired, memory_order = memory_order_seq_cst) noexcept
     {
-        CriticalSectionLock lock;
+        mbed::CriticalSectionLock lock;
         T old = std::move(data); // MoveConstructible
         data = std::move(desired); // MoveAssignable
         return old;
@@ -233,7 +233,7 @@ struct AtomicBaseRaw {
     bool compare_exchange_strong(T &expected, T desired, memory_order success, memory_order failure) volatile noexcept
     {
         MBED_CHECK_CAS_ORDER(success, failure);
-        CriticalSectionLock lock;
+        mbed::CriticalSectionLock lock;
         if (memcmp(const_cast<const T *>(std::addressof(data)), std::addressof(expected), sizeof(T)) == 0) {
             memcpy(const_cast<T *>(std::addressof(data)), std::addressof(desired), sizeof(T));
             return true;
@@ -245,7 +245,7 @@ struct AtomicBaseRaw {
     bool compare_exchange_strong(T &expected, T desired, memory_order success, memory_order failure) noexcept
     {
         MBED_CHECK_CAS_ORDER(success, failure);
-        CriticalSectionLock lock;
+        mbed::CriticalSectionLock lock;
         if (memcmp(std::addressof(data), std::addressof(expected), sizeof(T)) == 0) {
             data = std::move(desired); // MoveAssignable
             return true;

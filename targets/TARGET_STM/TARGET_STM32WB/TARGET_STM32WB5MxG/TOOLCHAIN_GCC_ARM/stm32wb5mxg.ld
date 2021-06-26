@@ -23,8 +23,9 @@
 #endif
 
 #if !defined(MBED_APP_SIZE)
-/* 768KB FLASH - BLE firmware is being flashed strating from @ 0x080C0000 */
-#define MBED_APP_SIZE 768K
+// MBED_APP_SIZE cannot be full ROM size as core M0 FW is using the end of FLASH
+// Size is defined in json with "mbed_rom_size"
+#define MBED_APP_SIZE MBED_ROM_SIZE
 #endif
 
 #if !defined(MBED_CONF_TARGET_BOOT_STACK_SIZE)
@@ -36,7 +37,7 @@
 /* Round up VECTORS_SIZE to 8 bytes */
 #define VECTORS_SIZE  (((NVIC_NUM_VECTORS * 4) + 7) & 0xFFFFFFF8)
 
-/* RAM_SIZE = 192KB SRAM (0x30000) + Shared mem */
+/* RAM_SIZE = 192KB SRAM1 (0x30000) + Shared mem (part of SRAM2) */
 MEMORY
 { 
   FLASH (rx) : ORIGIN = MBED_APP_START, LENGTH = MBED_APP_SIZE

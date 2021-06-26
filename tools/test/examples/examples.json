@@ -40,7 +40,7 @@
           "authcrypt"
       ],
       "features" : [],
-      "targets" : ["K66F", "NUCLEO_F429ZI"],
+      "targets" : ["K64F", "NUCLEO_F429ZI"],
       "toolchains" : ["GCC_ARM", "ARM"],
       "exporters": [],
       "compile" : true,

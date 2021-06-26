@@ -265,10 +265,12 @@ void Reset_Handler(void)
     
     /* Disable Power-on Reset function */
     SYS_DISABLE_POR();
-    
+
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* HXT Crystal Type Select: INV */
     CLK->PWRCTL &= ~CLK_PWRCTL_HXTSELTYP_Msk;
-    
+#endif
+
     /**
      * NOTE 1: Unlock is required for perhaps some register access in SystemInit().
      * NOTE 2: Because EBI (external SRAM) init is done in SystemInit(), SystemInit() must be called at the very start.

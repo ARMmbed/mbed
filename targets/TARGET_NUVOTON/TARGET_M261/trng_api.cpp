@@ -48,6 +48,25 @@ void trng_init(MBED_UNUSED trng_t *obj)
         /* Reset IP */
         SYS_ResetModule(trng_modinit.rsetidx);
 
+#if MBED_CONF_TARGET_LXT_PRESENT
+        /* 32K clock from (external) LXT */
+#else
+        /* 32K clock from LIRC32 */
+
+        /* Unlock protected registers */
+        SYS_UnlockReg();
+
+        /* To access RTC registers, clock must be enabled first. */
+        CLK_EnableModuleClock(RTC_MODULE);
+
+        /* Enable 32K clock from LIRC32 */
+        RTC->LXTCTL |= (RTC_LXTCTL_C32KS_Msk | RTC_LXTCTL_LIRC32KEN_Msk);
+        CLK_WaitClockReady(CLK_STATUS_LIRC32STB_Msk | CLK_STATUS_LXTSTB_Msk);
+
+        /* Lock protected registers */
+        SYS_LockReg();
+#endif
+
         TRNG_T *trng_base = (TRNG_T *) NU_MODBASE(trng_modinit.modname);
 
         trng_base->ACT |= TRNG_ACT_ACT_Msk;

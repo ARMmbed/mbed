@@ -163,12 +163,23 @@ static void _can_init_freq_direct(can_t *obj, const can_pinmap_t *pinmap, int hz
     obj->CanHandle.Init.DataSyncJumpWidth = 0x1;   // Not used - only in FDCAN
     obj->CanHandle.Init.DataTimeSeg1 = 0x1;        // Not used - only in FDCAN
     obj->CanHandle.Init.DataTimeSeg2 = 0x1;        // Not used - only in FDCAN
-#ifndef TARGET_STM32G4
+#ifdef TARGET_STM32H7
+    /* Message RAM offset is only supported in STM32H7 platforms of supported FDCAN platforms */
     obj->CanHandle.Init.MessageRAMOffset = 0;
+
+    /* The number of Standard and Extended ID filters are initialized to the maximum possile extent
+     * for STM32H7 platforms
+     */
+    obj->CanHandle.Init.StdFiltersNbr = 128; // to be aligned with the handle parameter in can_filter
+    obj->CanHandle.Init.ExtFiltersNbr = 128; // to be aligned with the handle parameter in can_filter
+#else
+    /* The number of Standard and Extended ID filters are initialized to the maximum possile extent 
+     * for STM32G0x1, STM32G4 and STM32L5  platforms
+    */
+    obj->CanHandle.Init.StdFiltersNbr = 28; // to be aligned with the handle parameter in can_filter
+    obj->CanHandle.Init.ExtFiltersNbr = 8; // to be aligned with the handle parameter in can_filter
 #endif
-    obj->CanHandle.Init.StdFiltersNbr = 1; // to be aligned with the handle parameter in can_filter
-    obj->CanHandle.Init.ExtFiltersNbr = 1; // to be aligned with the handle parameter in can_filter
-#ifndef TARGET_STM32G4
+#ifdef TARGET_STM32H7
     obj->CanHandle.Init.RxFifo0ElmtsNbr = 8;
     obj->CanHandle.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_8;
     obj->CanHandle.Init.RxFifo1ElmtsNbr = 0;
@@ -180,7 +191,7 @@ static void _can_init_freq_direct(can_t *obj, const can_pinmap_t *pinmap, int hz
     obj->CanHandle.Init.TxFifoQueueElmtsNbr = 3;
 #endif
     obj->CanHandle.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-#ifndef TARGET_STM32G4
+#ifdef TARGET_STM32H7
     obj->CanHandle.Init.TxElmtSize = FDCAN_DATA_BYTES_8;
 #endif
     can_internal_init(obj);
@@ -329,20 +340,18 @@ int can_frequency(can_t *obj, int f)
  */
 int can_filter(can_t *obj, uint32_t id, uint32_t mask, CANFormat format, int32_t handle)
 {
-    UNUSED(handle); // Not supported yet (seems to be a used in read function?)
-
     FDCAN_FilterTypeDef sFilterConfig = {0};
 
     if (format == CANStandard) {
         sFilterConfig.IdType = FDCAN_STANDARD_ID;
-        sFilterConfig.FilterIndex = 0;
+        sFilterConfig.FilterIndex = handle;
         sFilterConfig.FilterType = FDCAN_FILTER_MASK;
         sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
         sFilterConfig.FilterID1 = id;
         sFilterConfig.FilterID2 = mask;
     } else if (format == CANExtended) {
         sFilterConfig.IdType = FDCAN_EXTENDED_ID;
-        sFilterConfig.FilterIndex = 0;
+        sFilterConfig.FilterIndex = handle;
         sFilterConfig.FilterType = FDCAN_FILTER_MASK;
         sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
         sFilterConfig.FilterID1 = id;
@@ -391,7 +400,7 @@ int can_write(can_t *obj, CAN_Message msg, int cc)
 
 int can_read(can_t *obj, CAN_Message *msg, int handle)
 {
-    UNUSED(handle); // Not supported yet (seems to be a handle to a filter configuration?)
+    UNUSED(handle); // Not supported, RXFIFO0 is set default by can_filter and cannot be changed.
 
     if (HAL_FDCAN_GetRxFifoFillLevel(&obj->CanHandle, FDCAN_RX_FIFO0) == 0) {
         return 0; // No message arrived
@@ -612,7 +621,16 @@ void can_irq_set(can_t *obj, CanIrqType type, uint32_t enable)
     }
 
     if (enable) {
-        HAL_FDCAN_ActivateNotification(&obj->CanHandle, interrupts, 0);
+        /* The TXBTIE register controls the TX complete interrupt in FDCAN 
+         * and is only used in case of TX interrupts, Hence in case of enabling the 
+         * TX interrupts the bufferIndexes of TXBTIE are to be set  */
+#ifdef TARGET_STM32H7
+        // TXBTIE for STM32H7 is 2 bytes long
+        HAL_FDCAN_ActivateNotification(&obj->CanHandle, interrupts, 0xFFFF);
+#else
+        //TXBTIE for rest supported FDCAN Platforms(STM32G0x1, STM32G4 and STM32L5) is 3 bits.
+        HAL_FDCAN_ActivateNotification(&obj->CanHandle, interrupts, 0x07);
+#endif
     } else {
         HAL_FDCAN_DeactivateNotification(&obj->CanHandle, interrupts);
     }
@@ -645,6 +663,8 @@ void can_irq_set(can_t *obj, CanIrqType type, uint32_t enable)
 #include <math.h>
 #include <string.h>
 #include <inttypes.h>
+
+#define DEFAULT_RXFIFO    0 // default rx fifo for can by hardware is FIFO0
 
 static uint32_t can_irq_ids[CAN_NUM] = {0};
 static can_irq_handler irq_handler;
@@ -956,8 +976,8 @@ int can_write(can_t *obj, CAN_Message msg, int cc)
 
 int can_read(can_t *obj, CAN_Message *msg, int handle)
 {
-    //handle is the FIFO number
-
+    //FIFO selection cannot be controlled by software for STM32, default FIFO is 0, hence handle is not used
+    int rxfifo_default = DEFAULT_RXFIFO; 
     CAN_TypeDef *can = obj->CanHandle.Instance;
 
     // check FPM0 which holds the pending message count in FIFO 0
@@ -967,36 +987,30 @@ int can_read(can_t *obj, CAN_Message *msg, int handle)
     }
 
     /* Get the Id */
-    msg->format = (CANFormat)(((uint8_t)0x04 & can->sFIFOMailBox[handle].RIR) >> 2);
+    msg->format = (CANFormat)(((uint8_t)0x04 & can->sFIFOMailBox[rxfifo_default].RIR) >> 2);
     if (!msg->format) {
-        msg->id = (uint32_t)0x000007FF & (can->sFIFOMailBox[handle].RIR >> 21);
+        msg->id = (uint32_t)0x000007FF & (can->sFIFOMailBox[rxfifo_default].RIR >> 21);
     } else {
-        msg->id = (uint32_t)0x1FFFFFFF & (can->sFIFOMailBox[handle].RIR >> 3);
+        msg->id = (uint32_t)0x1FFFFFFF & (can->sFIFOMailBox[rxfifo_default].RIR >> 3);
     }
 
-    msg->type = (CANType)(((uint8_t)0x02 & can->sFIFOMailBox[handle].RIR) >> 1);
+    msg->type = (CANType)(((uint8_t)0x02 & can->sFIFOMailBox[rxfifo_default].RIR) >> 1);
     /* Get the DLC */
-    msg->len = (uint8_t)0x0F & can->sFIFOMailBox[handle].RDTR;
+    msg->len = (uint8_t)0x0F & can->sFIFOMailBox[rxfifo_default].RDTR;
     /* Get the FMI */
-    // msg->FMI = (uint8_t)0xFF & (can->sFIFOMailBox[handle].RDTR >> 8);
+    // msg->FMI = (uint8_t)0xFF & (can->sFIFOMailBox[rxfifo_default].RDTR >> 8);
     /* Get the data field */
-    msg->data[0] = (uint8_t)0xFF & can->sFIFOMailBox[handle].RDLR;
-    msg->data[1] = (uint8_t)0xFF & (can->sFIFOMailBox[handle].RDLR >> 8);
-    msg->data[2] = (uint8_t)0xFF & (can->sFIFOMailBox[handle].RDLR >> 16);
-    msg->data[3] = (uint8_t)0xFF & (can->sFIFOMailBox[handle].RDLR >> 24);
-    msg->data[4] = (uint8_t)0xFF & can->sFIFOMailBox[handle].RDHR;
-    msg->data[5] = (uint8_t)0xFF & (can->sFIFOMailBox[handle].RDHR >> 8);
-    msg->data[6] = (uint8_t)0xFF & (can->sFIFOMailBox[handle].RDHR >> 16);
-    msg->data[7] = (uint8_t)0xFF & (can->sFIFOMailBox[handle].RDHR >> 24);
+    msg->data[0] = (uint8_t)0xFF & can->sFIFOMailBox[rxfifo_default].RDLR;
+    msg->data[1] = (uint8_t)0xFF & (can->sFIFOMailBox[rxfifo_default].RDLR >> 8);
+    msg->data[2] = (uint8_t)0xFF & (can->sFIFOMailBox[rxfifo_default].RDLR >> 16);
+    msg->data[3] = (uint8_t)0xFF & (can->sFIFOMailBox[rxfifo_default].RDLR >> 24);
+    msg->data[4] = (uint8_t)0xFF & can->sFIFOMailBox[rxfifo_default].RDHR;
+    msg->data[5] = (uint8_t)0xFF & (can->sFIFOMailBox[rxfifo_default].RDHR >> 8);
+    msg->data[6] = (uint8_t)0xFF & (can->sFIFOMailBox[rxfifo_default].RDHR >> 16);
+    msg->data[7] = (uint8_t)0xFF & (can->sFIFOMailBox[rxfifo_default].RDHR >> 24);
 
     /* Release the FIFO */
-    if (handle == CAN_FIFO0) {
-        /* Release FIFO0 */
-        can->RF0R |= CAN_RF0R_RFOM0;
-    } else { /* FIFONumber == CAN_FIFO1 */
-        /* Release FIFO1 */
-        can->RF1R |= CAN_RF1R_RFOM1;
-    }
+    can->RF0R |= CAN_RF0R_RFOM0;
 
     return 1;
 }
@@ -1129,6 +1143,8 @@ int can_filter(can_t *obj, uint32_t id, uint32_t mask, CANFormat format, int32_t
         if (HAL_CAN_ConfigFilter(&obj->CanHandle, &sFilterConfig) == HAL_OK) {
             success = 1;
         }
+    } else if (format == CANAny) {
+        success = 0;	// filter for CANAny is not supported by STM32, return a failure
     }
 
     return success;

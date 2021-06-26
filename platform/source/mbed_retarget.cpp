@@ -1181,7 +1181,7 @@ extern "C" int fcntl(int fildes, int cmd, ...)
     switch (cmd) {
         case F_GETFL: {
             int flags = 0;
-            if (fhc->is_blocking()) {
+            if (!fhc->is_blocking()) {
                 flags |= O_NONBLOCK;
             }
             return flags;
@@ -1191,11 +1191,12 @@ extern "C" int fcntl(int fildes, int cmd, ...)
             va_start(ap, cmd);
             int flags = va_arg(ap, int);
             va_end(ap);
-            int ret = fhc->set_blocking(flags & O_NONBLOCK);
+            int ret = fhc->set_blocking(!(flags & O_NONBLOCK));
             if (ret < 0) {
                 errno = -ret;
                 return -1;
             }
+
             return 0;
         }
 

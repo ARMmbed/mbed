@@ -747,7 +747,9 @@ public:
      * @param handle Advertising set handle.
      * @param maxDuration Max duration for advertising (in units of 10ms) - 0 means no limit.
      * @param maxEvents Max number of events produced during advertising - 0 means no limit.
-     * @return BLE_ERROR_NONE on success.
+     * @return BLE_ERROR_NONE on success. This does not guarantee the set has started if
+     * extended advertising is enabled. Register an event handler and wait for onAdvertisingStart
+     * event. An (unlikely) failed start the status of the event will contain an error.
      *
      * @see EventHandler::onAdvertisingStart when the advertising starts.
      * @see EventHandler::onScanRequestReceived when a scan request is received.
@@ -765,7 +767,9 @@ public:
      *  which will not be affected.
      *
      * @param handle Advertising set handle.
-     * @return BLE_ERROR_NONE on success.
+     * @return BLE_ERROR_NONE on success. For extented advertising this does not guarantee
+     * the set is stopped if. Register an event handler and wait for onAdvertisingEnd event.
+     * An (unlikely) failed stop the event status will contain the error code.
      */
     ble_error_t stopAdvertising(advertising_handle_t handle);
 

@@ -17,7 +17,7 @@
 /* Device specific values */
 
 if (!isdefinedsymbol(MBED_APP_START)) { define symbol MBED_APP_START = 0x08000000; }
-if (!isdefinedsymbol(MBED_APP_SIZE)) { define symbol MBED_APP_SIZE = 0xC0000; }
+if (!isdefinedsymbol(MBED_APP_SIZE)) { define symbol MBED_APP_SIZE = MBED_ROM_START; }
 
 /* [ROM = 768kb = 0xC0000] */
 define symbol __intvec_start__     = MBED_APP_START;

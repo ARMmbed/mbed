@@ -33,47 +33,61 @@ void mbed_sdk_init(void)
     /* Unlock protected registers */
     SYS_UnlockReg();
 
-#if defined(NU_HXT_ENABLE) && (NU_HXT_ENABLE == 1UL)
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* HXT Enable: Set XT1_OUT(PF.2) and XT1_IN(PF.3) to input mode */
     PF->MODE &= ~(GPIO_MODE_MODE2_Msk | GPIO_MODE_MODE3_Msk);
 #endif
 
+#if MBED_CONF_TARGET_LXT_PRESENT
     /* LXT Enable: Set X32_OUT(PF.4) and X32_IN(PF.5) to input mode */
     PF->MODE &= ~(GPIO_MODE_MODE4_Msk | GPIO_MODE_MODE5_Msk);
+#endif
 
     /* Enable HIRC clock (Internal RC 48MHz) */
     CLK_EnableXtalRC(CLK_PWRCTL_HIRCEN_Msk);
-#if defined(NU_HXT_ENABLE) && (NU_HXT_ENABLE == 1UL)
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* Enable HXT clock (external XTAL 12MHz) */
     CLK_EnableXtalRC(CLK_PWRCTL_HXTEN_Msk);
+#else
+    /* Disable HXT clock (external XTAL 12MHz) */
+    CLK_DisableXtalRC(CLK_PWRCTL_HXTEN_Msk);
 #endif
-    /* Enable LIRC for lp_ticker */
+    /* Enable LIRC */
     CLK_EnableXtalRC(CLK_PWRCTL_LIRCEN_Msk);
-    /* Enable LXT for RTC */
+#if MBED_CONF_TARGET_LXT_PRESENT
+    /* Enable LXT */
     CLK_EnableXtalRC(CLK_PWRCTL_LXTEN_Msk);
+#else
+    /* Disable LXT */
+    CLK_DisableXtalRC(CLK_PWRCTL_LXTEN_Msk);
+#endif
 
     /* Wait for HIRC clock ready */
     CLK_WaitClockReady(CLK_STATUS_HIRCSTB_Msk);
-#if defined(NU_HXT_ENABLE) && (NU_HXT_ENABLE == 1UL)
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* Wait for HXT clock ready */
     CLK_WaitClockReady(CLK_STATUS_HXTSTB_Msk);
 #endif
     /* Wait for LIRC clock ready */
     CLK_WaitClockReady(CLK_STATUS_LIRCSTB_Msk);
+#if MBED_CONF_TARGET_LXT_PRESENT
     /* Wait for LXT clock ready */
     CLK_WaitClockReady(CLK_STATUS_LXTSTB_Msk);
+#endif
 
-#if defined(NU_HXT_ENABLE) && (NU_HXT_ENABLE == 1UL)
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* HXT Enable: Disable digital input path of analog pin XT1_OUT to prevent leakage */
     GPIO_DISABLE_DIGITAL_PATH(PF, (1ul << 2));
     /* HXT Enable: Disable digital input path of analog pin XT1_IN to prevent leakage */
     GPIO_DISABLE_DIGITAL_PATH(PF, (1ul << 3));
 #endif
 
+#if MBED_CONF_TARGET_LXT_PRESENT
     /* LXT Enable: Disable digital input path of analog pin X32_OUT to prevent leakage */
     GPIO_DISABLE_DIGITAL_PATH(PF, (1ul << 4));
     /* LXT Enable: Disable digital input path of analog pin XT32_IN to prevent leakage */
     GPIO_DISABLE_DIGITAL_PATH(PF, (1ul << 5));
+#endif
 
     /* Select HCLK clock source as HIRC and HCLK clock divider as 1 */
     CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_HIRC, CLK_CLKDIV0_HCLK(1));

@@ -32,40 +32,57 @@ void mbed_sdk_init(void)
     /* Unlock protected registers */
     SYS_UnlockReg();
 
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* Enable External XTAL (4~24 MHz) */
     CLK_EnableXtalRC(CLK_PWRCTL_HXTEN_Msk);
-    /* Enable LIRC for lp_ticker */
+#else
+    /* Disable External XTAL (4~24 MHz) */
+    CLK_DisableXtalRC(CLK_PWRCTL_HXTEN_Msk);
+#endif
+    /* Enable LIRC */
     CLK_EnableXtalRC(CLK_PWRCTL_LIRCEN_Msk);
-    /* Enable LXT for RTC */
+#if MBED_CONF_TARGET_LXT_PRESENT
+    /* Enable LXT */
     CLK_EnableXtalRC(CLK_PWRCTL_LXTEN_Msk);
+#else
+    /* Disable LXT */
+    CLK_DisableXtalRC(CLK_PWRCTL_LXTEN_Msk);
+#endif
 
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* Waiting for External XTAL (4~24 MHz) ready */
     CLK_WaitClockReady(CLK_STATUS_HXTSTB_Msk);
+#endif
     /* Waiting for LIRC ready */
     CLK_WaitClockReady(CLK_STATUS_LIRCSTB_Msk);
+#if MBED_CONF_TARGET_LXT_PRESENT
     /* Waiting for LXT ready */
     CLK_WaitClockReady(CLK_STATUS_LXTSTB_Msk);
+#endif
 
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* Switch HCLK clock source to HXT */
     CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_HXT,CLK_CLKDIV0_HCLK(1));
+#else
+    /* Switch HCLK clock source to HIRC */
+    CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_HIRC,CLK_CLKDIV0_HCLK(1));
+#endif
 
     /* Set PLL to power down mode and PLLSTB bit in CLKSTATUS register will be cleared by hardware.*/
     CLK->PLLCTL|= CLK_PLLCTL_PD_Msk;
 
     /* Set PLL frequency */
+#if MBED_CONF_TARGET_HXT_PRESENT
     CLK->PLLCTL = CLK_PLLCTL_84MHz_HXT;
+#else
+    CLK->PLLCTL = CLK_PLLCTL_50MHz_HIRC;
+#endif
 
     /* Waiting for clock ready */
     CLK_WaitClockReady(CLK_STATUS_PLLSTB_Msk);
 
     /* Switch HCLK clock source to PLL */
     CLK_SetHCLK(CLK_CLKSEL0_HCLKSEL_PLL,CLK_CLKDIV0_HCLK(1));
-
-    /* Enable IP clock */
-    //CLK_EnableModuleClock(UART0_MODULE);
-
-    /* Select IP clock source */
-    //CLK_SetModuleClock(UART0_MODULE,CLK_CLKSEL1_UARTSEL_HXT,CLK_CLKDIV0_UART(1));
 
 #if DEVICE_ANALOGIN
     /* Vref connect to AVDD */

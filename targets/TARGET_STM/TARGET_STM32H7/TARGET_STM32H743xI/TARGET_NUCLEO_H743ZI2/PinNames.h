@@ -27,7 +27,7 @@
 extern "C" {
 #endif
 
-#define ALTC 0xF00
+#define DUAL_PAD 0xF00
 
 typedef enum {
     ALT0  = 0x100,
@@ -39,9 +39,7 @@ typedef enum {
 
 typedef enum {
     PA_0       = 0x00,
-    PA_0C      = PA_0  | ALTC, // dual pad
     PA_1       = 0x01,
-    PA_1C      = PA_1  | ALTC, // dual pad
     PA_1_ALT0  = PA_1  | ALT0, // same pin used for alternate HW
     PA_2       = 0x02,
     PA_2_ALT0  = PA_2  | ALT0, // same pin used for alternate HW
@@ -120,10 +118,10 @@ typedef enum {
     PC_1_ALT3  = PC_1  | ALT3, // same pin used for alternate HW
     PC_1_ALT4  = PC_1  | ALT4, // same pin used for alternate HW
     PC_2       = 0x22,
-    PC_2C      = PC_2  | ALTC, // dual pad
+    PC_2C      = PC_2  | DUAL_PAD, // dual pad
     PC_2C_ALT0 = PC_2C | ALT0, // same pin used for alternate HW
     PC_3       = 0x23,
-    PC_3C      = PC_3  | ALTC, // dual pad
+    PC_3C      = PC_3  | DUAL_PAD, // dual pad
     PC_4       = 0x24,
     PC_4_ALT0  = PC_4  | ALT0, // same pin used for alternate HW
     PC_5       = 0x25,
@@ -230,9 +228,9 @@ typedef enum {
     // Arduino Uno (Rev3) pins
     ARDUINO_UNO_A0  = PA_3,
     ARDUINO_UNO_A1  = PC_0,
-    ARDUINO_UNO_A2  = PC_3,
+    ARDUINO_UNO_A2  = PC_3C,
     ARDUINO_UNO_A3  = PB_1,
-    ARDUINO_UNO_A4  = PC_2,
+    ARDUINO_UNO_A4  = PC_2C,
     ARDUINO_UNO_A5  = PF_10,
 
     ARDUINO_UNO_D0  = PB_7,
@@ -416,8 +414,8 @@ typedef enum {
 } PinName;
 
 // Standardized LED and button names
-#define LED1     PB_0   // LD1
-#define LED2     PE_1   // Yellow
+#define LED1     PB_0   // LD1 [Green]
+#define LED2     PE_1   // LD2 [Yellow]
 #define LED3     PB_14  // LD3 [Red]
 #define BUTTON1  PC_13  // USER_Btn [B1]
 

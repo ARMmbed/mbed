@@ -21,7 +21,7 @@ jobs:
           repository: ARMmbed/mbed-os-ci-scripts
           token: ${{ secrets.ISSUE_TRIAGING_PERMS }}
           path: scripts
-          ref: triage_test
+          ref: master
 
       - name: Run the script
         run: |

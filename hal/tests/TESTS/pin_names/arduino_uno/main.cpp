@@ -124,9 +124,11 @@ void UART_test()
 {
     utest_printf("UART TX Pin 0x%x RX Pin 0x%x\n", TX_pin, RX_pin);
 
+    // 1. check if Arduino_uno pins are not already used by the console
     TEST_SKIP_UNLESS_MESSAGE(TX_pin != CONSOLE_TX, "ARDUINO_UNO_UART pin shared with CONSOLE_TX");
     TEST_SKIP_UNLESS_MESSAGE(RX_pin != CONSOLE_RX, "ARDUINO_UNO_UART pin shared with CONSOLE_RX");
 
+    // 2. check if Arduino_uno pins are part of pinmap table
     {
         const PinMap *maps = serial_tx_pinmap();
         while (maps->pin != (PinName)NC) { // check each pin from PinMap table till NC pin
@@ -151,8 +153,14 @@ void UART_test()
         TEST_ASSERT_NOT_EQUAL(NC, maps->pin);
     }
 
+    // 3. check if Arduino_uno pins are not using the same UART instance as console
+    int console_uart = pinmap_peripheral(CONSOLE_TX, serial_tx_pinmap());
+    TEST_ASSERT_NOT_EQUAL(console_uart, pinmap_peripheral(TX_pin, serial_tx_pinmap()));
+
+    // 4. check if UART pins can be initialized
     BufferedSerial TEST(TX_pin, RX_pin);
-    // Basic API call
+
+    // 5. check a basic API call
     TEST.set_baud(115200);
 }
 

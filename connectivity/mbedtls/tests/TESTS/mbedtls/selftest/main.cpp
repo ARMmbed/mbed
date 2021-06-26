@@ -31,10 +31,15 @@ using namespace utest::v1;
 #include MBEDTLS_CONFIG_FILE
 #endif
 
+#if !defined(MBEDTLS_SELF_TEST)
+#error [NOT_SUPPORTED] MBEDTLS_SELF_TEST undefined
+#endif
+
 #include "mbedtls/sha256.h"
 #include "mbedtls/sha512.h"
 #include "mbedtls/entropy.h"
 #include "mbedtls/entropy_poll.h"
+#include "mbedtls/timing.h"
 
 #include <string.h>
 
@@ -65,6 +70,10 @@ MBEDTLS_SELF_TEST_TEST_CASE(mbedtls_sha512_self_test)
 MBEDTLS_SELF_TEST_TEST_CASE(mbedtls_entropy_self_test)
 #endif
 
+#if defined(MBEDTLS_TIMING_C)
+MBEDTLS_SELF_TEST_TEST_CASE(mbedtls_timing_self_test)
+#endif
+
 #else
 #warning "MBEDTLS_SELF_TEST not enabled"
 #endif /* MBEDTLS_SELF_TEST */
@@ -82,6 +91,10 @@ Case cases[] = {
 
 #if defined(MBEDTLS_ENTROPY_C)
     Case("mbedtls_entropy_self_test", mbedtls_entropy_self_test_test_case),
+#endif
+
+#if defined(MBEDTLS_TIMING_C)
+    Case("mbedtls_timing_self_test", mbedtls_timing_self_test_test_case),
 #endif
 
 #endif /* MBEDTLS_SELF_TEST */

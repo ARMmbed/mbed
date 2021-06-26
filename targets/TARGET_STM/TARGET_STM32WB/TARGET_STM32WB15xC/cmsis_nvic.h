@@ -22,7 +22,9 @@
 #endif
 
 #if !defined(MBED_ROM_SIZE)
-#define MBED_ROM_SIZE  0x0  // 0 B
+// MBED_ROM_SIZE cannot be full ROM size as core M0 FW is using the end of FLASH
+// Size is defined in json with "mbed_rom_size"
+#error "mbed_rom_size is missing"
 #endif
 
 #if !defined(MBED_RAM_START)
@@ -30,7 +32,7 @@
 #endif
 
 #if !defined(MBED_RAM_SIZE)
-#define MBED_RAM_SIZE  0x0  // 0 B
+#define MBED_RAM_SIZE  0xC000  // 48 KB
 #endif
 
 #define NVIC_NUM_VECTORS        79

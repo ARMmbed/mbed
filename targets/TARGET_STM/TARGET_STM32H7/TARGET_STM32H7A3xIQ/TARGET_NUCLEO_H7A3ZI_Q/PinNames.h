@@ -27,7 +27,7 @@
 extern "C" {
 #endif
 
-#define ALTC 0xF00
+#define DUAL_PAD 0xF00
 
 typedef enum {
     ALT0  = 0x100,
@@ -37,9 +37,7 @@ typedef enum {
 
 typedef enum {
     PA_0       = 0x00,
-    PA_0C      = PA_0  | ALTC, // dual pad
     PA_1       = 0x01,
-    PA_1C      = PA_1  | ALTC, // dual pad
     PA_1_ALT0  = PA_1  | ALT0, // same pin used for alternate HW
     PA_2       = 0x02,
     PA_2_ALT0  = PA_2  | ALT0, // same pin used for alternate HW
@@ -113,10 +111,10 @@ typedef enum {
     PC_1_ALT1  = PC_1  | ALT1, // same pin used for alternate HW
     PC_1_ALT2  = PC_1  | ALT2, // same pin used for alternate HW
     PC_2       = 0x22,
-    PC_2C      = PC_2  | ALTC, // dual pad
+    PC_2C      = PC_2  | DUAL_PAD, // dual pad
     PC_2C_ALT0 = PC_2C | ALT0, // same pin used for alternate HW
     PC_3       = 0x23,
-    PC_3C      = PC_3  | ALTC, // dual pad
+    PC_3C      = PC_3  | DUAL_PAD, // dual pad
     PC_4       = 0x24,
     PC_4_ALT0  = PC_4  | ALT0, // same pin used for alternate HW
     PC_5       = 0x25,

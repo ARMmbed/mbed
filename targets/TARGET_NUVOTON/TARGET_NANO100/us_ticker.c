@@ -38,7 +38,11 @@
          Vector table relocation is not actually supported for low-resource target. */
 void TMR0_IRQHandler(void);
 
+#if MBED_CONF_TARGET_HXT_PRESENT
 static const struct nu_modinit_s timer0_modinit = {TIMER_0, TMR0_MODULE, CLK_CLKSEL1_TMR0_S_HXT, 0, TMR0_RST, TMR0_IRQn, (void *) TMR0_IRQHandler};
+#else
+static const struct nu_modinit_s timer0_modinit = {TIMER_0, TMR0_MODULE, CLK_CLKSEL1_TMR0_S_HIRC, 0, TMR0_RST, TMR0_IRQn, (void *) TMR0_IRQHandler};
+#endif
 
 #define TIMER_MODINIT      timer0_modinit
 

@@ -65,8 +65,8 @@ static coap_blockwise_payload_s *sn_coap_protocol_linked_list_blockwise_search(s
 static bool                     sn_coap_protocol_linked_list_blockwise_payload_search_compare_block_number(struct coap_s *handle, const sn_nsdl_addr_s *src_addr_ptr, const uint8_t *token_ptr, uint8_t token_len, uint32_t block_number);
 static void                     sn_coap_protocol_linked_list_blockwise_payload_remove(struct coap_s *handle, coap_blockwise_payload_s *removed_payload_ptr);
 static uint32_t                 sn_coap_protocol_linked_list_blockwise_payloads_get_len(struct coap_s *handle, const sn_nsdl_addr_s *src_addr_ptr, const uint8_t *token_ptr, uint8_t token_len);
-static void                     sn_coap_protocol_handle_blockwise_timout(struct coap_s *handle);
-static sn_coap_hdr_s            *sn_coap_handle_blockwise_message(struct coap_s *handle, sn_nsdl_addr_s *src_addr_ptr, sn_coap_hdr_s *received_coap_msg_ptr, void *param);
+static void                     sn_coap_protocol_handle_blockwise_timeout(struct coap_s *handle);
+static sn_coap_hdr_s            *sn_coap_handle_blockwise_message(struct coap_s *handle, sn_nsdl_addr_s *src_addr_ptr, sn_coap_hdr_s *received_coap_msg_ptr, void *param, bool *keep_in_resend_queue);
 static bool                     sn_coap_handle_last_blockwise(struct coap_s *handle, const sn_nsdl_addr_s *src_addr_ptr, sn_coap_hdr_s *received_coap_msg_ptr);
 static sn_coap_hdr_s            *sn_coap_protocol_copy_header(struct coap_s *handle, const sn_coap_hdr_s *source_header_ptr);
 static coap_blockwise_msg_s     *search_sent_blockwise_message(struct coap_s *handle, uint16_t msg_id);
@@ -693,7 +693,7 @@ sn_coap_hdr_s *sn_coap_protocol_parse(struct coap_s *restrict handle, sn_nsdl_ad
     /*** And here we check if message was block message ***/
     /*** If so, we call own block handling function and ***/
     /*** return to caller.                              ***/
-
+    bool keep_in_resend_queue = false;
 #if SN_COAP_BLOCKWISE_ENABLED || SN_COAP_MAX_BLOCKWISE_PAYLOAD_SIZE
 
     if (returned_dst_coap_msg_ptr->options_list_ptr != NULL &&
@@ -701,7 +701,7 @@ sn_coap_hdr_s *sn_coap_protocol_parse(struct coap_s *restrict handle, sn_nsdl_ad
              returned_dst_coap_msg_ptr->options_list_ptr->block2 != COAP_OPTION_BLOCK_NONE)) {
 
         // the sn_coap_handle_blockwise_message() will return the given message on success or NULL on error
-        if (sn_coap_handle_blockwise_message(handle, src_addr_ptr, returned_dst_coap_msg_ptr, param) == NULL) {
+        if (sn_coap_handle_blockwise_message(handle, src_addr_ptr, returned_dst_coap_msg_ptr, param, &keep_in_resend_queue) == NULL) {
 
             tr_error("sn_coap_protocol_parse - handle blockwise returns null!");
 
@@ -782,11 +782,11 @@ cleanup:
         /* Get ... */
         coap_blockwise_msg_s *stored_blockwise_msg_temp_ptr = search_sent_blockwise_message(handle, returned_dst_coap_msg_ptr->msg_id);
 
-        /* Remove from the list if not an notification message.
+        /* Remove from the list if not a notification message.
          * Initial notification message is needed for sending rest of the blocks (GET request).
         */
-        bool remove_from_the_list = false;
         if (stored_blockwise_msg_temp_ptr) {
+            bool remove_from_the_list;
             if (stored_blockwise_msg_temp_ptr->coap_msg_ptr &&
                     stored_blockwise_msg_temp_ptr->coap_msg_ptr->options_list_ptr &&
                     stored_blockwise_msg_temp_ptr->coap_msg_ptr->options_list_ptr->observe != COAP_OBSERVE_NONE) {
@@ -794,10 +794,10 @@ cleanup:
             } else {
                 remove_from_the_list = true;
             }
-        }
-        if (remove_from_the_list) {
 
-            sn_coap_protocol_linked_list_blockwise_msg_remove(handle, stored_blockwise_msg_temp_ptr);
+            if (remove_from_the_list) {
+                sn_coap_protocol_linked_list_blockwise_msg_remove(handle, stored_blockwise_msg_temp_ptr);
+            }
         }
     }
 
@@ -818,7 +818,7 @@ cleanup:
         /* Get node count i.e. count of active resending messages */
         uint16_t stored_resending_msgs_count = handle->count_resent_msgs;
         /* Check if there is ongoing active message resendings */
-        if (stored_resending_msgs_count > 0) {
+        if (stored_resending_msgs_count > 0 && !keep_in_resend_queue) {
             /* Remove resending message from active message resending Linked list, if any exists */
             sn_coap_protocol_linked_list_send_msg_remove(handle, src_addr_ptr, returned_dst_coap_msg_ptr->msg_id);
         }
@@ -841,7 +841,7 @@ int8_t sn_coap_protocol_exec(struct coap_s *handle, uint32_t current_time)
 
 #if SN_COAP_BLOCKWISE_ENABLED || SN_COAP_MAX_BLOCKWISE_PAYLOAD_SIZE
     /* * * * Handle block transfer timed outs * * * */
-    sn_coap_protocol_handle_blockwise_timout(handle);
+    sn_coap_protocol_handle_blockwise_timeout(handle);
 #endif
 
 #if SN_COAP_DUPLICATION_MAX_MSGS_COUNT
@@ -876,6 +876,9 @@ rescan:
                     tmp_coap_hdr_ptr = sn_coap_parser(handle, stored_msg_ptr->send_msg_ptr.packet_len, stored_msg_ptr->send_msg_ptr.packet_ptr, &coap_version);
 
                     if (tmp_coap_hdr_ptr != 0) {
+#if SN_COAP_BLOCKWISE_ENABLED || SN_COAP_MAX_BLOCKWISE_PAYLOAD_SIZE
+                        sn_coap_protocol_remove_sent_blockwise_message(handle, tmp_coap_hdr_ptr->msg_id);
+#endif // SN_COAP_BLOCKWISE_ENABLED || SN_COAP_MAX_BLOCKWISE_PAYLOAD_SIZE
                         tmp_coap_hdr_ptr->coap_status = COAP_STATUS_BUILDER_MESSAGE_SENDING_FAILED;
                         handle->sn_coap_rx_callback(tmp_coap_hdr_ptr, &stored_msg_ptr->send_msg_ptr.dst_addr_ptr, stored_msg_ptr->param);
 
@@ -1518,50 +1521,15 @@ static uint32_t sn_coap_protocol_linked_list_blockwise_payloads_get_len(struct c
 }
 
 /**************************************************************************//**
- * \fn static void sn_coap_protocol_handle_blockwise_timout(struct coap_s *handle)
+ * \fn static void sn_coap_protocol_handle_blockwise_timeout(struct coap_s *handle)
  *
  * \brief Check incoming and outgoing blockwise messages for time out.
  *        Remove timed out messages from lists. Notify application if
  *        outgoing message times out.
  *****************************************************************************/
 
-static void sn_coap_protocol_handle_blockwise_timout(struct coap_s *handle)
+static void sn_coap_protocol_handle_blockwise_timeout(struct coap_s *handle)
 {
-    /* Loop all outgoing blockwise messages */
-    /* foreach_safe isn't sufficient because callback routine could remove messages. */
-rescan:
-    ns_list_foreach_safe(coap_blockwise_msg_s, removed_blocwise_msg_ptr, &handle->linked_list_blockwise_sent_msgs) {
-        if ((handle->system_time - removed_blocwise_msg_ptr->timestamp)  > SN_COAP_BLOCKWISE_MAX_TIME_DATA_STORED) {
-            bool callback_called = false;
-            // Item must be removed from the list before calling the rx_callback function.
-            // Callback could actually clear the list and free the item and cause a use after free when callback returns.
-            ns_list_remove(&handle->linked_list_blockwise_sent_msgs, removed_blocwise_msg_ptr);
-
-            /* * * * This messages has timed out, remove it from Linked list * * * */
-            if (removed_blocwise_msg_ptr->coap_msg_ptr) {
-                if (handle->sn_coap_rx_callback) {
-                    /* Notify the application about the time out */
-                    removed_blocwise_msg_ptr->coap_msg_ptr->coap_status = COAP_STATUS_BUILDER_BLOCK_SENDING_FAILED;
-                    removed_blocwise_msg_ptr->coap_msg_ptr->msg_id = removed_blocwise_msg_ptr->msg_id;
-                    sn_coap_protocol_delete_retransmission(handle, removed_blocwise_msg_ptr->msg_id);
-                    handle->sn_coap_rx_callback(removed_blocwise_msg_ptr->coap_msg_ptr, NULL, removed_blocwise_msg_ptr->param);
-                    callback_called = true;
-                }
-                handle->sn_coap_protocol_free(removed_blocwise_msg_ptr->coap_msg_ptr->payload_ptr);
-                sn_coap_parser_release_allocated_coap_msg_mem(handle, removed_blocwise_msg_ptr->coap_msg_ptr);
-            }
-
-            handle->sn_coap_protocol_free(removed_blocwise_msg_ptr);
-
-            if (callback_called) {
-                /* Callback routine could have wiped the list already */
-                /* Be super cautious and rescan from the start */
-                goto rescan;
-            }
-        }
-    }
-
-
     /* Loop all incoming Blockwise messages */
     ns_list_foreach_safe(coap_blockwise_payload_s, removed_blocwise_payload_ptr, &handle->linked_list_blockwise_received_payloads) {
         if ((handle->system_time - removed_blocwise_payload_ptr->timestamp)  > SN_COAP_BLOCKWISE_MAX_TIME_DATA_STORED) {
@@ -1741,7 +1709,7 @@ static coap_blockwise_msg_s *sn_coap_stored_blockwise_msg_get(struct coap_s *han
  * \param *received_coap_msg_ptr pointer to parsed CoAP message structure
  *****************************************************************************/
 
-static sn_coap_hdr_s *sn_coap_handle_blockwise_message(struct coap_s *handle, sn_nsdl_addr_s *src_addr_ptr, sn_coap_hdr_s *received_coap_msg_ptr, void *param)
+static sn_coap_hdr_s *sn_coap_handle_blockwise_message(struct coap_s *handle, sn_nsdl_addr_s *src_addr_ptr, sn_coap_hdr_s *received_coap_msg_ptr, void *param, bool *keep_in_resend_queue)
 {
     sn_coap_hdr_s *src_coap_blockwise_ack_msg_ptr = NULL;
     uint16_t dst_packed_data_needed_mem = 0;
@@ -1755,11 +1723,11 @@ static sn_coap_hdr_s *sn_coap_handle_blockwise_message(struct coap_s *handle, sn
     // Blocked request sending, received ACK, sending next block..
     if (received_coap_msg_ptr->options_list_ptr->block1 != COAP_OPTION_BLOCK_NONE) {
         if (received_coap_msg_ptr->msg_code > COAP_MSG_CODE_REQUEST_DELETE) {
-            if (received_coap_msg_ptr->options_list_ptr->block1 & 0x08) {
-                coap_blockwise_msg_s *stored_blockwise_msg_temp_ptr;
 
-                /* Get  */
-                stored_blockwise_msg_temp_ptr = search_sent_blockwise_message(handle, received_coap_msg_ptr->msg_id);
+            coap_blockwise_msg_s *stored_blockwise_msg_temp_ptr;
+            stored_blockwise_msg_temp_ptr = search_sent_blockwise_message(handle, received_coap_msg_ptr->msg_id);
+
+            if (received_coap_msg_ptr->options_list_ptr->block1 & 0x08) {
                 received_coap_msg_ptr->coap_status = COAP_STATUS_PARSER_BLOCKWISE_ACK;
 
                 if (stored_blockwise_msg_temp_ptr) {
@@ -1767,16 +1735,17 @@ static sn_coap_hdr_s *sn_coap_handle_blockwise_message(struct coap_s *handle, sn
 
                     uint_fast16_t block_size;
                     uint32_t block_number;
+                    uint32_t req_block_number;
+
+                    src_coap_blockwise_ack_msg_ptr = stored_blockwise_msg_temp_ptr->coap_msg_ptr;
 
                     /* Get block option parameters from received message */
                     block_number = received_coap_msg_ptr->options_list_ptr->block1 >> 4;
                     block_temp = received_coap_msg_ptr->options_list_ptr->block1 & 0x07;
                     block_size = 16u << block_temp;
 
-                    /* Build next block message */
-                    src_coap_blockwise_ack_msg_ptr = stored_blockwise_msg_temp_ptr->coap_msg_ptr;
-
                     if (src_coap_blockwise_ack_msg_ptr->options_list_ptr) {
+                        req_block_number =  src_coap_blockwise_ack_msg_ptr->options_list_ptr->block1 >> 4;
                         src_coap_blockwise_ack_msg_ptr->options_list_ptr->block1 = COAP_OPTION_BLOCK_NONE;
                         // Do not clear block2 as it might have been set in the original request to request
                         // specific size blocks
@@ -1785,69 +1754,89 @@ static sn_coap_hdr_s *sn_coap_handle_blockwise_message(struct coap_s *handle, sn
                             tr_error("sn_coap_handle_blockwise_message - (send block1) failed to allocate ack message!");
                             return 0;
                         }
+
+                        // pass through to send a next request
+                        req_block_number = block_number;
                     }
 
-                    block_number++;
-                    src_coap_blockwise_ack_msg_ptr->options_list_ptr->block1 = (block_number << 4) | block_temp;
+                    // Make sure that block number is the one we requested. If it's the old one just ignore it and wait for next response.
+                    if (req_block_number == block_number) {
 
-                    original_payload_len = stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_len;
-                    original_payload_ptr = stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_ptr;
+                        /* Build next block message */
+                        block_number++;
+                        src_coap_blockwise_ack_msg_ptr->options_list_ptr->block1 = (block_number << 4) | block_temp;
 
-                    if ((block_size * (block_number + 1)) > stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_len) {
-                        src_coap_blockwise_ack_msg_ptr->payload_len = stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_len - (block_size * (block_number));
-                        src_coap_blockwise_ack_msg_ptr->payload_ptr = src_coap_blockwise_ack_msg_ptr->payload_ptr + (block_size * block_number);
-                    }
+                        original_payload_len = stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_len;
+                        original_payload_ptr = stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_ptr;
 
-                    /* Not last block */
-                    else {
-                        /* set more - bit */
-                        src_coap_blockwise_ack_msg_ptr->options_list_ptr->block1 |= 0x08;
-                        src_coap_blockwise_ack_msg_ptr->payload_len = block_size;
-                        src_coap_blockwise_ack_msg_ptr->payload_ptr = src_coap_blockwise_ack_msg_ptr->payload_ptr + (block_size * block_number);
-                    }
+                        if ((block_size * (block_number + 1)) > stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_len) {
+                            src_coap_blockwise_ack_msg_ptr->payload_len = stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_len - (block_size * (block_number));
+                            src_coap_blockwise_ack_msg_ptr->payload_ptr = src_coap_blockwise_ack_msg_ptr->payload_ptr + (block_size * block_number);
+                        }
 
-                    /* Build and send block message */
-                    dst_packed_data_needed_mem = sn_coap_builder_calc_needed_packet_data_size_2(src_coap_blockwise_ack_msg_ptr, handle->sn_coap_block_data_size);
+                        /* Not last block */
+                        else {
+                            /* set more - bit */
+                            src_coap_blockwise_ack_msg_ptr->options_list_ptr->block1 |= 0x08;
+                            src_coap_blockwise_ack_msg_ptr->payload_len = block_size;
+                            src_coap_blockwise_ack_msg_ptr->payload_ptr = src_coap_blockwise_ack_msg_ptr->payload_ptr + (block_size * block_number);
+                        }
 
-                    dst_ack_packet_data_ptr = handle->sn_coap_protocol_malloc(dst_packed_data_needed_mem);
-                    if (!dst_ack_packet_data_ptr) {
-                        tr_error("sn_coap_handle_blockwise_message - (send block1) failed to allocate ack message!");
-                        handle->sn_coap_protocol_free(src_coap_blockwise_ack_msg_ptr->options_list_ptr);
-                        handle->sn_coap_protocol_free(original_payload_ptr);
-                        handle->sn_coap_protocol_free(src_coap_blockwise_ack_msg_ptr);
-                        stored_blockwise_msg_temp_ptr->coap_msg_ptr = NULL;
-                        return NULL;
-                    }
-                    src_coap_blockwise_ack_msg_ptr->msg_id = get_new_message_id();
+                        /* Build and send block message */
+                        dst_packed_data_needed_mem = sn_coap_builder_calc_needed_packet_data_size_2(src_coap_blockwise_ack_msg_ptr, handle->sn_coap_block_data_size);
 
-                    sn_coap_builder_2(dst_ack_packet_data_ptr, src_coap_blockwise_ack_msg_ptr, handle->sn_coap_block_data_size);
+                        dst_ack_packet_data_ptr = handle->sn_coap_protocol_malloc(dst_packed_data_needed_mem);
+                        if (!dst_ack_packet_data_ptr) {
+                            tr_error("sn_coap_handle_blockwise_message - (send block1) failed to allocate ack message!");
+                            handle->sn_coap_protocol_free(src_coap_blockwise_ack_msg_ptr->options_list_ptr);
+                            handle->sn_coap_protocol_free(original_payload_ptr);
+                            handle->sn_coap_protocol_free(src_coap_blockwise_ack_msg_ptr);
+                            stored_blockwise_msg_temp_ptr->coap_msg_ptr = NULL;
+                            return NULL;
+                        }
+                        src_coap_blockwise_ack_msg_ptr->msg_id = get_new_message_id();
 
-                    handle->sn_coap_tx_callback(dst_ack_packet_data_ptr, dst_packed_data_needed_mem, src_addr_ptr, param);
+                        sn_coap_builder_2(dst_ack_packet_data_ptr, src_coap_blockwise_ack_msg_ptr, handle->sn_coap_block_data_size);
+
+                        handle->sn_coap_tx_callback(dst_ack_packet_data_ptr, dst_packed_data_needed_mem, src_addr_ptr, param);
 
 #if ENABLE_RESENDINGS
-                    uint32_t resend_time = sn_coap_calculate_new_resend_time(handle->system_time, handle->sn_coap_resending_intervall, 0);
-                    if (src_coap_blockwise_ack_msg_ptr->msg_type == COAP_MSG_TYPE_CONFIRMABLE) {
-                        sn_coap_protocol_linked_list_send_msg_store(handle, src_addr_ptr,
-                                                                    dst_packed_data_needed_mem,
-                                                                    dst_ack_packet_data_ptr,
-                                                                    resend_time, param);
-                    }
+                        uint32_t resend_time = sn_coap_calculate_new_resend_time(handle->system_time, handle->sn_coap_resending_intervall, 0);
+
+                        if (src_coap_blockwise_ack_msg_ptr->msg_type == COAP_MSG_TYPE_CONFIRMABLE) {
+                            sn_coap_protocol_linked_list_send_msg_store(handle, src_addr_ptr,
+                                                                        dst_packed_data_needed_mem,
+                                                                        dst_ack_packet_data_ptr,
+                                                                        resend_time, param);
+                        }
 #endif
 
-                    handle->sn_coap_protocol_free(dst_ack_packet_data_ptr);
-                    dst_ack_packet_data_ptr = 0;
+                        handle->sn_coap_protocol_free(dst_ack_packet_data_ptr);
+                        dst_ack_packet_data_ptr = 0;
 
-                    stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_len = original_payload_len;
-                    stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_ptr = original_payload_ptr;
+                        stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_len = original_payload_len;
+                        stored_blockwise_msg_temp_ptr->coap_msg_ptr->payload_ptr = original_payload_ptr;
 
-                    // Remove original message from the list when last block has been sent.
-                    if (!((src_coap_blockwise_ack_msg_ptr->options_list_ptr->block1) & 0x08)) {
-                        sn_coap_protocol_remove_sent_blockwise_message(handle, stored_blockwise_msg_temp_ptr->coap_msg_ptr->msg_id);
+                        // Remove original message from the list when last block has been sent.
+                        if (!((src_coap_blockwise_ack_msg_ptr->options_list_ptr->block1) & 0x08)) {
+                            sn_coap_protocol_remove_sent_blockwise_message(handle, stored_blockwise_msg_temp_ptr->coap_msg_ptr->msg_id);
+                        }
+                    } else {
+                        tr_warn("sn_coap_handle_blockwise_message - blocks not in order, requested: %"PRIu32" received: %"PRIu32"  --> ignore", req_block_number, block_number);
+                        src_coap_blockwise_ack_msg_ptr->options_list_ptr->block1 = (req_block_number << 4) | block_temp;
+                        *keep_in_resend_queue = true;
                     }
                 }
             } else {
-                // XXX what was this trying to free?
-                received_coap_msg_ptr->coap_status = COAP_STATUS_OK;
+                if (stored_blockwise_msg_temp_ptr) {
+                    // Last block received but some blocks are not yet sent. Ignore it and wait for next response.
+                    tr_warn("sn_coap_handle_blockwise_message - last block received but some blocks are missing --> ignore");
+                    received_coap_msg_ptr->coap_status = COAP_STATUS_PARSER_BLOCKWISE_ACK;
+                    *keep_in_resend_queue = true;
+                } else {
+                    // XXX what was this trying to free?
+                    received_coap_msg_ptr->coap_status = COAP_STATUS_OK;
+                }
             }
         }
 

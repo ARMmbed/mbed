@@ -36,23 +36,37 @@ void mbed_sdk_init(void)
 
     /* Enable HIRC clock (Internal RC 12MHz) */
     CLK_EnableXtalRC(CLK_PWRCTL_HIRCEN_Msk);
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* Enable HXT clock (external XTAL 12MHz) */
     CLK_EnableXtalRC(CLK_PWRCTL_HXTEN_Msk);
-    /* Enable LIRC for lp_ticker */
+#else
+    /* Disable HXT clock (external XTAL 12MHz) */
+    CLK_DisableXtalRC(CLK_PWRCTL_HXTEN_Msk);
+#endif
+    /* Enable LIRC */
     CLK_EnableXtalRC(CLK_PWRCTL_LIRCEN_Msk);
-    /* Enable LXT for RTC */
+#if MBED_CONF_TARGET_LXT_PRESENT
+    /* Enable LXT */
     CLK_EnableXtalRC(CLK_PWRCTL_LXTEN_Msk);
+#else
+    /* Disable LXT */
+    CLK_DisableXtalRC(CLK_PWRCTL_LXTEN_Msk);
+#endif
     /* Enable HIRC48 clock (Internal RC 48MHz) */
     CLK_EnableXtalRC(CLK_PWRCTL_HIRC48EN_Msk);
 
     /* Wait for HIRC clock ready */
     CLK_WaitClockReady(CLK_STATUS_HIRCSTB_Msk);
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* Wait for HXT clock ready */
     CLK_WaitClockReady(CLK_STATUS_HXTSTB_Msk);
+#endif
     /* Wait for LIRC clock ready */
     CLK_WaitClockReady(CLK_STATUS_LIRCSTB_Msk);
+#if MBED_CONF_TARGET_LXT_PRESENT
     /* Wait for LXT clock ready */
     CLK_WaitClockReady(CLK_STATUS_LXTSTB_Msk);
+#endif
     /* Wait for HIRC48 clock ready */
     CLK_WaitClockReady(CLK_STATUS_HIRC48STB_Msk);
 

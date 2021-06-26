@@ -27,7 +27,7 @@ from xml.dom.minidom import parse, Node
 from argparse import RawTextHelpFormatter
 import subprocess
 
-GENPINMAP_VERSION = "1.20"
+GENPINMAP_VERSION = "1.20.1"
 
 ADD_DEVICE_IF = 0
 ADD_GPIO_PINMAP = 0
@@ -467,7 +467,14 @@ extern "C" {
 
     if DUAL_PAD:
         line_to_write = ("""
-#define ALTC 0xF00
+#define DUAL_PAD 0xF00
+""")
+        out_h_file.write(line_to_write)
+
+    if ADD_GPIO_PINMAP:
+        line_to_write = ("""
+/* If this macro is defined, then PinMap_GPIO is present in PeripheralPins.c */
+#define GPIO_PINMAP_READY 1
 """)
         out_h_file.write(line_to_write)
 
@@ -490,11 +497,14 @@ def print_footer():
     name_counter = 1
     if not LED_list:
        LED_list.append("Pxx")
+    StandardLED = {}
     for EachLED in LED_list:
-        led_label = ""
-        if EachLED in PinLabel:
-            led_label = " // %s" % PinLabel[EachLED]
-        out_h_file.write("#define LED%i     %-5s %s\n" % (name_counter, re.sub(r'(P.)', r'\1_', EachLED), led_label))
+        PinLabel[EachLED] = "TODO"
+        StandardLED[PinLabel[EachLED]] = EachLED
+
+    for EachLED in sorted(StandardLED):
+        led_label = " // %s" % EachLED
+        out_h_file.write("#define LED%i     %-5s %s\n" % (name_counter, re.sub(r'(P.)', r'\1_', StandardLED[EachLED]), led_label))
         name_counter += 1
 
     name_counter = 1
@@ -642,7 +652,7 @@ def print_gpio():
         if "OSC" in parsed_pin[2]:
             commented_line = "//"
         line_to_write = "%-11s" % (commented_line + "  {" + parsed_pin[0] + ',')
-        line_to_write += ' 0, 0},'
+        line_to_write += ' 0, GPIO_NOPULL},'
         if parsed_pin[1] in PinLabel:
             line_to_write += ' // Connected to ' + PinLabel[parsed_pin[1]]
         if parsed_pin[1] in PinPuPd:
@@ -666,7 +676,6 @@ def print_adc():
     # the GPIOx_ASCR register
     if re.match("STM32L4[78]+", mcu_file):
         s_pin_data += "_ADC_CONTROL"
-    s_pin_data += ", GPIO_NOPULL, 0, "
 
     prev_p = ''
     alt_index = 0
@@ -698,8 +707,9 @@ def print_adc():
             if len(inst) == 0:
                 inst = '1' #single ADC for this product
             line_to_write += "%-7s" % ('ADC_' + inst + ',')
-            chan = re.sub('IN[N|P]?', '', a[1])
-            line_to_write += s_pin_data + chan
+            chan = re.sub(r"^IN[N|P]?|\D*$", "", a[1])
+            bank = "_ADC_CHANNEL_BANK_B" if a[1].endswith("b") else ""
+            line_to_write += s_pin_data + bank + ", GPIO_NOPULL, 0, " + chan
             line_to_write += ', 0)}, // ' + parsed_pin[2]
             if parsed_pin[1] in PinLabel:
                 line_to_write += ' // Connected to ' + PinLabel[parsed_pin[1]]
@@ -1146,7 +1156,7 @@ typedef enum {
         if "_ALT" in parsed_pin[0]:
             s1 = "    %-10s = %-5s | %s, // same pin used for alternate HW\n" % (parsed_pin[0], parsed_pin[0].split('_A')[0], parsed_pin[0].split('_')[2])
         elif len(parsed_pin[0]) > 4 and "C" == parsed_pin[0][4]:
-            s1 = "    %-10s = %-5s | ALTC, // dual pad\n" % (parsed_pin[0], parsed_pin[0].split('_A')[0].replace("PC", "PP").replace("C", "").replace("PP", "PC"))
+            s1 = "    %-10s = %-5s | DUAL_PAD, // dual pad\n" % (parsed_pin[0], parsed_pin[0].split('_A')[0].replace("PC", "PP").replace("C", "").replace("PP", "PC"))
         else:
             pin_value = 0
             if "PA" in parsed_pin[0]:
@@ -1371,10 +1381,6 @@ def parse_pins():
             name = s.attributes["Name"].value.strip()  # full name: "PF0 / OSC_IN"
             if "_C" in name:
                 DUAL_PAD = True
-                store_pin("PA_0C", "", "")
-                store_pin("PA_1C", "", "")
-                store_pin("PC_2C", "", "")
-                store_pin("PC_3C", "", "")
 
             if s.attributes["Type"].value == "I/O":
                 if "-" in s.attributes["Name"].value:
@@ -1671,7 +1677,7 @@ if args.target:
         print("C40_Discovery_STM32F4DISCOVERY_STM32F407VG_Board replaced by C47_Discovery_STM32F407G-DISC1_STM32F407VG_Board")
         sys.exit(0)
     elif "P-NUCLEO-WB55" in board_file_name:
-        print("Same board as NUCLEO-WB55")
+        print("Same board as NUCLEO-WB55 (J02)")
         sys.exit(0)
     elif "MultiToSingleCore_Board" in board_file_name:
         print("Same board as PL0_Nucleo_NUCLEO-WL55JC1_STM32WL55JCI_Board_AllConfig.ioc")
@@ -1680,7 +1686,7 @@ if args.target:
         print("Same board as PL0_Nucleo_NUCLEO-WL55JC1_STM32WL55JCI_Board_AllConfig.ioc")
         sys.exit(0)
     elif "B-L475E-IOT01A2" in board_file_name:
-        print("Same board as B-L475E-IOT01A1")
+        print("Same board as B-L475E-IOT01A1 (42)")
         sys.exit(0)
     elif "USBDongle" in board_file_name:
         print("USB dongle not parsed")

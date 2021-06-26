@@ -24,13 +24,27 @@
 #include "nu_miscutil.h"
 #include "mbed_mktime.h"
 
+/* Not support LIRC-clocked RTC
+ *
+ * Though H/W supports this path, it is still not supported because:
+ * 1. RTC is trimmed only for 32.768 KHz LXT, not for other clock rates.
+ * 2. RTC's clock source will reset to default LXT on reset. This results in rtc_reset test failing.
+ */
+#if !MBED_CONF_TARGET_LXT_PRESENT
+#error "RTC can only clock by LXT but LXT is not present. Try disabling RTC by \"device_has_remove\" in mbed_app.json"
+#endif
+
 /* Micro seconds per second */
 #define NU_US_PER_SEC               1000000
 /* Timer clock per second
  *
  * NOTE: This dependents on real hardware.
  */
+#if MBED_CONF_TARGET_LXT_PRESENT
 #define NU_RTCCLK_PER_SEC           __LXT
+#else
+#define NU_RTCCLK_PER_SEC           __LIRC
+#endif
 
 /* Strategy for implementation of RTC HAL
  *
@@ -84,7 +98,11 @@ static time_t t_write = 0;
 /* Convert date time from H/W RTC to struct TM */
 static void rtc_convert_datetime_hwrtc_to_tm(struct tm *datetime_tm, const S_RTC_TIME_DATA_T *datetime_hwrtc);
 
+#if MBED_CONF_TARGET_LXT_PRESENT
 static const struct nu_modinit_s rtc_modinit = {RTC_0, RTC_MODULE, CLK_CLKSEL3_RTCSEL_LXT, 0, 0, RTC_IRQn, NULL};
+#else
+static const struct nu_modinit_s rtc_modinit = {RTC_0, RTC_MODULE, CLK_CLKSEL3_RTCSEL_LIRC, 0, 0, RTC_IRQn, NULL};
+#endif
 
 void rtc_init(void)
 {

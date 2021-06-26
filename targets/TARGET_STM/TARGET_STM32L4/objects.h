@@ -110,6 +110,9 @@ struct i2c_s {
     uint8_t slave;
     volatile uint8_t pending_slave_tx_master_rx;
     volatile uint8_t pending_slave_rx_maxter_tx;
+    uint8_t *slave_rx_buffer;
+    volatile uint8_t slave_rx_buffer_size;
+    volatile uint8_t slave_rx_count;
 #endif
 #if DEVICE_I2C_ASYNCH
     uint32_t address;

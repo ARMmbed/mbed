@@ -68,6 +68,7 @@ target_sources(mbed-m261
         spi_api.c
         trng_api.cpp
         us_ticker.c
+        watchdog_api.c
 
         crypto/crypto-misc.cpp
 )

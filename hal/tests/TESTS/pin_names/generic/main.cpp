@@ -26,7 +26,6 @@ Requirements specified in docs/design-documents/hal/0004-pin-names-general-guide
 
 #ifndef LED1
 #error [NOT_SUPPORTED] Target is not following mbed-os pin names standard // Test is set as Skipped
-// #error [NOT_SUPPORTED] Target is not following mbed-os pin names standard // Test is set as Error
 #else
 
 using namespace utest::v1;
@@ -81,6 +80,9 @@ Case cases[] = {
 #endif
 #ifdef BUTTON2
     Case("BUTTON2", BUTTON_test<2, BUTTON2>),
+#endif
+#ifdef BUTTON3
+    Case("BUTTON3", BUTTON_test<3, BUTTON3>),
 #endif
 };
 

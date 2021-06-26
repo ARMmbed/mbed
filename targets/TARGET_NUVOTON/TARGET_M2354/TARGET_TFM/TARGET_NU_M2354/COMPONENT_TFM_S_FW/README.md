@@ -75,7 +75,7 @@ To define memory spec of SRAM for TF-M/Mbed, search/change the line:
 Navigate [TF-M](https://www.trustedfirmware.org/projects/tf-m/).
 Then go through **DOCS** → **Getting Started Guides** → **Software requirements** for TF-M build environment setup.
 
-**NOTE**: For unknown reason, **GNU Arm Embedded Toolchain 10-2020-q4-major** built code **FAILS** to run. Avoid this toolchain version.
+**NOTE**: **GNU Arm Embedded Toolchain 10-2020-q4-major** built code **FAILS** to run. Avoid this toolchain version. Check [its bug report](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=99157).
 
 ### Compile
 

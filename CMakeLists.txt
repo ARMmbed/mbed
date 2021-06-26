@@ -13,14 +13,14 @@ endif()
 project(mbed-os)
 
 # Add all paths to the list files within Mbed OS
-list(APPEND CMAKE_MODULE_PATH 
+list(APPEND CMAKE_MODULE_PATH
     "${mbed-os_SOURCE_DIR}/platform/FEATURE_EXPERIMENTAL_API/FEATURE_PSA/TARGET_TFM/TARGET_TFM_LATEST/scripts;${mbed-os_SOURCE_DIR}/targets/TARGET_Cypress/scripts;${mbed-os_SOURCE_DIR}/targets/TARGET_NXP/scripts"
 )
 
 option(BUILD_TESTING "Run unit tests only." OFF)
 
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_TESTING)
-    include(CTest)   
+    include(CTest)
     add_subdirectory(UNITTESTS)
 endif()
 
@@ -68,19 +68,19 @@ if(${CMAKE_CROSSCOMPILING})
             "Invalid printf library type '${MBED_PRINTF_LIB}'. Possible values:\n ${MBED_PRINTF_LIB_TYPES}"
         )
     endif()
-    
+
     mbed_set_cpu_core_definitions(mbed-core)
     if(${MBED_TOOLCHAIN_FILE_USED})
         mbed_set_profile_options(mbed-core ${MBED_TOOLCHAIN})
         mbed_set_c_lib(mbed-core ${MBED_C_LIB})
         mbed_set_printf_lib(mbed-core ${MBED_PRINTF_LIB})
-    
+
         target_compile_features(mbed-core
             INTERFACE
                 c_std_11
                 cxx_std_14
         )
-    
+
     endif()
 
     target_compile_definitions(mbed-core
@@ -98,7 +98,7 @@ if(${CMAKE_CROSSCOMPILING})
     endif()
 
     # We need to generate a "response file" to pass to the C preprocessor when we preprocess the linker
-    # script, because of path le    ngth limitations on Windows. We set the response file and bind the path
+    # script, because of path length limitations on Windows. We set the response file and bind the path
     # to a global property here. The MBED_TARGET being built queries this global property when it sets
     # the linker script.
     #
@@ -110,7 +110,7 @@ if(${CMAKE_CROSSCOMPILING})
     # using response files or global properties.
     mbed_generate_options_for_linker(mbed-core RESPONSE_FILE_PATH)
     set_property(GLOBAL PROPERTY COMPILE_DEFS_RESPONSE_FILE ${RESPONSE_FILE_PATH})
-    
+
     # Add compile definitions for backward compatibility with the toolchain
     # supported. New source files should instead check for __GNUC__ and __clang__
     # for the GCC_ARM and ARM toolchains respectively.
@@ -164,7 +164,7 @@ if(${CMAKE_CROSSCOMPILING})
     string(TOLOWER ${MBED_TARGET} MBED_TARGET_CONVERTED)
     string(REPLACE "_" "-" MBED_TARGET_CONVERTED ${MBED_TARGET_CONVERTED})
     string(PREPEND MBED_TARGET_CONVERTED "mbed-")
-    
+
     target_link_libraries(mbed-core INTERFACE ${MBED_TARGET_CONVERTED})
 endif()
 

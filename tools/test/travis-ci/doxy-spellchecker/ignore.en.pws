@@ -121,3 +121,5 @@ instantiation
 instantiations
 KVStore
 _doxy_
+nothrow
+conf

@@ -52,6 +52,10 @@ public:
      * BLEInstanceBase::process
      */
     virtual bool post(const mbed::Callback<void()>& event) = 0;
+
+    /** Remove all pending events.
+     */
+    virtual void clear() = 0;
 };
 
 } // namespace ble

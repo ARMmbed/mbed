@@ -23,7 +23,9 @@
 #endif
 
 #if !defined(MBED_APP_SIZE)
-  #define MBED_APP_SIZE  MBED_ROM_SIZE
+/* MBED_APP_SIZE cannot be full ROM size as core M0 FW is using the end of FLASH */
+/* Size is defined in json with "mbed_rom_size" */
+#define MBED_APP_SIZE MBED_ROM_SIZE
 #endif
 
 #if !defined(MBED_CONF_TARGET_BOOT_STACK_SIZE)
@@ -35,10 +37,12 @@
 /* Round up VECTORS_SIZE to 8 bytes */
 #define VECTORS_SIZE  (((NVIC_NUM_VECTORS * 4) + 7) & 0xFFFFFFF8)
 
+/* RAM_SIZE = 12KB SRAM (0x3000) + Shared mem (part of SRAM2) */
 MEMORY
-{
-    FLASH (rx)   : ORIGIN = MBED_APP_START, LENGTH = MBED_APP_SIZE
-    RAM (rwx)    : ORIGIN = MBED_RAM_START + VECTORS_SIZE, LENGTH = MBED_RAM_SIZE - VECTORS_SIZE
+{ 
+  FLASH (rx) : ORIGIN = MBED_APP_START, LENGTH = MBED_APP_SIZE
+  RAM (rwx)   : ORIGIN = MBED_RAM_START + VECTORS_SIZE, LENGTH = 0x3000 - VECTORS_SIZE
+  RAM2 (rw)  : ORIGIN = 0x20030000, LENGTH = 10K
 }
 
 /* Linker script to place sections and symbol values. Should be used together
@@ -190,6 +194,19 @@ SECTIONS
     {
         *(.stack*)
     } > RAM
+
+    .ble_stby_mem (NOLOAD) :
+    {
+      *(MAPPING_TABLE);
+      *(MB_MEM1);
+    } >RAM2
+
+    .ble_shared_no_ret (NOLOAD) :
+    {
+      _sMB_MEM2 = . ;
+      *(MB_MEM2);
+      _eMB_MEM2 = . ;
+    } >RAM2
 
     /* Set stack top to end of RAM, and stack limit move down by
      * size of stack_dummy section */

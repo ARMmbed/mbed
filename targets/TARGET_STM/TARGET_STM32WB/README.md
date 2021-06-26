@@ -1,12 +1,13 @@
 * [STM32WB family](#stm32wb-family)
 * [Supported boards](#supported-boards)
-   * [NUCLEO_WB55RG](#nucleo_wb55rg)
+   * [NUCLEO_WB55RG (NUCLEO-WB55RG)](#nucleo_wb55rg-nucleo-wb55rg)
    * [DISCO_WB5MMG (STM32WB5MM-DK)](#disco_wb5mmg-stm32wb5mm-dk)
 * [BLE](#ble)
    * [MBED-OS support](#mbed-os-support)
-   * [mbed-trace support](#mbed-trace-support)
+   * [BLE FW](#ble-fw)
    * [BLE FW update](#ble-fw-update)
    * [BLE FW flashing procedure](#ble-fw-flashing-procedure)
+   * [mbed-trace support](#mbed-trace-support)
 
 
 # STM32WB family
@@ -30,8 +31,9 @@ This ST MCU family is dual-core : based on an Arm Cortex-M4 core and an Arm Cort
 
 [mbed.com platform page](https://os.mbed.com/platforms/ST-Nucleo-WB55RG/)
 
-- Total FLASH is 1MB, but note that it is shared by M4 and M0 cores.
-    - mbed-os application size is then limited to 768 KB
+- Total FLASH is 1MB
+
+But FLASH is shared by M4 and M0 cores, [see BLE FW](#ble-fw)
 
 - RAM: 256 KB
     - SRAM1: 192 KB
@@ -51,8 +53,9 @@ SRAM2 is dedicated for M0 core and inter CPU communication, and then can not be 
 
 [mbed.com platform page](https://os.mbed.com/platforms/DISCO-WB5MMG/)
 
-- Total FLASH is 1MB, but note that it is shared by M4 and M0 cores.
-    - mbed-os application size is then limited to 768 KB
+- Total FLASH is 1MB
+
+But FLASH is shared by M4 and M0 cores, [see BLE FW](#ble-fw)
 
 - RAM: 256 KB
     - SRAM1: 192 KB
@@ -66,6 +69,33 @@ SRAM2 is dedicated for M0 core and inter CPU communication, and then can not be 
 NB: MBED CLI1 tool can be used thanks to this command:
 ```
 mbedls -m 0884:DISCO_WB5MMG
+```
+
+
+## NUCLEO_WB15CC (NUCLEO-WB15CC)
+
+[st.com STM32WB15CC module page](https://www.st.com/en/microcontrollers-microprocessors/stm32wb15cc.html)
+
+[st.com NUCLEO board page]()
+
+[mbed.com platform page](https://os.mbed.com/platforms/ST-NUCLEO-WB15CC/)
+
+- Total FLASH is 320KB
+
+But FLASH is shared by M4 and M0 cores, [see BLE FW](#ble-fw)
+
+- RAM: 48 KB
+    - SRAM1:  12 KB
+    - SRAM2a: 32 KB
+    - SRAM2b:  4 KB
+
+SRAM1 is dedicated for M4 core, and then for mbed-os applications.
+
+SRAM2 is dedicated for M0 core and inter CPU communication, and some part can not be addressed by M4.
+
+NB: MBED CLI1 tool can be used thanks to this command:
+```
+mbedls -m 0883:NUCLEO_WB15CC
 ```
 
 
@@ -83,11 +113,72 @@ Note that the BLE controller firmware running on the cortex-M0 is the same as in
 Official ST Application Note : 
 [AN5289: Building wireless applications with STM32WB Series microcontrollers](https://www.st.com/resource/en/application_note/dm00598033-building-wireless-applications-with-stm32wb-series-microcontrollers-stmicroelectronics.pdf)
 
+## BLE FW
+
+All available BLE FW for M0 core are provided in ths ST STM32CubeWB repo:
+
+### STM32WB5x
+
+https://github.com/STMicroelectronics/STM32CubeWB/tree/master/Projects/STM32WB_Copro_Wireless_Binaries/STM32WB5x
+
+Default BLE FW in ST boards is **stm32wb5x_BLE_Stack_full_fw.bin**
+- As explained in Release_Notes.html, this FW is flashed at @ 0x080CA000
+- Default "mbed_rom_size" in targets.json is then "0xCA000" (808K)
+
+To optimize FLASH size, **stm32wb5x_BLE_HCILayer_fw.bin** is supported for MBED-OS use case
+- As explained in Release_Notes.html, this FW is flashed at @ 0x080E0000
+- Then "mbed_rom_size" can be updated to "0xE0000" (896K)
+
+Example in your local mbed_app.json:
+```
+    "target_overrides": {
+        "NUCLEO_WB55RG": {
+            "target.mbed_rom_size": "0xE0000"
+        }
+```
+
+### STM32WB1x
+
+https://github.com/STMicroelectronics/STM32CubeWB/tree/master/Projects/STM32WB_Copro_Wireless_Binaries/STM32WB1x
+
+Default BLE FW in ST boards is **stm32wb1x_BLE_Stack_full_fw.bin**
+- **this is not supported in mbed**
+
+It is mandatory to use **stm32wb1x_BLE_HCILayer_fw.bin**
+- As explained in Release_Notes.html, this FW is flashed at @ 0x08032800
+- Then "mbed_rom_size" is "0x32800" (202K) (default configuration in targets.json)
+
+
+## BLE FW update
+
+Official ST Application Note : 
+[AN5185: ST firmware upgrade services for STM32WB Series](http://www.st.com/st-web-ui/static/active/en/resource/technical/document/application_note/DM00513965.pdf)
+
+
+## BLE FW flashing procedure
+
+STM32CubeProgrammer needs to be used:
+
+https://www.st.com/en/development-tools/stm32cubeprog.html
+
+Please check the Release Note and complete flashing procedure:
+https://htmlpreview.github.io/?https://github.com/STMicroelectronics/STM32CubeWB/blob/master/Projects/STM32WB_Copro_Wireless_Binaries/STM32WB5x/Release_Notes.html
+
+- connect the board with ST-LINK
+- In the left column, go to "Firmware Upgrade Services"
+- "Start FUS"
+- "Read FUS infos" => version v1.2.0 is expected
+- Firmware Upgrade / "Browse" : select the chosen FW (see above)
+- Firmware Upgrade / Start address : depends on the chosen FW (see above)
+- Firmware Upgrade / "Firmware Upgrade"
+- In the left column, go to "Option bytes"
+- User Configuration => "Read"
+- User Configuration / enable nSWBOOT0 => "Apply"
 
 
 ## mbed-trace support
 
-trace group: BLE_WB
+trace group: BLWB
 
 example:
 ````
@@ -99,104 +190,3 @@ example:
 [DBG ][BLWB]:    Cmd 0xc03
 [DBG ][BLWB]:    Len 0D]
 ````
-
-## BLE FW update
-
-Official ST Application Note : 
-[AN5185: ST firmware upgrade services for STM32WB Series](http://www.st.com/st-web-ui/static/active/en/resource/technical/document/application_note/DM00513965.pdf)
-
-Latest BLE FW :
-https://github.com/STMicroelectronics/STM32CubeWB/blob/master/Projects/STM32WB_Copro_Wireless_Binaries/STM32WB5x/stm32wb5x_BLE_Stack_full_fw.bin
-
-## BLE FW flashing procedure
-
-Release Note and complete flashing procedure:
-https://htmlpreview.github.io/?https://github.com/STMicroelectronics/STM32CubeWB/blob/master/Projects/STM32WB_Copro_Wireless_Binaries/STM32WB5x/Release_Notes.html
-
-
-- STEP 1: Use STM32CubeProgrammer
-
-https://www.st.com/en/development-tools/stm32cubeprog.html
-
-````
-FLASHPATH="C:\Program Files\STMicroelectronics\STM32Cube\STM32CubeProgrammer\bin"
-export PATH=$FLASHPATH:$PATH
-````
-
-- STEP 2: Access to Bootloader USB Interface (system flash)
-
-    * Boot0 pin set to VDD : Jumper between CN7.5(VDD) and CN7.7(Boot0)
-    * Jumper JP1 on USB_MCU
-    * Power ON via USB_USER
-
-![Image description](stm32wb_ble_update.jpg)
-
-- STEP 3 : Delete current wireless stack :
-
-```
-$ STM32_Programmer_CLI.exe -c port=usb1 -fwdelete
-...
-FUS state is FUS_IDLE
-
-FUS status is FUS_NO_ERROR
-Deleting firmware ...
-Firmware delete finished
-fwdelete command execution finished
-```
-
-- STEP 4 : Read FUS Version
-
-```
-$ STM32_Programmer_CLI.exe -c port=usb1 -r32 0x20030030 1
-...
-
-Reading 32-bit memory content
-  Size          : 4 Bytes
-  Address:      : 0x20030030
-
-0x20030030 : 00050300
-```
-
-- STEP 5A if last result is 00050300 : Download new FUS :
-
-```
-$ ./STM32_Programmer_CLI.exe -c port=usb1 -fwupgrade stm32wb5x_FUS_fw_for_fus_0_5_3.bin 0x080EC000 firstinstall=0
-```
-
-- STEP 5B if last result is 01000100 or 01000200 : Download new FUS :
-
-```
-$ STM32_Programmer_CLI.exe -c port=usb1 -fwupgrade stm32wb5x_FUS_fw.bin 0x080EC000 firstinstall=0
-...
-Firmware Upgrade Success
-```
-
-
-- STEP 4 (to check) : Read FUS Version
-
-```
-$ STM32_Programmer_CLI.exe -c port=usb1 -r32 0x20030030 1
-
-Reading 32-bit memory content
-  Size          : 4 Bytes
-  Address:      : 0x20030030
-
-0x20030030 : 01020000
-```
-
-- STEP 6 : Download new wireless stack :
-
-
-```
-$ STM32_Programmer_CLI.exe -c port=usb1 -fwupgrade stm32wb5x_BLE_Stack_full_fw.bin 0x080CA000 firstinstall=1
-
-...
-Download firmware image at address 0x80cb000 ...
-...
-File download complete
-...
-Firmware Upgrade Success
-```
-
-- STEP 7 : Revert STEP 2 procedure to put back device in normal mode.
-

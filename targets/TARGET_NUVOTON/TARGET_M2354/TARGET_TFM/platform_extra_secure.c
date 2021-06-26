@@ -19,23 +19,38 @@
 #include "cmsis.h"
 #include "platform_extra_secure.h"
 
-#ifdef __MBED__
+#if __MBED__
 #include "mbed_error.h"
 #include "nu_bitutil.h"
 #include "tfm_platform_api.h"
-#else
+#elif NU_TFM_PLAT_IOCTL_NS
+#include "tfm_platform_api.h"
+#elif NU_TFM_PLAT_IOCTL_S
 #include "tfm_platform_system.h"
 #include <string.h>
 #endif
     
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
+
+#if __MBED__
+#define PLAT_NSC_ERROR(SEC_FUNC, RC)                                            \
+    MBED_ERROR1(MBED_MAKE_ERROR(MBED_MODULE_HAL, MBED_ERROR_CODE_UNDERFLOW),    \
+                #SEC_FUNC "() failed with: ", RC)
+
+#elif NU_TFM_PLAT_IOCTL_NS
+#define PLAT_NSC_ERROR(SEC_FUNC, RC)                                            \
+    do {                                                                        \
+        printf(#SEC_FUNC "() failed with: %d\n", RC);                           \
+        while(1);                                                               \
+    } while(0)
+
+#endif
 
 /* Secure function call via platform ioctl */
 #define PLAT_NSC_CALL(SEC_FUNC, INBUF, INSIZE, OUTBUF, OUTSIZE)                     \
     PLAT_NSC_CALL_(NU_PLAT_XTRA_SEC_REQ(SEC_FUNC), INBUF, INSIZE, OUTBUF, OUTSIZE)  \
     if (rc != TFM_PLATFORM_ERR_SUCCESS) {                                           \
-        MBED_ERROR1(MBED_MAKE_ERROR(MBED_MODULE_HAL, MBED_ERROR_CODE_UNDERFLOW),    \
-                    #SEC_FUNC " failed with: ", rc);                                \
+        PLAT_NSC_ERROR(SEC_FUNC, rc);                                               \
     }
 
 #define PLAT_NSC_CALL_(REQ, INBUF, INSIZE, OUTBUF, OUTSIZE)     \
@@ -62,7 +77,7 @@
         rc = tfm_platform_ioctl(request, NULL, NULL);           \
     }
 
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 
 /* NOTE: Hazard of passing struct argument between client and service
  *
@@ -100,6 +115,17 @@
         }                                                       \
     }                                                           \
 
+#define NU_MFP_POS(pin)                             ((pin % 8) * 4)
+#define NU_MFP_MSK(pin)                             (0xful << NU_MFP_POS(pin))
+
+bool nu_check_sys_ns(uint32_t modidx);
+bool nu_check_clk_ns(uint32_t modidx);
+bool nu_check_gpio_ns(uint32_t port_index, uint32_t pin_index);
+
+#endif
+
+#if NU_TFM_PLAT_IOCTL_NS || NU_TFM_PLAT_IOCTL_S
+
 __STATIC_INLINE uint32_t nu_get32_be(const uint8_t *pos)
 {
 	uint32_t val;
@@ -123,16 +149,9 @@ __STATIC_INLINE void nu_set32_be(uint8_t *pos, uint32_t val)
 	*pos ++ = (val & 0xFF);
 }
 
-#define NU_MFP_POS(pin)                             ((pin % 8) * 4)
-#define NU_MFP_MSK(pin)                             (0xful << NU_MFP_POS(pin))
-
-bool nu_check_sys_ns(uint32_t modidx);
-bool nu_check_clk_ns(uint32_t modidx);
-bool nu_check_gpio_ns(uint32_t port_index, uint32_t pin_index);
-
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void SYS_ResetModule_S(uint32_t u32ModuleIndex)
 {
     /* Set up input parameter for NSC call */
@@ -142,7 +161,7 @@ void SYS_ResetModule_S(uint32_t u32ModuleIndex)
     /* Invoke NSC function */
     PLAT_NSC_CALL(SYS_ResetModule_S, inbuf, sizeof(inbuf), NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(SYS_ResetModule_S)
 {
     /* Check parameter validity */
@@ -161,13 +180,13 @@ NU_PLAT_XTRA_SEC_HDLR(SYS_ResetModule_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void SYS_LockReg_S(void)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(SYS_LockReg_S, NULL, 0, NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(SYS_LockReg_S)
 {
     /* Check parameter validity */
@@ -179,13 +198,13 @@ NU_PLAT_XTRA_SEC_HDLR(SYS_LockReg_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void SYS_UnlockReg_S(void)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(SYS_UnlockReg_S, NULL, 0, NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(SYS_UnlockReg_S)
 {
     /* Check parameter validity */
@@ -197,7 +216,7 @@ NU_PLAT_XTRA_SEC_HDLR(SYS_UnlockReg_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void CLK_SetModuleClock_S(uint32_t u32ModuleIndex, uint32_t u32ClkSrc, uint32_t u32ClkDiv)
 {
     /* Set up input parameter for NSC call */
@@ -209,7 +228,7 @@ void CLK_SetModuleClock_S(uint32_t u32ModuleIndex, uint32_t u32ClkSrc, uint32_t 
     /* Invoke NSC function */
     PLAT_NSC_CALL(CLK_SetModuleClock_S, inbuf, sizeof(inbuf), NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_SetModuleClock_S)
 {
     /* Check parameter validity */
@@ -230,7 +249,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_SetModuleClock_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void CLK_EnableModuleClock_S(uint32_t u32ModuleIndex)
 {
     /* Set up input parameter for NSC call */
@@ -240,7 +259,7 @@ void CLK_EnableModuleClock_S(uint32_t u32ModuleIndex)
     /* Invoke NSC function */
     PLAT_NSC_CALL(CLK_EnableModuleClock_S, inbuf, sizeof(inbuf), NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_EnableModuleClock_S)
 {
     /* Check parameter validity */
@@ -259,7 +278,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_EnableModuleClock_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void CLK_DisableModuleClock_S(uint32_t u32ModuleIndex)
 {
     /* Set up input parameter for NSC call */
@@ -269,7 +288,7 @@ void CLK_DisableModuleClock_S(uint32_t u32ModuleIndex)
     /* Invoke NSC function */
     PLAT_NSC_CALL(CLK_DisableModuleClock_S, inbuf, sizeof(inbuf), NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_DisableModuleClock_S)
 {
     /* Check parameter validity */
@@ -288,13 +307,13 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_DisableModuleClock_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void CLK_Idle_S(void)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(CLK_Idle_S, NULL, 0, NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_Idle_S)
 {
     /* Check parameter validity */
@@ -308,13 +327,13 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_Idle_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void CLK_PowerDown_S(void)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(CLK_PowerDown_S, NULL, 0, NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_PowerDown_S)
 {
     /* Check parameter validity */
@@ -328,7 +347,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_PowerDown_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 uint32_t CLK_GetHXTFreq_S(void)
 {
     /* Set up output parameter for NSC call */
@@ -341,7 +360,7 @@ uint32_t CLK_GetHXTFreq_S(void)
     uint32_t output = nu_get32_be(outbuf);
     return output;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_GetHXTFreq_S)
 {
     /* Check parameter validity */
@@ -354,7 +373,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_GetHXTFreq_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 uint32_t CLK_GetLXTFreq_S(void)
 {
     /* Set up output parameter for NSC call */
@@ -367,7 +386,7 @@ uint32_t CLK_GetLXTFreq_S(void)
     uint32_t output = nu_get32_be(outbuf);
     return output;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_GetLXTFreq_S)
 {
     /* Check parameter validity */
@@ -380,7 +399,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_GetLXTFreq_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 uint32_t CLK_GetHCLKFreq_S(void)
 {
     /* Set up output parameter for NSC call */
@@ -393,7 +412,7 @@ uint32_t CLK_GetHCLKFreq_S(void)
     uint32_t output = nu_get32_be(outbuf);
     return output;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_GetHCLKFreq_S)
 {
     /* Check parameter validity */
@@ -406,7 +425,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_GetHCLKFreq_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 uint32_t CLK_GetPCLK0Freq_S(void)
 {
     /* Set up output parameter for NSC call */
@@ -419,7 +438,7 @@ uint32_t CLK_GetPCLK0Freq_S(void)
     uint32_t output = nu_get32_be(outbuf);
     return output;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_GetPCLK0Freq_S)
 {
     /* Check parameter validity */
@@ -432,7 +451,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_GetPCLK0Freq_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 uint32_t CLK_GetPCLK1Freq_S(void)
 {
     /* Set up output parameter for NSC call */
@@ -445,7 +464,7 @@ uint32_t CLK_GetPCLK1Freq_S(void)
     uint32_t output = nu_get32_be(outbuf);
     return output;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_GetPCLK1Freq_S)
 {
     /* Check parameter validity */
@@ -458,7 +477,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_GetPCLK1Freq_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 uint32_t CLK_GetCPUFreq_S(void)
 {
     /* Set up output parameter for NSC call */
@@ -471,7 +490,7 @@ uint32_t CLK_GetCPUFreq_S(void)
     uint32_t output = nu_get32_be(outbuf);
     return output;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_GetCPUFreq_S)
 {
     /* Check parameter validity */
@@ -484,7 +503,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_GetCPUFreq_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 uint32_t CLK_GetPLLClockFreq_S(void)
 {
     /* Set up output parameter for NSC call */
@@ -497,7 +516,7 @@ uint32_t CLK_GetPLLClockFreq_S(void)
     uint32_t output = nu_get32_be(outbuf);
     return output;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_GetPLLClockFreq_S)
 {
     /* Check parameter validity */
@@ -510,7 +529,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_GetPLLClockFreq_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 uint32_t CLK_GetModuleClockSource_S(uint32_t u32ModuleIndex)
 {
     /* Set up input parameter for NSC call */
@@ -527,7 +546,7 @@ uint32_t CLK_GetModuleClockSource_S(uint32_t u32ModuleIndex)
     uint32_t output = nu_get32_be(outbuf);
     return output;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_GetModuleClockSource_S)
 {
     /* Check parameter validity */
@@ -541,7 +560,7 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_GetModuleClockSource_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 uint32_t CLK_GetModuleClockDivider_S(uint32_t u32ModuleIndex)
 {
     /* Set up input parameter for NSC call */
@@ -558,7 +577,7 @@ uint32_t CLK_GetModuleClockDivider_S(uint32_t u32ModuleIndex)
     uint32_t output = nu_get32_be(outbuf);
     return output;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(CLK_GetModuleClockDivider_S)
 {
     /* Check parameter validity */
@@ -572,13 +591,13 @@ NU_PLAT_XTRA_SEC_HDLR(CLK_GetModuleClockDivider_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void RTC_Open_S(S_RTC_TIME_DATA_T_PTR sPt)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(RTC_Open_S, sPt, (sPt ? sizeof(S_RTC_TIME_DATA_T) : 0), NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(RTC_Open_S)
 {
     /* Check parameter validity */
@@ -596,13 +615,13 @@ NU_PLAT_XTRA_SEC_HDLR(RTC_Open_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void RTC_Close_S(void)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(RTC_Close_S, NULL, 0, NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(RTC_Close_S)
 {
     /* Check parameter validity */
@@ -614,13 +633,13 @@ NU_PLAT_XTRA_SEC_HDLR(RTC_Close_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void RTC_WaitAccessEnable_S(void)
 {
     /* On M2354, RTC_WaitAccessEnable() is unnecessary and is not provided by BSP.
      * Provide a dummy one to make code consistent. */
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(RTC_WaitAccessEnable_S)
 {
     /* On M2354, RTC_WaitAccessEnable() is unnecessary and is not provided by BSP.
@@ -633,13 +652,13 @@ NU_PLAT_XTRA_SEC_HDLR(RTC_WaitAccessEnable_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void RTC_GetDateAndTime_S(S_RTC_TIME_DATA_T_PTR sPt)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(RTC_GetDateAndTime_S, NULL, 0, sPt, sizeof(S_RTC_TIME_DATA_T));
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(RTC_GetDateAndTime_S)
 {
     /* Check parameter validity */
@@ -653,13 +672,13 @@ NU_PLAT_XTRA_SEC_HDLR(RTC_GetDateAndTime_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void RTC_GetAlarmDateAndTime_S(S_RTC_TIME_DATA_T_PTR sPt)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(RTC_GetAlarmDateAndTime_S, NULL, 0, sPt, sizeof(S_RTC_TIME_DATA_T));
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(RTC_GetAlarmDateAndTime_S)
 {
     /* Check parameter validity */
@@ -673,13 +692,13 @@ NU_PLAT_XTRA_SEC_HDLR(RTC_GetAlarmDateAndTime_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void RTC_SetDateAndTime_S(S_RTC_TIME_DATA_T_PTR sPt)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(RTC_SetDateAndTime_S, sPt, sizeof(S_RTC_TIME_DATA_T), NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(RTC_SetDateAndTime_S)
 {
     /* Check parameter validity */
@@ -693,13 +712,13 @@ NU_PLAT_XTRA_SEC_HDLR(RTC_SetDateAndTime_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void RTC_SetAlarmDateAndTime_S(S_RTC_TIME_DATA_T_PTR sPt)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(RTC_SetAlarmDateAndTime_S, sPt, sizeof(S_RTC_TIME_DATA_T), NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(RTC_SetAlarmDateAndTime_S)
 {
     /* Check parameter validity */
@@ -713,7 +732,7 @@ NU_PLAT_XTRA_SEC_HDLR(RTC_SetAlarmDateAndTime_S)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void nu_pin_function_s(uint32_t port_index, uint32_t pin_index, uint32_t data)
 {
     /* Set up input parameter for NSC call */
@@ -725,7 +744,7 @@ void nu_pin_function_s(uint32_t port_index, uint32_t pin_index, uint32_t data)
     /* Invoke NSC function */
     PLAT_NSC_CALL(nu_pin_function_s, inbuf, sizeof(inbuf), NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(nu_pin_function_s)
 {
     /* Check parameter validity */
@@ -750,7 +769,7 @@ NU_PLAT_XTRA_SEC_HDLR(nu_pin_function_s)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void nu_idle_s(void)
 {
     /* We should have had default (shallow) sleep/idle mode configuration guaranteed by SPE.
@@ -758,7 +777,7 @@ void nu_idle_s(void)
      * (shallow) sleep-related tests. */
     __WFI();
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(nu_idle_s)
 {
     /* Check parameter validity */
@@ -768,13 +787,13 @@ NU_PLAT_XTRA_SEC_HDLR(nu_idle_s)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void nu_powerdown_s(void)
 {
     /* Invoke NSC function */
     PLAT_NSC_CALL(nu_powerdown_s, NULL, 0, NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(nu_powerdown_s)
 {
     /* Check parameter validity */
@@ -800,7 +819,7 @@ NU_PLAT_XTRA_SEC_HDLR(nu_powerdown_s)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 uint32_t nu_rtc_read_spare_register_s(uint32_t reg_num)
 {
     /* Set up input parameter for NSC call */
@@ -817,7 +836,7 @@ uint32_t nu_rtc_read_spare_register_s(uint32_t reg_num)
     int32_t reg_val = nu_get32_be(outbuf);
     return reg_val;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(nu_rtc_read_spare_register_s)
 {
     /* Check parameter validity */
@@ -834,7 +853,7 @@ NU_PLAT_XTRA_SEC_HDLR(nu_rtc_read_spare_register_s)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 void nu_rtc_write_spare_register_s(uint32_t reg_num, uint32_t reg_val)
 {
     /* Set up input parameter for NSC call */
@@ -845,7 +864,7 @@ void nu_rtc_write_spare_register_s(uint32_t reg_num, uint32_t reg_val)
     /* Invoke NSC function */
     PLAT_NSC_CALL(nu_rtc_write_spare_register_s, inbuf, sizeof(inbuf), NULL, 0);
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(nu_rtc_write_spare_register_s)
 {
     /* Check parameter validity */
@@ -862,7 +881,7 @@ NU_PLAT_XTRA_SEC_HDLR(nu_rtc_write_spare_register_s)
 }
 #endif
 
-#ifdef __MBED__
+#if __MBED__ || NU_TFM_PLAT_IOCTL_NS
 int32_t nu_rtc_isenabled_s(void)
 {
     /* Set up output parameter for NSC call */
@@ -875,7 +894,7 @@ int32_t nu_rtc_isenabled_s(void)
     int32_t enabled = nu_get32_be(outbuf);
     return enabled;
 }
-#else
+#elif NU_TFM_PLAT_IOCTL_S
 NU_PLAT_XTRA_SEC_HDLR(nu_rtc_isenabled_s)
 {
     /* Check parameter validity */

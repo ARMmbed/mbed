@@ -22,7 +22,9 @@
 #endif
 
 #if !defined(MBED_APP_SIZE)
-  #define MBED_APP_SIZE  MBED_ROM_SIZE
+// MBED_APP_SIZE cannot be full ROM size as core M0 FW is using the end of FLASH
+// Size is defined in json with "mbed_rom_size"
+#define MBED_APP_SIZE MBED_ROM_SIZE
 #endif
 
 #if !defined(MBED_CONF_TARGET_BOOT_STACK_SIZE)
@@ -37,6 +39,7 @@
 /* Round up VECTORS_SIZE to 8 bytes */
 #define VECTORS_SIZE  (((NVIC_NUM_VECTORS * 4) + 7) AND ~7)
 
+; RAM_SIZE = 12KB SRAM (0x3000) + Shared mem (part of SRAM2)
 LR_IROM1  MBED_APP_START  MBED_APP_SIZE  {
 
   ER_IROM1  MBED_APP_START  MBED_APP_SIZE  {
@@ -49,9 +52,17 @@ LR_IROM1  MBED_APP_START  MBED_APP_SIZE  {
     .ANY (+RW +ZI)
   }
 
-  ARM_LIB_HEAP  AlignExpr(+0, 16)  EMPTY  (MBED_RAM_START + MBED_RAM_SIZE - MBED_CONF_TARGET_BOOT_STACK_SIZE - AlignExpr(ImageLimit(RW_IRAM1), 16))  { ; Heap growing up
+  ARM_LIB_HEAP  AlignExpr(+0, 16)  EMPTY  (MBED_RAM_START + 0x3000 - MBED_CONF_TARGET_BOOT_STACK_SIZE - AlignExpr(ImageLimit(RW_IRAM1), 16))  { ; Heap growing up
   }
 
-  ARM_LIB_STACK  (MBED_RAM_START + MBED_RAM_SIZE)  EMPTY  -MBED_CONF_TARGET_BOOT_STACK_SIZE  { ; Stack region growing down
+  ARM_LIB_STACK  (MBED_RAM_START + 0x3000)  EMPTY  -MBED_CONF_TARGET_BOOT_STACK_SIZE  { ; Stack region growing down
   }
+
+  ; SRAM2 - Shared memory
+  RW_IRAM2 0x20030000 0x2800  {  ; RW data
+    *(MAPPING_TABLE)
+    *(MB_MEM1)
+    *(MB_MEM2)
+  }
+
 }

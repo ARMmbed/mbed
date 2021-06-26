@@ -148,6 +148,8 @@ int32_t flash_program_page(flash_t *obj, uint32_t address, const uint8_t *data,
 #if defined(CORE_CM7)
     SCB_CleanInvalidateDCache_by_Addr((uint32_t *)StartAddress, FullSize);
     SCB_InvalidateICache();
+#else /* CORE_CM4 */
+   __HAL_ART_ENABLE();
 #endif /* CORE_CM7 */
 #else /* DUAL_CORE */
     SCB_CleanInvalidateDCache_by_Addr((uint32_t *)StartAddress, FullSize);

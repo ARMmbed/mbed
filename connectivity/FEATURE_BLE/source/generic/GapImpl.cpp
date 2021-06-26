@@ -373,6 +373,9 @@ Gap::Gap(
     , _scan_parameters_set(false)
 #endif // BLE_ROLE_OBSERVER
 {
+#if BLE_FEATURE_EXTENDED_ADVERTISING
+    _advertising_enable_command_params.number_of_handles = 0;
+#endif //BLE_FEATURE_EXTENDED_ADVERTISING
     _pal_gap.initialize();
 
     _pal_gap.when_gap_event_received(
@@ -1212,8 +1215,7 @@ ble_error_t Gap::reset()
 
     _event_handler = nullptr;
     _initiating = false;
-    set_scan_state(ScanState::idle);
-    _scan_requested = false;
+
 #if BLE_FEATURE_PRIVACY
     _privacy_initialization_pending = false;
 #if BLE_GAP_HOST_BASED_PRIVATE_ADDRESS_RESOLUTION
@@ -1224,49 +1226,26 @@ ble_error_t Gap::reset()
 #endif // BLE_FEATURE_PRIVACY
 
 #if BLE_ROLE_OBSERVER
+    set_scan_state(ScanState::idle);
+    _scan_requested = false;
     _scan_parameters_set = false;
     _scan_timeout.detach();
 #endif
 
 #if BLE_ROLE_BROADCASTER
 #if BLE_FEATURE_EXTENDED_ADVERTISING
-    if (is_extended_advertising_available()) {
-        /* stop all advertising sets */
-        for (size_t i = 0; i < BLE_GAP_MAX_ADVERTISING_SETS; ++i) {
-            if (_active_sets.get(i)) {
-                _pal_gap.extended_advertising_enable(
-                    /* enable */ false,
-                    /* number of advertising sets */ 1,
-                    (advertising_handle_t *) &i,
-                    nullptr,
-                    nullptr
-                );
-            }
+    /* clear advertising set data on the controller */
+    _pal_gap.clear_advertising_sets();
+    /* reset pending advertising sets */
+    _advertising_enable_command_params.number_of_handles = 0;
+    _process_enable_queue_pending = false;
+    _process_disable_queue_pending = false;
+    _existing_sets.clear();
+    _pending_stop_sets.clear();
 #if BLE_FEATURE_PERIODIC_ADVERTISING
-            if (_active_periodic_sets.get(i)) {
-                _pal_gap.periodic_advertising_enable(
-                    /* enable */ false,
-                    (advertising_handle_t) i
-                );
-            }
-            _active_periodic_sets.clear();
+    _active_periodic_sets.clear();
 #endif // BLE_FEATURE_PERIODIC_ADVERTISING
-        }
-
-        /* clear state of all advertising sets */
-        _existing_sets.clear();
-
-        /* clear advertising set data on the controller */
-        _pal_gap.clear_advertising_sets();
-    } else
-#else // BLE_FEATURE_EXTENDED_ADVERTISING
-    {
-        if (_active_sets.get(LEGACY_ADVERTISING_HANDLE)) {
-            _pal_gap.advertising_enable(false);
-        }
-    }
 #endif // BLE_FEATURE_EXTENDED_ADVERTISING
-
     _active_sets.clear();
     _pending_sets.clear();
     _address_refresh_sets.clear();
@@ -2413,22 +2392,30 @@ ble_error_t Gap::startAdvertising(
             _pal_gap.set_advertising_set_random_address(handle, *random_address);
         }
 
-        error = _pal_gap.extended_advertising_enable(
-            /* enable */ true,
-            /* number of advertising sets */ 1,
-            &handle,
-            maxDuration.storage(),
-            &maxEvents
-        );
-
-        if (error) {
-            return error;
+        /* check we haven't run out of space to remember parameters */
+        if (_advertising_enable_command_params.number_of_handles == BLE_GAP_HOST_MAX_OUTSTANDING_ADVERTISING_START_COMMANDS) {
+            /* try to process early */
+            tr_debug("Processing enable queue early as run out of queue space");
+            process_enable_queue();
+            /* if the processing didn't clear the handles we cannot continue */
+            if (_advertising_enable_command_params.number_of_handles) {
+                tr_warn("Cannot enable set as no memory to record the parameters");
+                return BLE_ERROR_NO_MEM;
+            }
         }
 
-        if (maxDuration.value() || maxEvents) {
-            _interruptible_sets.clear(handle);
-        } else {
-            _interruptible_sets.set(handle);
+        /* remember the parameters that will be enabled in the delayed processing */
+        const uint8_t i = _advertising_enable_command_params.number_of_handles;
+        _advertising_enable_command_params.handles[i] = handle;
+        _advertising_enable_command_params.max_durations[i] = maxDuration;
+        _advertising_enable_command_params.max_events[i] = maxEvents;
+        _advertising_enable_command_params.number_of_handles++;
+
+        /* we delay the processing to gather as many calls as we can in one go */
+        if (!_process_enable_queue_pending) {
+            _process_enable_queue_pending = _event_queue.post([this] {
+                process_enable_queue();
+            });
         }
 
     } else
@@ -2439,12 +2426,14 @@ ble_error_t Gap::startAdvertising(
             return BLE_ERROR_INVALID_PARAM;
         }
 
+#if BLE_ROLE_OBSERVER
         // Address can be updated if the device is not scanning or advertising
         if ((_scan_state == ScanState::idle) && !_active_sets.get(LEGACY_ADVERTISING_HANDLE)) {
             _pal_gap.set_random_address(*random_address);
         } else {
             tr_error("could not update address, device scanning/advertising");
         }
+#endif // BLE_ROLE_OBSERVER
 
         error = _pal_gap.advertising_enable(true);
         if (error) {
@@ -2461,14 +2450,66 @@ ble_error_t Gap::startAdvertising(
         }
 
         _interruptible_sets.set(LEGACY_ADVERTISING_HANDLE);
-    }
 
-    _pending_sets.set(handle);
+        _pending_sets.set(handle);
+    }
 
     return error;
 }
 #endif
 
+#if BLE_FEATURE_EXTENDED_ADVERTISING
+void Gap::process_enable_queue()
+{
+    _process_enable_queue_pending = false;
+
+    tr_info("Evaluating pending advertising sets to be started");
+    if (!_advertising_enable_command_params.number_of_handles) {
+        /* no set pending to be enabled */
+        tr_debug("No sets to be enabled");
+        return;
+    }
+
+    for (size_t i = 0; i < BLE_GAP_MAX_ADVERTISING_SETS; ++i) {
+        if (_pending_sets.get(i)) {
+            /* we have to wait until nothing is pending */
+            tr_info("Cannot enable sets as pending sets present, will retry later");
+            return;
+        }
+    }
+
+    ble_error_t error = _pal_gap.extended_advertising_enable(
+        /* enable */ true,
+        _advertising_enable_command_params.number_of_handles,
+        _advertising_enable_command_params.handles,
+        (uint16_t*)&_advertising_enable_command_params.max_durations,
+        _advertising_enable_command_params.max_events
+    );
+
+    if (error) {
+        tr_error("Failed to start advertising set with error: %s", to_string(error));
+        if (_event_handler) {
+            for (size_t i = 0; i < _advertising_enable_command_params.number_of_handles; ++i) {
+                _pending_sets.clear(_advertising_enable_command_params.handles[i]);
+                _event_handler->onAdvertisingStart(
+                    AdvertisingStartEvent(_advertising_enable_command_params.handles[i], error)
+                );
+            }
+        }
+    } else {
+        for (size_t i = 0; i < _advertising_enable_command_params.number_of_handles; ++i) {
+            if (_advertising_enable_command_params.max_durations[i].value() || _advertising_enable_command_params.max_events[i]) {
+                _interruptible_sets.clear(_advertising_enable_command_params.handles[i]);
+            } else {
+                _interruptible_sets.set(_advertising_enable_command_params.handles[i]);
+            }
+            _pending_sets.set(_advertising_enable_command_params.handles[i]);
+        }
+    }
+
+    _advertising_enable_command_params.number_of_handles = 0;
+}
+#endif //BLE_FEATURE_EXTENDED_ADVERTISING
 
 #if BLE_ROLE_BROADCASTER
 ble_error_t Gap::stopAdvertising(advertising_handle_t handle)
@@ -2499,17 +2540,16 @@ ble_error_t Gap::stopAdvertising(advertising_handle_t handle)
 
 #if BLE_FEATURE_EXTENDED_ADVERTISING
     if (is_extended_advertising_available()) {
-        status = _pal_gap.extended_advertising_enable(
-            /*enable ? */ false,
-            /* number of advertising sets */ 1,
-            &handle,
-            nullptr,
-            nullptr
-        );
-
-        if (status) {
-            return status;
+        _pending_stop_sets.set(handle);
+        /* delay execution of command to accumulate multiple sets */
+        if (!_process_disable_queue_pending) {
+            _process_disable_queue_pending = _event_queue.post([this] {
+                process_disable_queue();
+            });
         }
+
+        status = BLE_ERROR_NONE;
+
     } else
 #endif // BLE_FEATURE_EXTENDED_ADVERTISING
     {
@@ -2525,12 +2565,60 @@ ble_error_t Gap::stopAdvertising(advertising_handle_t handle)
         }
 
         _advertising_timeout.detach();
-    }
 
-    _pending_sets.set(handle);
+        _pending_sets.set(handle);
+    }
 
     return status;
 }
+
+#if BLE_FEATURE_EXTENDED_ADVERTISING
+void Gap::process_disable_queue()
+{
+    advertising_handle_t sets[BLE_GAP_MAX_ADVERTISING_SETS];
+    uint8_t number_of_handles = 0;
+    // refresh for address for all connectable advertising sets
+    for (size_t i = 0; i < BLE_GAP_MAX_ADVERTISING_SETS; ++i) {
+        if (_pending_stop_sets.get(i)) {
+            sets[number_of_handles] = i;
+            number_of_handles++;
+            _pending_stop_sets.clear(i);
+        }
+    }
+
+    if (number_of_handles) {
+        ble_error_t error = _pal_gap.extended_advertising_enable(
+            /* enable */ false,
+             number_of_handles,
+             (advertising_handle_t*)&sets,
+             nullptr,
+             nullptr
+        );
+
+        if (error) {
+            for (size_t i = 0; i < number_of_handles; ++i) {
+                _event_handler->onAdvertisingEnd(
+                    AdvertisingEndEvent(
+                        (advertising_handle_t)sets[i],
+                        0/*connection*/,
+                        0/*completed_events*/,
+                        false/*connected*/,
+                        error
+                    )
+                );
+                tr_error("Could not stop advertising set %u, error: %s", i, to_string(error));
+            }
+        } else {
+            for (size_t i = 0; i < number_of_handles; ++i) {
+                _pending_sets.set(sets[i]);
+            }
+        }
+    }
+
+    _process_disable_queue_pending = false;
+}
+#endif // BLE_FEATURE_EXTENDED_ADVERTISING
+
 #endif
 
 
@@ -3334,7 +3422,11 @@ void Gap::on_legacy_advertising_stopped()
     _pending_sets.clear(LEGACY_ADVERTISING_HANDLE);
 
     // restart advertising if it was stopped to refresh the address
-    if (_address_refresh_sets.get(LEGACY_ADVERTISING_HANDLE) && (_scan_state == ScanState::idle)) {
+    if (_address_refresh_sets.get(LEGACY_ADVERTISING_HANDLE)
+#if BLE_ROLE_OBSERVER
+        && (_scan_state == ScanState::idle)
+#endif //BLE_ROLE_OBSERVER
+    ) {
         _address_refresh_sets.clear(LEGACY_ADVERTISING_HANDLE);
         startAdvertising(LEGACY_ADVERTISING_HANDLE);
         _adv_started_from_refresh.set(LEGACY_ADVERTISING_HANDLE);
@@ -3365,6 +3457,13 @@ void Gap::on_advertising_set_started(const mbed::Span<const uint8_t>& handles)
             );
         }
     }
+
+    /* delay processing to minimise churn (if multiple events are pending that would trigger it) */
+    if (!_process_enable_queue_pending) {
+        _process_enable_queue_pending = _event_queue.post([this] {
+            process_enable_queue();
+        });
+    }
 }
 
 void Gap::on_advertising_set_terminated(
@@ -3382,16 +3481,41 @@ void Gap::on_advertising_set_terminated(
             to_string(status),
             number_of_completed_extended_advertising_events);
 
-    _active_sets.clear(advertising_handle);
-    _pending_sets.clear(advertising_handle);
+    ble_error_t error_code = BLE_ERROR_UNSPECIFIED;
+    bool connected = false;
 
-    // If this is part of the address refresh start advertising again.
-    if (_address_refresh_sets.get(advertising_handle) && !connection_handle) {
-        _address_refresh_sets.clear(advertising_handle);
-        tr_info("Part of the address refresh, restarting advertising");
-        startAdvertising(advertising_handle);
-        _adv_started_from_refresh.set(advertising_handle);
-        return;
+    /* translate HCI error into BLE API error code */
+    if (status == hci_error_code_t::SUCCESS) {
+        error_code = BLE_ERROR_NONE;
+        /* self cancelled set will have the handle set to invalid value */
+        if (connection_handle != DM_CONN_ID_NONE) {
+            connected = true;
+        }
+    } else if (status == hci_error_code_t::ADVERTISING_TIMEOUT) {
+        error_code = BLE_ERROR_TIMEOUT;
+    } else if (status == hci_error_code_t::LIMIT_REACHED) {
+        error_code = BLE_ERROR_LIMIT_REACHED;
+    }
+
+    if (error_code != BLE_ERROR_UNSPECIFIED) {
+        _active_sets.clear(advertising_handle);
+        _pending_sets.clear(advertising_handle);
+
+        // If this is part of the address refresh start advertising again.
+        if (_address_refresh_sets.get(advertising_handle) && !connection_handle) {
+            _address_refresh_sets.clear(advertising_handle);
+            tr_info("Part of the address refresh, restarting advertising");
+            startAdvertising(advertising_handle);
+            _adv_started_from_refresh.set(advertising_handle);
+            return;
+        }
+    }
+
+    /* postpone as other events may still be pending */
+    if (!_process_disable_queue_pending) {
+        _process_disable_queue_pending = _event_queue.post([this] {
+            process_disable_queue();
+        });
     }
 
     if (!_event_handler) {
@@ -3403,7 +3527,8 @@ void Gap::on_advertising_set_terminated(
             advertising_handle,
             connection_handle,
             number_of_completed_extended_advertising_events,
-            status == hci_error_code_t::SUCCESS
+            connected,
+            error_code
         )
     );
 }
@@ -4129,7 +4254,11 @@ bool Gap::is_advertising() const
 }
 
 bool Gap::is_radio_active() const {
-    return _initiating || (_scan_state != ScanState::idle) || is_advertising();
+    return _initiating ||
+#if BLE_ROLE_OBSERVER
+        (_scan_state != ScanState::idle) ||
+#endif // BLE_ROLE_OBSERVER
+        is_advertising();
 }
 
 void Gap::update_advertising_set_connectable_attribute(
@@ -4194,12 +4323,14 @@ const address_t *Gap::get_random_address(controller_operation_t operation, size_
     // it to the address to use to determine if the address is correct or not.
     if (_initiating) {
         address_in_use = &resolvable_address;
+#if BLE_ROLE_OBSERVER
     } else if (_scan_state != ScanState::idle) {
         if (central_non_resolvable) {
             address_in_use = &non_resolvable_address;
         } else {
             address_in_use = &resolvable_address;
         }
+#endif //BLE_ROLE_OBSERVER
     } else if (advertising_use_main_address && (_active_sets.get(set_id) || _pending_sets.get(set_id))) {
         if (!_set_is_connectable.get(set_id) && peripheral_non_resolvable) {
             address_in_use = &non_resolvable_address;

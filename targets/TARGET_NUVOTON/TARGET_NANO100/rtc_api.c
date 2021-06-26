@@ -24,6 +24,14 @@
 #include "nu_miscutil.h"
 #include "mbed_mktime.h"
 
+/* Not support LIRC-clocked RTC
+ *
+ * H/W doesn't support this path.
+ */
+#if !MBED_CONF_TARGET_LXT_PRESENT
+#error "RTC can only clock by LXT but LXT is not present. Try disabling RTC by \"device_has_remove\" in mbed_app.json"
+#endif
+
 /* Micro seconds per second */
 #define NU_US_PER_SEC               1000000
 /* Timer clock per second

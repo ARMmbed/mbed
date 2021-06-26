@@ -137,6 +137,7 @@ int I2C::read(int ack)
 void I2C::start(void)
 {
     lock();
+    aquire();
     i2c_start(&_i2c);
     unlock();
 }

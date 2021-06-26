@@ -193,9 +193,9 @@ public:
 
     /** Called when advertising set stops advertising.
      *
-     * @param status SUCCESS if connection has been established.
+     * @param status SUCCESS if connection has been established or if stopped by user.
      * @param advertising_handle Advertising set handle.
-     * @param advertising_handle Connection handle.
+     * @param advertising_handle Connection handle. Set to invalid handle if no connection made.
      * @param number_of_completed_extended_advertising_events Number of events created during before advertising end.
      */
     virtual void on_advertising_set_terminated(

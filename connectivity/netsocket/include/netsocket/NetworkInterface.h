@@ -377,6 +377,18 @@ public:
      */
     virtual void attach(mbed::Callback<void(nsapi_event_t, intptr_t)> status_cb);
 
+#if MBED_CONF_NSAPI_ADD_EVENT_LISTENER_RETURN_CHANGE
+    /** Add event listener for interface.
+     *
+     * This API allows multiple callback to be registered for a single interface.
+     * of both leads to undefined behavior.
+     *
+     *  @param status_cb The callback for status changes.
+     *  @return NSAPI_ERROR_OK on success
+     *  @return NSAPI_ERROR_NO_MEMORY if the function fails to create a new entry.
+     */
+    nsapi_error_t add_event_listener(mbed::Callback<void(nsapi_event_t, intptr_t)> status_cb);
+#else
     /** Add event listener for interface.
      *
      * This API allows multiple callback to be registered for a single interface.
@@ -386,9 +398,16 @@ public:
      * Application may only use attach() or add_event_listener() interface. Mixing usage
      * of both leads to undefined behavior.
      *
+     * @warning This version of the function does not use the `std::nothrow` feature. Subsequently,
+     * the function may fail to allocate memory and cause a system error. To use the new
+     * version with the changes, set "nsapi.add-event-listener-return-change": 1 in the
+     * target overrides section in your mbed_app.json file.
+     *
      *  @param status_cb The callback for status changes.
      */
+    MBED_DEPRECATED_SINCE("mbed-os-6.12", "This function return value will change to nsapi_error_t in the next major release. See documentation for details.")
     void add_event_listener(mbed::Callback<void(nsapi_event_t, intptr_t)> status_cb);
+#endif
 
 #if MBED_CONF_PLATFORM_CALLBACK_COMPARABLE
     /** Remove event listener from interface.
@@ -512,6 +531,10 @@ public:
      * configuration).
      */
     virtual void set_default_parameters();
+
+private:
+    // Unified implementation for different versions of add_event_listener.
+    nsapi_error_t internal_add_event_listener(mbed::Callback<void(nsapi_event_t, intptr_t)> status_cb);
 };
 
 #endif

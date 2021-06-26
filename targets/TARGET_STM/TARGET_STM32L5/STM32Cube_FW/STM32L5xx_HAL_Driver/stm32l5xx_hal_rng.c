@@ -116,7 +116,6 @@
 /*  Health test control register information to use in CCM algorithm */
 #define RNG_HTCFG_1   0x17590ABCU /*!< Magic number */
 #define RNG_HTCFG     0x0000A2B3U /*!< Recommended value for NIST compliancy */
-#define RNG_HTCFG_REVB 0x000CAA74U /*!< Recommended value for old MCU cut - deprecated */
 /**
   * @}
   */
@@ -211,18 +210,10 @@ HAL_StatusTypeDef HAL_RNG_Init(RNG_HandleTypeDef *hrng)
   MODIFY_REG(hrng->Instance->CR, RNG_CR_CED | RNG_CR_CONDRST, hrng->Init.ClockErrorDetection | RNG_CR_CONDRST);
 
 #if defined(RNG_VER_3_2) || defined(RNG_VER_3_1) || defined(RNG_VER_3_0)
-if ( HAL_GetREVID() == 0x2000) { // Deprecated - old MCU
   /*!< magic number must be written immediately before to RNG_HTCRG */
   WRITE_REG(hrng->Instance->HTCR, RNG_HTCFG_1);
   /* for best latency and to be compliant with NIST */
-  WRITE_REG(hrng->Instance->HTCR, RNG_HTCFG_REVB);
-}
-else {
-    /*!< magic number must be written immediately before to RNG_HTCRG */
-    WRITE_REG(hrng->Instance->HTCR, RNG_HTCFG_1);
-    /* for best latency and to be compliant with NIST */
-    WRITE_REG(hrng->Instance->HTCR, RNG_HTCFG);
-  }
+  WRITE_REG(hrng->Instance->HTCR, RNG_HTCFG);
 #endif /* RNG_VER_3_2 || RNG_VER_3_1 || RNG_VER_3_0 */
 
   /* Writing bit CONDRST=0 */
@@ -691,10 +682,6 @@ HAL_StatusTypeDef HAL_RNG_GenerateRandomNumber(RNG_HandleTypeDef *hrng, uint32_t
         {
           hrng->State = HAL_RNG_STATE_READY;
           hrng->ErrorCode = HAL_RNG_ERROR_TIMEOUT;
-          if (__HAL_RNG_GET_FLAG(hrng, RNG_FLAG_SECS) != RESET)
-          {
-            hrng->ErrorCode |= HAL_RNG_ERROR_SEED;
-          }
           /* Process Unlocked */
           __HAL_UNLOCK(hrng);
           return HAL_ERROR;

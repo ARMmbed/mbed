@@ -982,7 +982,12 @@ static void nsapi_dns_query_async_create(void *ptr)
         }
 
         if (!query->socket_cb_data) {
-            query->socket_cb_data = new SOCKET_CB_DATA;
+            query->socket_cb_data = new (std::nothrow) SOCKET_CB_DATA;
+            if (!query->socket_cb_data) {
+                delete socket;
+                nsapi_dns_query_async_resp(query, NSAPI_ERROR_NO_MEMORY, NULL);
+                return;
+            }
         }
         query->socket_cb_data->call_in_cb = query->call_in_cb;
         query->socket_cb_data->stack = query->stack;

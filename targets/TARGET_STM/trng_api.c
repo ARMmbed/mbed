@@ -128,8 +128,8 @@ void trng_init(trng_t *obj)
     }
 
     /* first random number generated after setting the RNGEN bit should not be used */
-    if (HAL_RNG_GenerateRandomNumber(&obj->handle, &dummy) != HAL_OK) {
-        printf("trng_init: HAL_RNG_GenerateRandomNumber error 0x%x\n", obj->handle.ErrorCode); // should not occur
+    /* could be executed few times in case of long init (obj->handle.ErrorCode can be checked for debug) */
+    while (HAL_RNG_GenerateRandomNumber(&obj->handle, &dummy) != HAL_OK) {
     }
 
 #if defined(CFG_HW_RNG_SEMID)

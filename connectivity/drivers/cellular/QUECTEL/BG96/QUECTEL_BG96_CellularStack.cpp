@@ -20,6 +20,7 @@
 #include "QUECTEL/BG96/QUECTEL_BG96_CellularStack.h"
 #include "CellularLog.h"
 #include "netsocket/TLSSocket.h"
+#include "CellularUtil.h"
 
 // Ref: Quectel_BG96_SSL_AT_Commands_Manual, ch 2.1.1 AT+QSSLCFG
 static const int BG96_SUPPORTED_SSL_VERSION     = 4; // All
@@ -155,6 +156,40 @@ nsapi_error_t QUECTEL_BG96_CellularStack::socket_connect(nsapi_socket_t handle, 
     }
 
     return err;
+}
+
+nsapi_error_t QUECTEL_BG96_CellularStack::get_ip_address(SocketAddress *address)
+{
+    if (!address) {
+        return NSAPI_ERROR_PARAMETER;
+    }
+    _at.lock();
+
+    _at.cmd_start_stop("+QIACT", "?");
+    _at.resp_start("+QIACT:");
+
+    int32_t context_type = 0;
+
+    if (_at.info_resp()) {
+        _at.skip_param(); // ID
+        _at.skip_param(); // State
+
+        context_type = _at.read_int();
+        if (context_type == 1) {
+            _stack_type = IPV4_STACK;
+        } else if (context_type == 2) {
+            _stack_type = IPV6_STACK;
+        }
+
+        if (_at.read_string(_ip, PDP_IPV6_SIZE) != -1) {
+            mbed_cellular_util::convert_ipv6(_ip);
+            address->set_ip_address(_ip);
+        }
+    }
+    _at.resp_stop();
+    _at.unlock();
+
+    return (context_type > 0) ? NSAPI_ERROR_OK : NSAPI_ERROR_NO_ADDRESS;
 }
 
 void QUECTEL_BG96_CellularStack::urc_qiurc_recv()

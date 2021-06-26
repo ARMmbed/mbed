@@ -567,6 +567,22 @@ nsapi_error_t LWIP::setsockopt(nsapi_socket_t handle, int level, int optname, co
             }
             return 0;
 
+        case NSAPI_BROADCAST:
+            if (NETCONNTYPE_GROUP(s->conn->type) != NETCONN_UDP) {
+                return NSAPI_ERROR_UNSUPPORTED;
+            }
+
+            if (optlen != sizeof(int)) {
+                return NSAPI_ERROR_UNSUPPORTED;
+            }
+
+            if (*(const int *)optval) {
+                ip_set_option(s->conn->pcb.ip, SOF_BROADCAST);
+            } else {
+                ip_reset_option(s->conn->pcb.ip, SOF_BROADCAST);
+            }
+            return 0;
+
         case NSAPI_ADD_MEMBERSHIP:
         case NSAPI_DROP_MEMBERSHIP: {
             if (optlen != sizeof(nsapi_ip_mreq_t)) {

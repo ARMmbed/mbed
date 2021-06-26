@@ -60,6 +60,7 @@ void SystemCoreClockUpdate (void)            /* Get Core Clock Frequency      */
     CyclesPerUs = (SystemCoreClock + 500000UL) / 1000000UL;
 }
 
+#if MBED_CONF_TARGET_HXT_PRESENT
 /**
   * @brief      Set PF.2 and PF.3 to input mode
   * @param      None
@@ -73,6 +74,7 @@ static __INLINE void HXTInit(void)
     PF->MODE &= ~(GPIO_MODE_MODE2_Msk | GPIO_MODE_MODE3_Msk);
 
 }
+#endif
 
 /**
  * @brief  Initialize the System
@@ -106,7 +108,9 @@ void SystemInit (void)
     RTC->GPIOCTL1 &= ~(RTC_GPIOCTL1_CTLSEL4_Msk | RTC_GPIOCTL1_CTLSEL5_Msk |
                        RTC_GPIOCTL1_CTLSEL6_Msk | RTC_GPIOCTL1_CTLSEL7_Msk);
     CLK->APBCLK0 &= ~CLK_APBCLK0_RTCCKEN_Msk;
+#if MBED_CONF_TARGET_HXT_PRESENT
     HXTInit();
+#endif
 
 #if MBED_CONF_TARGET_SPIM_CCM_ENABLE
     // Divert SRAM bank2 (32 KB) to CCM from SPIM cache

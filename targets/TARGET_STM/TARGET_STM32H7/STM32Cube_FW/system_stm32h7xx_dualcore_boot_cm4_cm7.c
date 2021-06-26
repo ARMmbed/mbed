@@ -141,7 +141,7 @@
   * @param  None
   * @retval None
   */
-void SystemInit (void)
+__weak void SystemInit (void)
 {
   /* FPU settings ------------------------------------------------------------*/
   #if (__FPU_PRESENT == 1) && (__FPU_USED == 1)
@@ -351,7 +351,8 @@ void SystemCoreClockUpdate (void)
         break;
 
       default:
-          pllvco = ((float_t)CSI_VALUE / (float_t)pllm) * ((float_t)(uint32_t)(RCC->PLL1DIVR & RCC_PLL1DIVR_N1) + (fracn1/(float_t)0x2000) +(float_t)1 );
+          hsivalue = (HSI_VALUE >> ((RCC->CR & RCC_CR_HSIDIV)>> 3)) ;
+          pllvco = ((float_t)hsivalue / (float_t)pllm) * ((float_t)(uint32_t)(RCC->PLL1DIVR & RCC_PLL1DIVR_N1) + (fracn1/(float_t)0x2000) +(float_t)1 );
         break;
       }
       pllp = (((RCC->PLL1DIVR & RCC_PLL1DIVR_P1) >>9) + 1U ) ;
@@ -364,7 +365,7 @@ void SystemCoreClockUpdate (void)
     break;
 
   default:
-    common_system_clock = CSI_VALUE;
+    common_system_clock = (uint32_t) (HSI_VALUE >> ((RCC->CR & RCC_CR_HSIDIV)>> 3));
     break;
   }
 
@@ -384,7 +385,7 @@ void SystemCoreClockUpdate (void)
 #endif /* DUAL_CORE && CORE_CM4 */
 }
 
-#endif /* DUAL_CORE */
+#endif   /* DUAL_CORE */
 
 /**
   * @}

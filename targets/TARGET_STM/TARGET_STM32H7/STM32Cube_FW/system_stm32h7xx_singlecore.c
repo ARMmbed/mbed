@@ -49,6 +49,7 @@
 
 #include "stm32h7xx.h"
 
+
 #if !defined(DUAL_CORE)
 
 #include <math.h>
@@ -143,7 +144,7 @@
   * @param  None
   * @retval None
   */
-void SystemInit (void)
+__weak void SystemInit (void)
 {
 #if defined (DATA_IN_D2_SRAM)
  __IO uint32_t tmpreg;
@@ -355,7 +356,8 @@ void SystemCoreClockUpdate (void)
         break;
 
       default:
-          pllvco = ((float_t)CSI_VALUE / (float_t)pllm) * ((float_t)(uint32_t)(RCC->PLL1DIVR & RCC_PLL1DIVR_N1) + (fracn1/(float_t)0x2000) +(float_t)1 );
+          hsivalue = (HSI_VALUE >> ((RCC->CR & RCC_CR_HSIDIV)>> 3)) ;
+          pllvco = ((float_t)hsivalue / (float_t)pllm) * ((float_t)(uint32_t)(RCC->PLL1DIVR & RCC_PLL1DIVR_N1) + (fracn1/(float_t)0x2000) +(float_t)1 );
         break;
       }
       pllp = (((RCC->PLL1DIVR & RCC_PLL1DIVR_P1) >>9) + 1U ) ;
@@ -368,7 +370,7 @@ void SystemCoreClockUpdate (void)
     break;
 
   default:
-    SystemCoreClock = CSI_VALUE;
+    SystemCoreClock = (uint32_t) (HSI_VALUE >> ((RCC->CR & RCC_CR_HSIDIV)>> 3));
     break;
   }
 
@@ -390,7 +392,7 @@ void SystemCoreClockUpdate (void)
 #endif
 }
 
-#endif /* not DUAL_CORE */
+#endif
 
 /**
   * @}

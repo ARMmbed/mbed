@@ -22,7 +22,9 @@
 #endif
 
 #if !defined(MBED_ROM_SIZE)
-#define MBED_ROM_SIZE  0x100000  // 1.0 MB
+// MBED_ROM_SIZE cannot be full ROM size as core M0 FW is using the end of FLASH
+// Size is defined in json with "mbed_rom_size"
+#error "mbed_rom_size is missing"
 #endif
 
 #if !defined(MBED_RAM_START)

@@ -576,6 +576,11 @@ private:
     ~Gap();
 
 #if BLE_ROLE_BROADCASTER
+#if BLE_FEATURE_EXTENDED_ADVERTISING
+    void process_enable_queue();
+    void process_disable_queue();
+#endif // BLE_FEATURE_EXTENDED_ADVERTISING
+
     ble_error_t setAdvertisingData(
         advertising_handle_t handle,
         Span<const uint8_t> payload,
@@ -912,6 +917,7 @@ private:
 #endif // BLE_FEATURE_PRIVACY
     ble::address_t _random_static_identity_address;
 
+#if BLE_ROLE_OBSERVER
     enum class ScanState : uint8_t {
         idle,
         scan,
@@ -928,6 +934,7 @@ private:
     scan_period_t _scan_requested_period = scan_period_t(0);
 
     bool _scan_requested = false;
+#endif // BLE_ROLE_OBSERVER
 
 #if BLE_GAP_HOST_BASED_PRIVATE_ADDRESS_RESOLUTION
     enum class ConnectionToHostResolvedAddressState : uint8_t {
@@ -994,6 +1001,9 @@ private:
     };
 
     BitArray<BLE_GAP_MAX_ADVERTISING_SETS> _existing_sets;
+#if BLE_FEATURE_EXTENDED_ADVERTISING
+    BitArray<BLE_GAP_MAX_ADVERTISING_SETS> _pending_stop_sets;
+#endif // BLE_FEATURE_EXTENDED_ADVERTISING
     BitArray<BLE_GAP_MAX_ADVERTISING_SETS> _active_sets;
     BitArray<BLE_GAP_MAX_ADVERTISING_SETS> _active_periodic_sets;
     BitArray<BLE_GAP_MAX_ADVERTISING_SETS> _connectable_payload_size_exceeded;
@@ -1003,6 +1013,21 @@ private:
     BitArray<BLE_GAP_MAX_ADVERTISING_SETS> _interruptible_sets;
     BitArray<BLE_GAP_MAX_ADVERTISING_SETS> _adv_started_from_refresh;
 
+#if BLE_FEATURE_EXTENDED_ADVERTISING
+#if BLE_GAP_HOST_MAX_OUTSTANDING_ADVERTISING_START_COMMANDS < 1 || BLE_GAP_HOST_MAX_OUTSTANDING_ADVERTISING_START_COMMANDS > BLE_GAP_MAX_ADVERTISING_SETS
+#error "BLE_GAP_HOST_MAX_OUTSTANDING_ADVERTISING_START_COMMANDS must be at least 1 and not bigger than BLE_GAP_MAX_ADVERTISING_SETS"
+#endif
+    struct AdvertisingEnableCommandParams_t {
+        adv_duration_t max_durations[BLE_GAP_HOST_MAX_OUTSTANDING_ADVERTISING_START_COMMANDS];
+        advertising_handle_t handles[BLE_GAP_HOST_MAX_OUTSTANDING_ADVERTISING_START_COMMANDS];
+        uint8_t max_events[BLE_GAP_HOST_MAX_OUTSTANDING_ADVERTISING_START_COMMANDS];
+        uint8_t number_of_handles;
+    };
+
+    AdvertisingEnableCommandParams_t _advertising_enable_command_params;
+    bool _process_enable_queue_pending = false;
+    bool _process_disable_queue_pending = false;
+#endif // BLE_FEATURE_EXTENDED_ADVERTISING
 
     bool _user_manage_connection_parameter_requests;
 #if BLE_ROLE_OBSERVER

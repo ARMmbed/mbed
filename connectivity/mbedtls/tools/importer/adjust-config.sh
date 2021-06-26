@@ -117,6 +117,9 @@ conf unset MBEDTLS_SSL_TRUNCATED_HMAC
 
 conf unset MBEDTLS_PLATFORM_TIME_TYPE_MACRO
 
+# potentially save flash space by not enabling self-tests by default
+conf unset MBEDTLS_SELF_TEST
+
 # The default size of MBEDTLS_MPI_MAX_SIZE is 1024 bytes.
 # In some cases, this value is set to stack buffers.
 # Reduce the maximal MBEDTLS_MPI_MAX_SIZE to 512 bytes,

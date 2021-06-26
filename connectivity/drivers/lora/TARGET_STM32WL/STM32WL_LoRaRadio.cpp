@@ -123,16 +123,10 @@ static DigitalOut _rf_dbg_tx(MBED_CONF_STM32WL_LORA_DRIVER_DEBUG_TX, 0);
 #endif
 
 
-STM32WL_LoRaRadio::STM32WL_LoRaRadio(PinName rf_switch_ctrl1,
-                                     PinName rf_switch_ctrl2,
-                                     PinName rf_switch_ctrl3
-                                    )
-    :
-    _rf_switch_ctrl1(rf_switch_ctrl1, 0),
-    _rf_switch_ctrl2(rf_switch_ctrl2, 0),
-    _rf_switch_ctrl3(rf_switch_ctrl3, 0)
-
+STM32WL_LoRaRadio::STM32WL_LoRaRadio()
 {
+    set_antenna_switch(RBI_SWITCH_OFF);
+
     _radio_events = NULL;
     _image_calibrated = false;
     _force_image_calibration = false;
@@ -480,49 +474,6 @@ void STM32WL_LoRaRadio::Radio_SMPS_Set(uint8_t level)
         write_to_register(SUBGHZ_SMPSC2R, modReg | level);
     }
 }
-
-/**
-  * Sets up radio switch position according to the
-  * radio mode
-  */
-void STM32WL_LoRaRadio::set_antenna_switch(RBI_Switch_TypeDef state)
-{
-    // here we got to do ifdef for changing controls
-    // as some pins might be NC
-    switch (state) {
-        case RBI_SWITCH_OFF: {
-            /* Turn off switch */
-            _rf_switch_ctrl3 = 0;
-            _rf_switch_ctrl1 = 0;
-            _rf_switch_ctrl2 = 0;
-            break;
-        }
-        case RBI_SWITCH_RX: {
-            /*Turns On in Rx Mode the RF Switch */
-            _rf_switch_ctrl3 = 1;
-            _rf_switch_ctrl1 = 1;
-            _rf_switch_ctrl2 = 0;
-            break;
-        }
-        case RBI_SWITCH_RFO_LP: {
-            /*Turns On in Tx Low Power the RF Switch */
-            _rf_switch_ctrl3 = 1;
-            _rf_switch_ctrl1 = 1;
-            _rf_switch_ctrl2 = 1;
-            break;
-        }
-        case RBI_SWITCH_RFO_HP: {
-            /*Turns On in Tx High Power the RF Switch */
-            _rf_switch_ctrl3 = 1;
-            _rf_switch_ctrl1 = 0;
-            _rf_switch_ctrl2 = 1;
-            break;
-        }
-        default:
-            break;
-    }
-}
-/* End STM32WL specific HW defs */
 
 void STM32WL_LoRaRadio::calibrate_image(uint32_t freq)
 {

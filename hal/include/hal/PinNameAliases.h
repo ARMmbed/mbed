@@ -28,28 +28,93 @@
 
 #ifdef TARGET_FF_ARDUINO_UNO
 
+#ifndef A0
 #define A0  ARDUINO_UNO_A0
+#endif
+
+#ifndef A1
 #define A1  ARDUINO_UNO_A1
+#endif
+
+#ifndef A2
 #define A2  ARDUINO_UNO_A2
+#endif
+
+#ifndef A3
 #define A3  ARDUINO_UNO_A3
+#endif
+
+#ifndef A4
 #define A4  ARDUINO_UNO_A4
+#endif
+
+#ifndef A5
 #define A5  ARDUINO_UNO_A5
+#endif
+
+#ifndef D0
 #define D0  ARDUINO_UNO_D0
+#endif
+
+#ifndef D1
 #define D1  ARDUINO_UNO_D1
+#endif
+
+#ifndef D2
 #define D2  ARDUINO_UNO_D2
+#endif
+
+#ifndef D3
 #define D3  ARDUINO_UNO_D3
+#endif
+
+#ifndef D4
 #define D4  ARDUINO_UNO_D4
+#endif
+
+#ifndef D5
 #define D5  ARDUINO_UNO_D5
+#endif
+
+#ifndef D6
 #define D6  ARDUINO_UNO_D6
+#endif
+
+#ifndef D7
 #define D7  ARDUINO_UNO_D7
+#endif
+
+#ifndef D8
 #define D8  ARDUINO_UNO_D8
+#endif
+
+#ifndef D9
 #define D9  ARDUINO_UNO_D9
+#endif
+
+#ifndef D10
 #define D10 ARDUINO_UNO_D10
+#endif
+
+#ifndef D11
 #define D11 ARDUINO_UNO_D11
+#endif
+
+#ifndef D12
 #define D12 ARDUINO_UNO_D12
+#endif
+
+#ifndef D13
 #define D13 ARDUINO_UNO_D13
+#endif
+
+#ifndef D14
 #define D14 ARDUINO_UNO_D14
+#endif
+
+#ifndef D15
 #define D15 ARDUINO_UNO_D15
+#endif
 
 #endif // TARGET_FF_ARDUINO_UNO
 
@@ -82,9 +147,19 @@
 
 #endif // TARGET_FF_ARDUINO
 
+#ifdef TARGET_FF_ARDUINO_UNO
+
 // Arduino Uno I2C signals aliases
 #define ARDUINO_UNO_I2C_SDA ARDUINO_UNO_D14
 #define ARDUINO_UNO_I2C_SCL ARDUINO_UNO_D15
+
+// Legacy I2C aliases
+#ifndef I2C_SDA
+#define I2C_SDA ARDUINO_UNO_I2C_SDA
+#endif
+#ifndef I2C_SCL
+#define I2C_SCL ARDUINO_UNO_I2C_SCL
+#endif
 
 // Arduino Uno SPI signals aliases
 #define ARDUINO_UNO_SPI_CS   ARDUINO_UNO_D10
@@ -92,9 +167,25 @@
 #define ARDUINO_UNO_SPI_MISO ARDUINO_UNO_D12
 #define ARDUINO_UNO_SPI_SCK  ARDUINO_UNO_D13
 
+// Legacy SPI aliases
+#ifndef SPI_CS
+#define SPI_CS ARDUINO_UNO_SPI_CS
+#endif
+#ifndef SPI_MOSI
+#define SPI_MOSI ARDUINO_UNO_SPI_MOSI
+#endif
+#ifndef SPI_MISO
+#define SPI_MISO ARDUINO_UNO_SPI_MISO
+#endif
+#ifndef SPI_SCK
+#define SPI_SCK ARDUINO_UNO_SPI_SCK
+#endif
+
 // Arduino Uno UART signals aliases
 #define ARDUINO_UNO_UART_TX ARDUINO_UNO_D1
 #define ARDUINO_UNO_UART_RX ARDUINO_UNO_D0
+
+#endif // TARGET_FF_ARDUINO_UNO
 
 #endif // (TARGET_FF_ARDUINO) || (TARGET_FF_ARDUINO_UNO)
 

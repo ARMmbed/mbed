@@ -16,6 +16,7 @@ target_sources(mbed-mbedtls
         platform/src/mbed_trng.cpp
         platform/src/platform_alt.cpp
         platform/src/shared_rng.cpp
+        platform/src/timing_mbed.cpp
 
         source/aes.c
         source/aesni.c

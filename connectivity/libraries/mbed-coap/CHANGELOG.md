@@ -1,4 +1,10 @@
 # Change Log
+## [v5.1.11](https://github.com/ARMmbed/mbed-coap/releases/tag/v5.1.11)
+
+Block-Wise request (block1) error handling improvements: 
+ * Removed SN_COAP_BLOCKWISE_MAX_TIME_DATA_STORED usage. Block-Wise requests will now follow normal retranmission rules.
+ * Process block1 responses only once. If response is coming in wrong order just ignore it wait next response to happen.
+
 ## [v5.1.10](https://github.com/ARMmbed/mbed-coap/releases/tag/v5.1.10)
 
 - Fix regression from previous release concerning 1024 byte blocksize operations.

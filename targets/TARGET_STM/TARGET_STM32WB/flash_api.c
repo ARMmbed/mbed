@@ -19,7 +19,6 @@
 #if DEVICE_FLASH
 
 #include "flash_api.h"
-#include "flash_data.h"
 #include "mbed_critical.h"
 #include "mbed_assert.h"
 #include "cmsis.h"
@@ -80,7 +79,7 @@ int32_t flash_erase_sector(flash_t *obj, uint32_t address)
     uint32_t cpu1_sem_status = 1;
     uint32_t cpu2_sem_status = 1;
 
-    if ((address >= (FLASH_BASE + FLASH_SIZE)) || (address < FLASH_BASE)) {
+    if ((address >= (FLASH_BASE + MBED_ROM_SIZE)) || (address < FLASH_BASE)) {
         return -1;
     }
 
@@ -179,7 +178,7 @@ int32_t flash_program_page(flash_t *obj, uint32_t address, const uint8_t *data, 
     uint32_t cpu1_sem_status = 1;
     uint32_t cpu2_sem_status = 1;
 
-    if ((address >= (FLASH_BASE + FLASH_SIZE)) || (address < FLASH_BASE)) {
+    if ((address >= (FLASH_BASE + MBED_ROM_SIZE)) || (address < FLASH_BASE)) {
         return -1;
     }
 
@@ -267,7 +266,7 @@ int32_t flash_program_page(flash_t *obj, uint32_t address, const uint8_t *data, 
 uint32_t flash_get_sector_size(const flash_t *obj, uint32_t address)
 {
     /*  considering 1 sector = 1 page */
-    if ((address >= (FLASH_BASE + FLASH_SIZE)) || (address < FLASH_BASE)) {
+    if ((address >= (FLASH_BASE + MBED_ROM_SIZE)) || (address < FLASH_BASE)) {
         return MBED_FLASH_INVALID_SIZE;
     } else {
         return FLASH_PAGE_SIZE;
@@ -301,7 +300,7 @@ uint32_t flash_get_start_address(const flash_t *obj)
  */
 uint32_t flash_get_size(const flash_t *obj)
 {
-    return FLASH_SIZE;
+    return MBED_ROM_SIZE;
 }
 
 uint8_t flash_get_erase_value(const flash_t *obj)

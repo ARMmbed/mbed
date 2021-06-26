@@ -23,7 +23,9 @@ target_sources(${TEST_NAME}
 
 target_link_libraries(${TEST_NAME}
     PRIVATE
-        mbed-headers
+        mbed-headers-base
+        mbed-headers-platform
+        mbed-headers-events
         mbed-stubs-events
         mbed-stubs-platform
         gmock_main

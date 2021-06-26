@@ -586,9 +586,10 @@ struct AdvertisingStartEvent {
     /** Create an advertising start event.
      *
      * @param advHandle Advertising set handle.
+     * @param status Advertising set start command status.
      */
-    AdvertisingStartEvent(advertising_handle_t advHandle) :
-        advHandle(advHandle)
+    AdvertisingStartEvent(advertising_handle_t advHandle, ble_error_t status = BLE_ERROR_NONE) :
+        advHandle(advHandle), status(status)
     {
     }
 
@@ -600,8 +601,15 @@ struct AdvertisingStartEvent {
         return advHandle;
     }
 
+    /** Get status of operation. */
+    ble_error_t getStatus() const
+    {
+        return status;
+    }
+
 private:
     advertising_handle_t advHandle;
+    ble_error_t status;
 };
 
 /**
@@ -610,7 +618,8 @@ private:
  * @see ble::Gap::EventHandler::onAdvertisingEnd().
  *
  * @note The connection handle, connected flag and completed_event fields are
- * valid if the flag legacy is not set to true.
+ * valid if the flag legacy is not set to true. If status is different from BLE_ERROR_NONE
+ * the completed_events field is not valid and the set may still be active.
  */
 struct AdvertisingEndEvent {
 #if !defined(DOXYGEN_ONLY)
@@ -618,21 +627,29 @@ struct AdvertisingEndEvent {
     /** Create an extended advertising end event.
      *
      * @param advHandle Advertising set handle.
-     * @param connection Connection handle.
-     * @param completed_events Number of events created during before advertising end.
+     * @param connection Connection handle - only valid if connected is True.
+     * @param completed_events Number of events created during before advertising end - only valid
+     *        if advertising end has been caused by BLE_ERROR_LIMIT_REACHED, not the local user.
+     *        Check getStatus().
      * @param connected True if connection has been established.
+     * @param status Error code showing the reason for event. BLE_ERROR_LIMIT_REACHED if set number
+     *        of events have been reached. BLE_ERROR_TIMEOUT if set time has elapsed.
+     *        BLE_ERROR_SUCCESS if connection occurred or user ended the set. Check isConnected()
+     *        to determine which.
      */
     AdvertisingEndEvent(
         advertising_handle_t advHandle,
         connection_handle_t connection,
         uint8_t completed_events,
-        bool connected
+        bool connected,
+        ble_error_t status = BLE_ERROR_NONE
     ) :
         advHandle(advHandle),
         connection(connection),
         completed_events(completed_events),
         connected(connected),
-        legacy(false)
+        legacy(false),
+        status(status)
     {
     }
 
@@ -643,7 +660,8 @@ struct AdvertisingEndEvent {
         connection(),
         completed_events(0),
         connected(false),
-        legacy(true)
+        legacy(true),
+        status(BLE_ERROR_NONE)
     {
     }
 
@@ -683,12 +701,20 @@ struct AdvertisingEndEvent {
         return legacy;
     }
 
+    /** Get the result of the stop advertising event. If the status is not BLE_ERROR_NONE the set
+     * may still be active. */
+    ble_error_t getStatus() const
+    {
+        return status;
+    }
+
 private:
     advertising_handle_t advHandle;
     connection_handle_t connection;
     uint8_t completed_events;
     bool connected;
     bool legacy;
+    ble_error_t status;
 };
 
 /**

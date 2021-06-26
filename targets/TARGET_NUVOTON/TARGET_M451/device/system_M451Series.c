@@ -84,8 +84,10 @@ void SystemInit(void)
     {
         M32(GCR_BASE+0x14) |= BIT7;
     }
+#if MBED_CONF_TARGET_HXT_PRESENT
     /* Force to use INV type with HXT */
     CLK->PWRCTL &= ~CLK_PWRCTL_HXTSELTYP_Msk;
+#endif
     SYS_LockReg();
 
 

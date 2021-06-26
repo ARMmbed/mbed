@@ -28,6 +28,7 @@
 #include "bstream.h"
 #include "hci_mbed_os_adaptation.h"
 #include "mbed_trace.h"
+#include "platform/mbed_error.h"
 
 /* STM32WB include files */
 #include "stm32wbxx_ll_ipcc.h"
@@ -83,7 +84,9 @@ static bool get_bd_address(uint8_t *bd_addr);
 static bool sysevt_wait(void);
 static bool sysevt_check(void);
 
+#if DEVICE_FLASH
 extern int BLE_inited;
+#endif
 
 namespace ble {
 namespace vendor {
@@ -130,7 +133,8 @@ public:
         HciResetCmd();
     }
 
-    static uint8_t convert_db_to_tx_power_index(int8_t level_db) {
+    static uint8_t convert_db_to_tx_power_index(int8_t level_db)
+    {
         const int8_t conversion[] = {
             -40, -21, -20, -19,
             -18, -16, -15, -14,
@@ -151,7 +155,8 @@ public:
         return index;
     }
 
-    virtual ble_error_t set_tx_power(int8_t level_db) {
+    virtual ble_error_t set_tx_power(int8_t level_db)
+    {
 
 
         uint8_t buf[2];
@@ -480,10 +485,43 @@ public:
             WirelessFwInfo_t wireless_info_instance;
             WirelessFwInfo_t *p_wireless_info = &wireless_info_instance;
             if (SHCI_GetWirelessFwInfo(p_wireless_info) != SHCI_Success) {
-                tr_info("SHCI_GetWirelessFwInfo error");
+                tr_error("SHCI_GetWirelessFwInfo error");
             } else {
+                // https://github.com/STMicroelectronics/STM32CubeWB/tree/master/Projects/STM32WB_Copro_Wireless_Binaries
+                // Be sure that you are using the latest BLE FW version
                 tr_info("WIRELESS COPROCESSOR FW VERSION ID = %d.%d.%d", p_wireless_info->VersionMajor, p_wireless_info->VersionMinor, p_wireless_info->VersionSub);
-                tr_info("WIRELESS COPROCESSOR FW STACK TYPE = %d", p_wireless_info->StackType);
+                tr_info("WIRELESS COPROCESSOR FW STACK TYPE = %d (ROM size 0x%x)", p_wireless_info->StackType, MBED_ROM_SIZE);
+
+#if STM32WB15xx
+                switch (p_wireless_info->StackType) {
+                    case INFO_STACK_TYPE_BLE_FULL:
+                        error("Wrong BLE FW\n");
+                        break;
+                    case INFO_STACK_TYPE_BLE_HCI:
+                        if (MBED_ROM_SIZE > 0x32800)  {
+                            error("Wrong MBED_ROM_SIZE with HCI FW\n");
+                        }
+                        break;
+                    default:
+                        tr_error("StackType %u not expected\n", p_wireless_info->StackType);
+                }
+#endif
+#if STM32WB55xx
+                switch (p_wireless_info->StackType) {
+                    case INFO_STACK_TYPE_BLE_FULL:
+                        if (MBED_ROM_SIZE > 0xCA000)  {
+                            error("Wrong MBED_ROM_SIZE with BLE FW\n");
+                        }
+                        break;
+                    case INFO_STACK_TYPE_BLE_HCI:
+                        if (MBED_ROM_SIZE > 0xE0000)  {
+                            error("Wrong MBED_ROM_SIZE with HCI FW\n");
+                        }
+                        break;
+                    default:
+                        tr_error("StackType %u not expected\n", p_wireless_info->StackType);
+                }
+#endif
             }
         }
     }
@@ -532,7 +570,7 @@ private:
         /*  At this stage, we'll need to wait for ready event,
          *  passed thru TL_SYS_EvtReceived */
         if (!sysevt_wait()) {
-            tr_info("ERROR booting WB controler");
+            error("ERROR booting WB controler\n");
             return;
         }
 
@@ -659,8 +697,10 @@ private:
          */
         SHCI_C2_BLE_Init(&ble_init_cmd_packet);
 
+#if DEVICE_FLASH
         /* Used in flash_api.c */
         BLE_inited = 1;
+#endif
     }
 
     TL_CmdPacket_t *bleCmdBuf;

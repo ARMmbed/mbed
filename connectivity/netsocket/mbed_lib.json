@@ -2,6 +2,10 @@
     "name": "nsapi",
     "config": {
         "present": 1,
+        "add-event-listener-return-change": {
+            "help": "Updates the add_event_listener to return a nsapi_error_t value which can indicate allocation failure. See documents for more details.",
+            "value": 0
+        },
         "default-stack": {
             "help" : "Default stack to be used, valid values: LWIP, NANOSTACK.",
             "value" : "LWIP"

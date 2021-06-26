@@ -15,17 +15,6 @@
  * limitations under the License.
  */
 
-#include "utest.h"
-#include "unity.h"
-#include "greentea-client/test_env.h"
-
-#include "Semaphore.h"
-
-#include "mbed_trace.h"
-#define TRACE_GROUP "RTST"
-
-#include "LoRaRadio.h"
-
 #if COMPONENT_SX1272
 #include "SX1272_LoRaRadio.h"
 #elif COMPONENT_SX1276
@@ -37,6 +26,17 @@
 #else
 #error [NOT_SUPPORTED] Lora radio is not configured
 #endif
+
+#include "utest.h"
+#include "unity.h"
+#include "greentea-client/test_env.h"
+
+#include "Semaphore.h"
+
+#include "mbed_trace.h"
+#define TRACE_GROUP "RTST"
+
+#include "LoRaRadio.h"
 
 using namespace utest::v1;
 using namespace mbed;

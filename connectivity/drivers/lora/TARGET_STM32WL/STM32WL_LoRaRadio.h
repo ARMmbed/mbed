@@ -51,16 +51,14 @@ SPDX-License-Identifier: BSD-3-Clause
 #define MAX_DATA_BUFFER_SIZE_STM32WL                        255
 #endif
 
-
+extern void set_antenna_switch(RBI_Switch_TypeDef state);
 
 class STM32WL_LoRaRadio : public LoRaRadio {
 
 public:
-    STM32WL_LoRaRadio(PinName rf_switch_ctrl1 = MBED_CONF_STM32WL_LORA_DRIVER_RF_SWITCH_CTL1,
-                      PinName rf_switch_ctrl2 = MBED_CONF_STM32WL_LORA_DRIVER_RF_SWITCH_CTL2,
-                      PinName rf_switch_ctrl3 = MBED_CONF_STM32WL_LORA_DRIVER_RF_SWITCH_CTL3);
+    STM32WL_LoRaRadio();
 
-    virtual ~STM32WL_LoRaRadio();
+    ~STM32WL_LoRaRadio();
 
     /**
      * Registers radio events with the Mbed LoRaWAN stack and
@@ -315,11 +313,6 @@ public:
 
 private:
 
-    // Radio specific controls (TX/RX duplexer switch control)
-    mbed::DigitalOut _rf_switch_ctrl1;
-    mbed::DigitalOut _rf_switch_ctrl2;
-    mbed::DigitalOut _rf_switch_ctrl3;
-
     // Access protection
     PlatformMutex mutex;
 
@@ -369,7 +362,6 @@ private:
     uint8_t SUBGRF_SetRfTxPower(int8_t power);
     void SUBGRF_SetTxParams(uint8_t paSelect, int8_t power, radio_ramp_time_t rampTime);
     void Radio_SMPS_Set(uint8_t level);
-    void set_antenna_switch(RBI_Switch_TypeDef state);
     uint32_t RadioGetWakeupTime(void);
 
 

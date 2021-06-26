@@ -136,21 +136,6 @@ void gpio_init(gpio_t *obj, PinName pin)
     // Enable GPIO clock
     GPIO_TypeDef *gpio = Set_GPIO_Clock(port_index);
 
-#if defined(ALTC)
-    if (pin == PA_0C) {
-        HAL_SYSCFG_AnalogSwitchConfig(SYSCFG_SWITCH_PA0, SYSCFG_SWITCH_PA0_CLOSE);
-    }
-    if (pin == PA_1C) {
-        HAL_SYSCFG_AnalogSwitchConfig(SYSCFG_SWITCH_PA1, SYSCFG_SWITCH_PA1_CLOSE);
-    }
-    if (pin == PC_2C) {
-        HAL_SYSCFG_AnalogSwitchConfig(SYSCFG_SWITCH_PC2, SYSCFG_SWITCH_PC2_CLOSE);
-    }
-    if (pin == PC_3C) {
-        HAL_SYSCFG_AnalogSwitchConfig(SYSCFG_SWITCH_PC3, SYSCFG_SWITCH_PC3_CLOSE);
-    }
-#endif /* ALTC */
-
     // Fill GPIO object structure for future use
     obj->mask    = gpio_set(pin);
     obj->gpio    = gpio;

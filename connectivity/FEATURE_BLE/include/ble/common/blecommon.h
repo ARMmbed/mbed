@@ -216,7 +216,17 @@ enum ble_error_t {
     /**
      * Data not found or there is nothing to return.
      */
-    BLE_ERROR_NOT_FOUND = 13
+    BLE_ERROR_NOT_FOUND = 13,
+
+    /**
+     * Specified timeout expired.
+     */
+    BLE_ERROR_TIMEOUT = 14,
+
+    /**
+     * Specified limit expired.
+     */
+    BLE_ERROR_LIMIT_REACHED = 15
 };
 
 /**

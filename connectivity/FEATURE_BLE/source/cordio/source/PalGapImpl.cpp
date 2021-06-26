@@ -869,10 +869,17 @@ void PalGap::gap_handler(const wsfMsgHdr_t *msg)
                 break;
             }
 
+            connection_handle_t connection_handle = DM_CONN_ID_NONE;
+            /* the way we distinguish between local close and connection is the invalid HCI conn handle */
+            if (evt->status == HCI_SUCCESS && evt->handle != DM_CONN_HCI_HANDLE_NONE) {
+                /* use the translated conn handle */
+                connection_handle = evt->hdr.param;
+            }
+
             handler->on_advertising_set_terminated(
                 hci_error_code_t(evt->status),
                 evt->advHandle,
-                evt->handle,
+                connection_handle,
                 evt->numComplEvts
             );
         }   break;

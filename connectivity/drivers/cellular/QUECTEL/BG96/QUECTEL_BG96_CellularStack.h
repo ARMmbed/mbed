@@ -47,6 +47,8 @@ protected: // NetworkStack
 
     virtual nsapi_error_t socket_connect(nsapi_socket_t handle, const SocketAddress &address);
 
+    virtual nsapi_error_t get_ip_address(SocketAddress *address);
+
 #ifdef MBED_CONF_CELLULAR_OFFLOAD_DNS_QUERIES
     virtual nsapi_error_t gethostbyname(const char *host, SocketAddress *address, nsapi_version_t version, const char *interface_name);
     virtual nsapi_value_or_error_t gethostbyname_async(const char *host, hostbyname_cb_t callback, nsapi_version_t version = NSAPI_UNSPEC,

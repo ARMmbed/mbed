@@ -199,6 +199,10 @@ static I2C_HandleTypeDef *i2c_handles[I2C_NUM];
 #define I2C_STATE_NONE            ((uint32_t)(HAL_I2C_MODE_NONE))
 #endif
 
+#define SLAVE_MODE_RECEIVE 1
+#define SLAVE_MODE_LISTEN  2
+#define DEFAULT_SLAVE_MODE SLAVE_MODE_LISTEN
+
 /* Declare i2c_init_internal to be used in this file */
 void i2c_init_internal(i2c_t *obj, const i2c_pinmap_t *pinmap);
 
@@ -1199,7 +1203,7 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 #if DEVICE_I2CSLAVE
     /*  restore slave address */
     if (address != 0) {
-        obj_s->slave = 1;
+        obj_s->slave = DEFAULT_SLAVE_MODE;
         i2c_slave_address(obj, 0, address, 0);
     }
 #endif
@@ -1251,7 +1255,7 @@ void i2c_slave_mode(i2c_t *obj, int enable_slave)
     I2C_HandleTypeDef *handle = &(obj_s->handle);
 
     if (enable_slave) {
-        obj_s->slave = 1;
+        obj_s->slave = DEFAULT_SLAVE_MODE;
         HAL_I2C_EnableListen_IT(handle);
     } else {
         obj_s->slave = 0;
@@ -1295,11 +1299,28 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *I2cHandle)
     /* Get object ptr based on handler ptr */
     i2c_t *obj = get_i2c_obj(I2cHandle);
     struct i2c_s *obj_s = I2C_S(obj);
-    obj_s->pending_slave_rx_maxter_tx = 0;
+
+    if (obj_s->slave == SLAVE_MODE_LISTEN) {
+        obj_s->slave_rx_count++;
+        if (obj_s->slave_rx_count < obj_s->slave_rx_buffer_size){
+            HAL_I2C_Slave_Seq_Receive_IT(I2cHandle, &(obj_s->slave_rx_buffer[obj_s->slave_rx_count]), 1, I2C_NEXT_FRAME);
+        } else {
+            obj_s->pending_slave_rx_maxter_tx = 0;
+        }
+    } else {
+        obj_s->pending_slave_rx_maxter_tx = 0;
+    }
 }
 
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
 {
+    i2c_t *obj = get_i2c_obj(hi2c);
+    struct i2c_s *obj_s = I2C_S(obj);
+
+    if (obj_s->slave == SLAVE_MODE_LISTEN) {
+        obj_s->pending_slave_rx_maxter_tx = 0;
+    }
+
     /* restart listening for master requests */
     HAL_I2C_EnableListen_IT(hi2c);
 }
@@ -1328,18 +1349,34 @@ int i2c_slave_read(i2c_t *obj, char *data, int length)
     int count = 0;
     int ret = 0;
     uint32_t timeout = 0;
+    int _length = 0;
+
+    if (obj_s->slave == SLAVE_MODE_LISTEN) {
+       /*  We don't know in advance how many bytes will be sent by master so
+        *  we'll fetch one by one until master ends the sequence */
+        _length = 1;
+        obj_s->slave_rx_buffer_size = length;
+        obj_s->slave_rx_count = 0;
+        obj_s->slave_rx_buffer = (uint8_t*)data;
+    } else {
+        _length = length;
+    }
 
     /*  Always use I2C_NEXT_FRAME as slave will just adapt to master requests */
-    ret = HAL_I2C_Slave_Seq_Receive_IT(handle, (uint8_t *) data, length, I2C_NEXT_FRAME);
+    ret = HAL_I2C_Slave_Seq_Receive_IT(handle, (uint8_t *) data, _length, I2C_NEXT_FRAME);
 
     if (ret == HAL_OK) {
-        timeout = BYTE_TIMEOUT_US * (length + 1);
+        timeout = BYTE_TIMEOUT_US * (_length + 1);
         while (obj_s->pending_slave_rx_maxter_tx && (--timeout != 0)) {
             wait_us(1);
         }
 
         if (timeout != 0) {
-            count = length;
+            if (obj_s->slave == SLAVE_MODE_LISTEN) {
+                count = obj_s->slave_rx_count;
+            } else {
+                count = _length;
+            }
         } else {
             DEBUG_PRINTF("TIMEOUT or error in i2c_slave_read\r\n");
         }

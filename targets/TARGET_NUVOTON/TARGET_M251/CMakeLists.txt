@@ -60,6 +60,7 @@ target_sources(mbed-m251
         sleep.c
         spi_api.c
         us_ticker.c
+        watchdog_api.c
 )
 
 target_include_directories(mbed-m251
