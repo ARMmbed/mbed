@@ -5,6 +5,9 @@
 
 cmake_minimum_required(VERSION 3.19.0 FATAL_ERROR)
 
+option(BUILD_TESTING "Run unit tests only." OFF)
+option(BUILD_GREENTEA_TESTS "Build greentea tests only." OFF)
+
 if(${CMAKE_CROSSCOMPILING})
     include(${MBED_CONFIG_PATH}/mbed_config.cmake)
     include(mbed_set_linker_script)
@@ -19,12 +22,14 @@ list(APPEND CMAKE_MODULE_PATH
 
 add_subdirectory(extern)
 
-option(BUILD_TESTING "Run unit tests only." OFF)
-
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_TESTING)
     include(CTest)
     add_definitions(-DUNITTEST)
     add_subdirectory(UNITTESTS)
+endif()
+
+if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_GREENTEA_TESTS)
+    enable_testing()
 endif()
 
 add_library(mbed-core INTERFACE)
