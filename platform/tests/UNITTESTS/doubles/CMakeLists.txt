@@ -10,6 +10,10 @@ target_include_directories(mbed-headers-platform
         ${mbed-os_SOURCE_DIR}/platform/randlib/include/
         ${mbed-os_SOURCE_DIR}/platform/mbed-trace/include
 )
+target_link_libraries(mbed-headers-platform
+    INTERFACE
+        mbed-headers-cmsis
+)
 
 add_library(mbed-stubs-platform)
 target_sources(mbed-stubs-platform
