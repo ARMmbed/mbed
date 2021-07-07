@@ -5,6 +5,7 @@ add_library(mbed-headers-hal INTERFACE)
 
 target_include_directories(mbed-headers-hal
     INTERFACE
+        .
         ${mbed-os_SOURCE_DIR}/hal
         ${mbed-os_SOURCE_DIR}/hal/include
 )
