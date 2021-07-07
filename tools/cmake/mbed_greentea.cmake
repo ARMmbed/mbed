@@ -1,7 +1,7 @@
 # Copyright (c) 2020-2021 ARM Limited. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-option(MBED_TEST_BAREMETAL OFF)
+option(MBED_GREENTEA_TEST_BAREMETAL "Select baremetal greentea tests" OFF)
 
 set(MBED_TARGET_SERIAL_PORT "" CACHE STRING "Serial port of the DUT")
 set(MBED_TARGET_MOUNT_POINT "" CACHE STRING "Mount point for the DUT")
@@ -66,7 +66,7 @@ macro(mbed_greentea_add_test)
             ${MBED_GREENTEA_TEST_SOURCES}
     )
 
-    if(MBED_TEST_BAREMETAL)
+    if(MBED_GREENTEA_TEST_BAREMETAL)
         list(APPEND MBED_GREENTEA_TEST_REQUIRED_LIBS mbed-baremetal)
     else()
         list(APPEND MBED_GREENTEA_TEST_REQUIRED_LIBS mbed-os)
