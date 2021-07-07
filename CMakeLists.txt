@@ -8,6 +8,15 @@ cmake_minimum_required(VERSION 3.19.0 FATAL_ERROR)
 option(BUILD_TESTING "Run unit tests only." OFF)
 option(BUILD_GREENTEA_TESTS "Build greentea tests only." OFF)
 
+if(BUILD_GREENTEA_TESTS)
+    # Usually we rely on the application to set MBED_CONFIG_PATH and include
+    # app.cmake. They are both required if we're building an application to run
+    # on an mbed-target.
+    set(MBED_CONFIG_PATH ${CMAKE_CURRENT_BINARY_DIR} CACHE STRING "")
+    # TODO: Remove when https://github.com/ARMmbed/mbed-os/issues/14518 is fixed
+    include(${CMAKE_CURRENT_LIST_DIR}/tools/cmake/app.cmake)
+endif()
+
 if(${CMAKE_CROSSCOMPILING})
     include(${MBED_CONFIG_PATH}/mbed_config.cmake)
     include(mbed_set_linker_script)
