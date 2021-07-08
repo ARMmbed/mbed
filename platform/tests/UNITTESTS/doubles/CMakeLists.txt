@@ -4,6 +4,9 @@
 add_library(mbed-headers-platform INTERFACE)
 target_include_directories(mbed-headers-platform
     INTERFACE
+        .
+        platform
+        platform/cxxsupport
         ${mbed-os_SOURCE_DIR}/platform/include
         ${mbed-os_SOURCE_DIR}/platform/include/platform
         ${mbed-os_SOURCE_DIR}/platform/randlib/include/mbed-client-randlib/
