@@ -17,10 +17,16 @@ set(MBED_ROOT ${CMAKE_CURRENT_LIST_DIR}/../.. CACHE INTERNAL "")
 #
 # calling the macro:
 # mbed_greentea_add_test(
-#    TEST_NAME mbed-platform-system-reset
-#    TEST_INCLUDE_DIRS mbed_store
-#    TEST_SOURCES foo.cpp bar.cpp
-#    TEST_REQUIRED_LIBS mbed-kvstore mbed-xyz
+#     TEST_NAME
+#         mbed-platform-system-reset
+#     TEST_INCLUDE_DIRS
+#         mbed_store
+#     TEST_SOURCES
+#         foo.cpp
+#         bar.cpp
+#     TEST_REQUIRED_LIBS
+#         mbed-kvstore
+#         mbed-xyz
 # )
 
 macro(mbed_greentea_add_test)
