@@ -50,7 +50,6 @@ target_sources(mbed-stubs-cellular
 target_link_libraries(mbed-stubs-cellular
     PRIVATE
         mbed-headers-base
-        mbed-headers-connectivity
         mbed-stubs-platform
         mbed-headers-rtos
         mbed-headers-drivers
