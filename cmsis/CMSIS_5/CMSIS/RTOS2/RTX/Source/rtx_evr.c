@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Arm Limited. All rights reserved.
+ * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -63,6 +63,7 @@
 #define EvtRtxKernelGetTickFreq             EventID(EventLevelAPI,    EvtRtxKernelNo, 0x14U)
 #define EvtRtxKernelGetSysTimerCount        EventID(EventLevelAPI,    EvtRtxKernelNo, 0x15U)
 #define EvtRtxKernelGetSysTimerFreq         EventID(EventLevelAPI,    EvtRtxKernelNo, 0x16U)
+#define EvtRtxKernelErrorNotify             EventID(EventLevelError,  EvtRtxKernelNo, 0x19U)
 
 /// Event IDs for "RTX Thread"
 #define EvtRtxThreadError                   EventID(EventLevelError,  EvtRtxThreadNo, 0x00U)
@@ -527,6 +528,17 @@ __WEAK void EvrRtxKernelGetSysTimerFreq (uint32_t freq) {
   (void)EventRecord2(EvtRtxKernelGetSysTimerFreq, freq, 0U);
 #else
   (void)freq;
+#endif
+}
+#endif
+
+#if (!defined(EVR_RTX_DISABLE) && (OS_EVR_KERNEL != 0) && !defined(EVR_RTX_KERNEL_ERROR_NOTIFY_DISABLE))
+__WEAK void EvrRtxKernelErrorNotify (uint32_t code, void *object_id) {
+#if defined(RTE_Compiler_EventRecorder)
+  (void)EventRecord2(EvtRtxKernelErrorNotify, code, (uint32_t)object_id);
+#else
+  (void)code;
+  (void)object_id;
 #endif
 }
 #endif

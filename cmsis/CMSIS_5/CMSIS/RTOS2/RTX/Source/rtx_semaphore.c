@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018 Arm Limited. All rights reserved.
+ * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -27,7 +27,7 @@
 
 
 //  OS Runtime Object Memory Usage
-#if ((defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0)))
+#ifdef RTX_OBJ_MEM_USAGE
 osRtxObjectMemUsage_t osRtxSemaphoreMemUsage \
 __attribute__((section(".data.os.semaphore.obj"))) =
 { 0U, 0U, 0U };
@@ -172,7 +172,7 @@ static osSemaphoreId_t svcRtxSemaphoreNew (uint32_t max_count, uint32_t initial_
       //lint -e{9079} "conversion from pointer to void to pointer to other type" [MISRA Note 5]
       semaphore = osRtxMemoryAlloc(osRtxInfo.mem.common, sizeof(os_semaphore_t), 1U);
     }
-#if (defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0))
+#ifdef RTX_OBJ_MEM_USAGE
     if (semaphore != NULL) {
       uint32_t used;
       osRtxSemaphoreMemUsage.cnt_alloc++;
@@ -346,7 +346,7 @@ static osStatus_t svcRtxSemaphoreDelete (osSemaphoreId_t semaphore_id) {
     } else {
       (void)osRtxMemoryFree(osRtxInfo.mem.common, semaphore);
     }
-#if (defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0))
+#ifdef RTX_OBJ_MEM_USAGE
     osRtxSemaphoreMemUsage.cnt_free++;
 #endif
   }
@@ -432,7 +432,7 @@ osSemaphoreId_t osSemaphoreNew (uint32_t max_count, uint32_t initial_count, cons
   osSemaphoreId_t semaphore_id;
 
   EvrRtxSemaphoreNew(max_count, initial_count, attr);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxSemaphoreError(NULL, (int32_t)osErrorISR);
     semaphore_id = NULL;
   } else {
@@ -445,7 +445,7 @@ osSemaphoreId_t osSemaphoreNew (uint32_t max_count, uint32_t initial_count, cons
 const char *osSemaphoreGetName (osSemaphoreId_t semaphore_id) {
   const char *name;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxSemaphoreGetName(semaphore_id, NULL);
     name = NULL;
   } else {
@@ -459,7 +459,7 @@ osStatus_t osSemaphoreAcquire (osSemaphoreId_t semaphore_id, uint32_t timeout) {
   osStatus_t status;
 
   EvrRtxSemaphoreAcquire(semaphore_id, timeout);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     status = isrRtxSemaphoreAcquire(semaphore_id, timeout);
   } else {
     status =  __svcSemaphoreAcquire(semaphore_id, timeout);
@@ -472,7 +472,7 @@ osStatus_t osSemaphoreRelease (osSemaphoreId_t semaphore_id) {
   osStatus_t status;
 
   EvrRtxSemaphoreRelease(semaphore_id);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     status = isrRtxSemaphoreRelease(semaphore_id);
   } else {
     status =  __svcSemaphoreRelease(semaphore_id);
@@ -484,7 +484,7 @@ osStatus_t osSemaphoreRelease (osSemaphoreId_t semaphore_id) {
 uint32_t osSemaphoreGetCount (osSemaphoreId_t semaphore_id) {
   uint32_t count;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     count = svcRtxSemaphoreGetCount(semaphore_id);
   } else {
     count =  __svcSemaphoreGetCount(semaphore_id);
@@ -497,7 +497,7 @@ osStatus_t osSemaphoreDelete (osSemaphoreId_t semaphore_id) {
   osStatus_t status;
 
   EvrRtxSemaphoreDelete(semaphore_id);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxSemaphoreError(semaphore_id, (int32_t)osErrorISR);
     status = osErrorISR;
   } else {

@@ -1,8 +1,8 @@
 /******************************************************************************
  * @file     pmu_armv8.h
  * @brief    CMSIS PMU API for Armv8.1-M PMU
- * @version  V1.0.0
- * @date     24. March 2020
+ * @version  V1.0.1
+ * @date     15. April 2020
  ******************************************************************************/
 /*
  * Copyright (c) 2020 Arm Limited. All rights reserved.
@@ -274,7 +274,7 @@ __STATIC_INLINE uint32_t ARM_PMU_Get_CCNTR(void)
 */
 __STATIC_INLINE uint32_t ARM_PMU_Get_EVCNTR(uint32_t num)
 {
-  return PMU->EVCNTR[num];
+  return PMU_EVCNTR_CNT_Msk & PMU->EVCNTR[num];
 }
 
 /** 

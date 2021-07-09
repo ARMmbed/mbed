@@ -1,11 +1,11 @@
 /**************************************************************************//**
  * @file     irq_ctrl_gic.c
  * @brief    Interrupt controller handling implementation for GIC
- * @version  V1.1.0
- * @date     03. March 2020
+ * @version  V1.1.1
+ * @date     29. March 2021
  ******************************************************************************/
 /*
- * Copyright (c) 2017-2020 ARM Limited. All rights reserved.
+ * Copyright (c) 2017-2021 ARM Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -184,7 +184,7 @@ __WEAK int32_t IRQ_SetMode (IRQn_ID_t irqn, uint32_t mode) {
     if (val == IRQ_MODE_CPU_ALL) {
       cpu = 0xFFU;
     } else {
-      cpu = val >> IRQ_MODE_CPU_Pos;
+      cpu = (uint8_t)(val >> IRQ_MODE_CPU_Pos);
     }
 
     // Apply configuration if no mode error

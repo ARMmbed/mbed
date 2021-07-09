@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Arm Limited. All rights reserved.
+ * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -27,7 +27,7 @@
 
 
 //  OS Runtime Object Memory Usage
-#if ((defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0)))
+#ifdef RTX_OBJ_MEM_USAGE
 osRtxObjectMemUsage_t osRtxEventFlagsMemUsage \
 __attribute__((section(".data.os.evflags.obj"))) =
 { 0U, 0U, 0U };
@@ -200,7 +200,7 @@ static osEventFlagsId_t svcRtxEventFlagsNew (const osEventFlagsAttr_t *attr) {
       //lint -e{9079} "conversion from pointer to void to pointer to other type" [MISRA Note 5]
       ef = osRtxMemoryAlloc(osRtxInfo.mem.common, sizeof(os_event_flags_t), 1U);
     }
-#if (defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0))
+#ifdef RTX_OBJ_MEM_USAGE
     if (ef != NULL) {
       uint32_t used;
       osRtxEventFlagsMemUsage.cnt_alloc++;
@@ -313,7 +313,7 @@ static uint32_t svcRtxEventFlagsClear (osEventFlagsId_t ef_id, uint32_t flags) {
   event_flags = EventFlagsClear(ef, flags);
 
   EvrRtxEventFlagsClearDone(ef, event_flags);
-  
+
   return event_flags;
 }
 
@@ -409,7 +409,7 @@ static osStatus_t svcRtxEventFlagsDelete (osEventFlagsId_t ef_id) {
     } else {
       (void)osRtxMemoryFree(osRtxInfo.mem.common, ef);
     }
-#if (defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0))
+#ifdef RTX_OBJ_MEM_USAGE
     osRtxEventFlagsMemUsage.cnt_free++;
 #endif
   }
@@ -494,7 +494,7 @@ osEventFlagsId_t osEventFlagsNew (const osEventFlagsAttr_t *attr) {
   osEventFlagsId_t ef_id;
 
   EvrRtxEventFlagsNew(attr);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxEventFlagsError(NULL, (int32_t)osErrorISR);
     ef_id = NULL;
   } else {
@@ -507,7 +507,7 @@ osEventFlagsId_t osEventFlagsNew (const osEventFlagsAttr_t *attr) {
 const char *osEventFlagsGetName (osEventFlagsId_t ef_id) {
   const char *name;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxEventFlagsGetName(ef_id, NULL);
     name = NULL;
   } else {
@@ -521,7 +521,7 @@ uint32_t osEventFlagsSet (osEventFlagsId_t ef_id, uint32_t flags) {
   uint32_t event_flags;
 
   EvrRtxEventFlagsSet(ef_id, flags);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     event_flags = isrRtxEventFlagsSet(ef_id, flags);
   } else {
     event_flags =  __svcEventFlagsSet(ef_id, flags);
@@ -534,7 +534,7 @@ uint32_t osEventFlagsClear (osEventFlagsId_t ef_id, uint32_t flags) {
   uint32_t event_flags;
 
   EvrRtxEventFlagsClear(ef_id, flags);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     event_flags = svcRtxEventFlagsClear(ef_id, flags);
   } else {
     event_flags =  __svcEventFlagsClear(ef_id, flags);
@@ -546,7 +546,7 @@ uint32_t osEventFlagsClear (osEventFlagsId_t ef_id, uint32_t flags) {
 uint32_t osEventFlagsGet (osEventFlagsId_t ef_id) {
   uint32_t event_flags;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     event_flags = svcRtxEventFlagsGet(ef_id);
   } else {
     event_flags =  __svcEventFlagsGet(ef_id);
@@ -559,7 +559,7 @@ uint32_t osEventFlagsWait (osEventFlagsId_t ef_id, uint32_t flags, uint32_t opti
   uint32_t event_flags;
 
   EvrRtxEventFlagsWait(ef_id, flags, options, timeout);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     event_flags = isrRtxEventFlagsWait(ef_id, flags, options, timeout);
   } else {
     event_flags =  __svcEventFlagsWait(ef_id, flags, options, timeout);
@@ -572,7 +572,7 @@ osStatus_t osEventFlagsDelete (osEventFlagsId_t ef_id) {
   osStatus_t status;
 
   EvrRtxEventFlagsDelete(ef_id);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxEventFlagsError(ef_id, (int32_t)osErrorISR);
     status = osErrorISR;
   } else {

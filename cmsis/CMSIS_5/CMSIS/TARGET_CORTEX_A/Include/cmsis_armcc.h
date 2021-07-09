@@ -1,11 +1,11 @@
 /**************************************************************************//**
  * @file     cmsis_armcc.h
  * @brief    CMSIS compiler specific macros, functions, instructions
- * @version  V1.0.4
- * @date     30. July 2019
+ * @version  V1.0.5
+ * @date     05. May 2021
  ******************************************************************************/
 /*
- * Copyright (c) 2009-2019 Arm Limited. All rights reserved.
+ * Copyright (c) 2009-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -295,6 +295,34 @@ __attribute__((section(".revsh_text"))) __STATIC_INLINE __ASM int16_t __REVSH(in
 #define __USAT                            __usat
 
 /* ###########################  Core Function Access  ########################### */
+
+/**
+  \brief   Enable IRQ Interrupts
+  \details Enables IRQ interrupts by clearing the I-bit in the CPSR.
+           Can only be executed in Privileged modes.
+ */
+/* intrinsic void __enable_irq(); */
+
+/**
+  \brief   Disable IRQ Interrupts
+  \details Disables IRQ interrupts by setting the I-bit in the CPSR.
+  Can only be executed in Privileged modes.
+ */
+/* intrinsic void __disable_irq(void); */
+
+/**
+  \brief   Enable FIQ
+  \details Enables FIQ interrupts by clearing the F-bit in the CPSR.
+           Can only be executed in Privileged modes.
+ */
+#define __enable_fault_irq                __enable_fiq
+
+/**
+  \brief   Disable FIQ
+  \details Disables FIQ interrupts by setting the F-bit in the CPSR.
+           Can only be executed in Privileged modes.
+ */
+#define __disable_fault_irq               __disable_fiq
 
 /**
   \brief   Get FPSCR (Floating Point Status/Control)

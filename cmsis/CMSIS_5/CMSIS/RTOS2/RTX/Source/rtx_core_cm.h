@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2020 Arm Limited. All rights reserved.
+ * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -27,7 +27,9 @@
 #define RTX_CORE_CM_H_
 
 #ifndef RTX_CORE_C_H_
+#ifndef RTE_COMPONENTS_H
 #include "RTE_Components.h"
+#endif
 #include CMSIS_device_header
 #endif
 
@@ -35,15 +37,11 @@
 typedef bool bool_t;
 
 #ifndef FALSE
-#define FALSE                   (0)
+#define FALSE                   ((bool_t)0)
 #endif
 
 #ifndef TRUE
-#define TRUE                    (1)
-#endif
-
-#ifdef  RTE_CMSIS_RTOS2_RTX5_ARMV8M_NS
-#define DOMAIN_NS               1
+#define TRUE                    ((bool_t)1)
 #endif
 
 #ifndef DOMAIN_NS
@@ -120,9 +118,9 @@ __STATIC_INLINE bool_t IsPrivileged (void) {
   return ((__get_CONTROL() & 1U) == 0U);
 }
 
-/// Check if in IRQ Mode
-/// \return     true=IRQ, false=thread
-__STATIC_INLINE bool_t IsIrqMode (void) {
+/// Check if in Exception
+/// \return     true=exception, false=thread
+__STATIC_INLINE bool_t IsException (void) {
   return (__get_IPSR() != 0U);
 }
 
@@ -209,58 +207,58 @@ __STATIC_INLINE void SetPendSV (void) {
        (defined(__ARM_ARCH_7EM__)       && (__ARM_ARCH_7EM__       != 0)) ||   \
        (defined(__ARM_ARCH_8M_MAIN__)   && (__ARM_ARCH_8M_MAIN__   != 0)) ||   \
        (defined(__ARM_ARCH_8_1M_MAIN__) && (__ARM_ARCH_8_1M_MAIN__ != 0)))
-#define __SVC_INDIRECT(n) __svc_indirect(n)
+#define SVC_INDIRECT(n) __svc_indirect(n)
 #elif ((defined(__ARM_ARCH_6M__)        && (__ARM_ARCH_6M__        != 0)) ||   \
        (defined(__ARM_ARCH_8M_BASE__)   && (__ARM_ARCH_8M_BASE__   != 0)))
-#define __SVC_INDIRECT(n) __svc_indirect_r7(n)
+#define SVC_INDIRECT(n) __svc_indirect_r7(n)
 #endif
 
 #define SVC0_0N(f,t)                                                           \
-__SVC_INDIRECT(0) t    svc##f (t(*)());                                        \
+SVC_INDIRECT(0) t    svc##f (t(*)());                                          \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (void) {                                         \
+__STATIC_INLINE t  __svc##f (void) {                                           \
   svc##f(svcRtx##f);                                                           \
 }
 
 #define SVC0_0(f,t)                                                            \
-__SVC_INDIRECT(0) t    svc##f (t(*)());                                        \
+SVC_INDIRECT(0) t    svc##f (t(*)());                                          \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (void) {                                         \
+__STATIC_INLINE t  __svc##f (void) {                                           \
   return svc##f(svcRtx##f);                                                    \
 }
 
 #define SVC0_1N(f,t,t1)                                                        \
-__SVC_INDIRECT(0) t    svc##f (t(*)(t1),t1);                                   \
+SVC_INDIRECT(0) t    svc##f (t(*)(t1),t1);                                     \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (t1 a1) {                                        \
+__STATIC_INLINE t  __svc##f (t1 a1) {                                          \
   svc##f(svcRtx##f,a1);                                                        \
 }
 
 #define SVC0_1(f,t,t1)                                                         \
-__SVC_INDIRECT(0) t    svc##f (t(*)(t1),t1);                                   \
+SVC_INDIRECT(0) t    svc##f (t(*)(t1),t1);                                     \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (t1 a1) {                                        \
+__STATIC_INLINE t  __svc##f (t1 a1) {                                          \
   return svc##f(svcRtx##f,a1);                                                 \
 }
 
 #define SVC0_2(f,t,t1,t2)                                                      \
-__SVC_INDIRECT(0) t    svc##f (t(*)(t1,t2),t1,t2);                             \
+SVC_INDIRECT(0) t    svc##f (t(*)(t1,t2),t1,t2);                               \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (t1 a1, t2 a2) {                                 \
+__STATIC_INLINE t  __svc##f (t1 a1, t2 a2) {                                   \
   return svc##f(svcRtx##f,a1,a2);                                              \
 }
 
 #define SVC0_3(f,t,t1,t2,t3)                                                   \
-__SVC_INDIRECT(0) t    svc##f (t(*)(t1,t2,t3),t1,t2,t3);                       \
+SVC_INDIRECT(0) t    svc##f (t(*)(t1,t2,t3),t1,t2,t3);                         \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (t1 a1, t2 a2, t3 a3) {                          \
+__STATIC_INLINE t  __svc##f (t1 a1, t2 a2, t3 a3) {                            \
   return svc##f(svcRtx##f,a1,a2,a3);                                           \
 }
 
 #define SVC0_4(f,t,t1,t2,t3,t4)                                                \
-__SVC_INDIRECT(0) t    svc##f (t(*)(t1,t2,t3,t4),t1,t2,t3,t4);                 \
+SVC_INDIRECT(0) t    svc##f (t(*)(t1,t2,t3,t4),t1,t2,t3,t4);                   \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (t1 a1, t2 a2, t3 a3, t4 a4) {                   \
+__STATIC_INLINE t  __svc##f (t1 a1, t2 a2, t3 a3, t4 a4) {                     \
   return svc##f(svcRtx##f,a1,a2,a3,a4);                                        \
 }
 
@@ -285,60 +283,60 @@ __STATIC_INLINE   t  __svc##f (t1 a1, t2 a2, t3 a3, t4 a4) {                   \
 #endif
 
 #define STRINGIFY(a) #a
-#define __SVC_INDIRECT(n) _Pragma(STRINGIFY(swi_number = n)) __swi
+#define SVC_INDIRECT(n) _Pragma(STRINGIFY(swi_number = n)) __swi
 
 #define SVC0_0N(f,t)                                                           \
-__SVC_INDIRECT(0) t    svc##f ();                                              \
+SVC_INDIRECT(0) t    svc##f ();                                                \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (void) {                                         \
+__STATIC_INLINE t  __svc##f (void) {                                           \
   SVC_ArgF(svcRtx##f);                                                         \
   svc##f();                                                                    \
 }
 
 #define SVC0_0(f,t)                                                            \
-__SVC_INDIRECT(0) t    svc##f ();                                              \
+SVC_INDIRECT(0) t    svc##f ();                                                \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (void) {                                         \
+__STATIC_INLINE t  __svc##f (void) {                                           \
   SVC_ArgF(svcRtx##f);                                                         \
   return svc##f();                                                             \
 }
 
 #define SVC0_1N(f,t,t1)                                                        \
-__SVC_INDIRECT(0) t    svc##f (t1 a1);                                         \
+SVC_INDIRECT(0) t    svc##f (t1 a1);                                           \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (t1 a1) {                                        \
+__STATIC_INLINE t  __svc##f (t1 a1) {                                          \
   SVC_ArgF(svcRtx##f);                                                         \
   svc##f(a1);                                                                  \
 }
 
 #define SVC0_1(f,t,t1)                                                         \
-__SVC_INDIRECT(0) t    svc##f (t1 a1);                                         \
+SVC_INDIRECT(0) t    svc##f (t1 a1);                                           \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (t1 a1) {                                        \
+__STATIC_INLINE t  __svc##f (t1 a1) {                                          \
   SVC_ArgF(svcRtx##f);                                                         \
   return svc##f(a1);                                                           \
 }
 
 #define SVC0_2(f,t,t1,t2)                                                      \
-__SVC_INDIRECT(0) t    svc##f (t1 a1, t2 a2);                                  \
+SVC_INDIRECT(0) t    svc##f (t1 a1, t2 a2);                                    \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (t1 a1, t2 a2) {                                 \
+__STATIC_INLINE t  __svc##f (t1 a1, t2 a2) {                                   \
   SVC_ArgF(svcRtx##f);                                                         \
   return svc##f(a1,a2);                                                        \
 }
 
 #define SVC0_3(f,t,t1,t2,t3)                                                   \
-__SVC_INDIRECT(0) t    svc##f (t1 a1, t2 a2, t3 a3);                           \
+SVC_INDIRECT(0) t    svc##f (t1 a1, t2 a2, t3 a3);                             \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (t1 a1, t2 a2, t3 a3) {                          \
+__STATIC_INLINE t  __svc##f (t1 a1, t2 a2, t3 a3) {                            \
   SVC_ArgF(svcRtx##f);                                                         \
   return svc##f(a1,a2,a3);                                                     \
 }
 
 #define SVC0_4(f,t,t1,t2,t3,t4)                                                \
-__SVC_INDIRECT(0) t    svc##f (t1 a1, t2 a2, t3 a3, t4 a4);                    \
+SVC_INDIRECT(0) t    svc##f (t1 a1, t2 a2, t3 a3, t4 a4);                      \
 __attribute__((always_inline))                                                 \
-__STATIC_INLINE   t  __svc##f (t1 a1, t2 a2, t3 a3, t4 a4) {                   \
+__STATIC_INLINE t  __svc##f (t1 a1, t2 a2, t3 a3, t4 a4) {                     \
   SVC_ArgF(svcRtx##f);                                                         \
   return svc##f(a1,a2,a3,a4);                                                  \
 }

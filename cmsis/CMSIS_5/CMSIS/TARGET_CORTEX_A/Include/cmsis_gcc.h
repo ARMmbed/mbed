@@ -1,11 +1,11 @@
 /**************************************************************************//**
  * @file     cmsis_gcc.h
  * @brief    CMSIS compiler specific macros, functions, instructions
- * @version  V1.3.0
- * @date     17. December 2019
+ * @version  V1.3.1
+ * @date     05. May 2021
  ******************************************************************************/
 /*
- * Copyright (c) 2009-2019 Arm Limited. All rights reserved.
+ * Copyright (c) 2009-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -37,7 +37,6 @@
 #endif
 
 /* CMSIS compiler specific defines */
-
 #ifndef   __ASM
   #define __ASM                                  __asm
 #endif
@@ -57,7 +56,7 @@
   #define __NO_RETURN                            __attribute__((__noreturn__))
 #endif
 #ifndef   CMSIS_DEPRECATED
- #define  CMSIS_DEPRECATED                       __attribute__((deprecated))
+  #define CMSIS_DEPRECATED                       __attribute__((deprecated))
 #endif
 #ifndef   __USED
   #define __USED                                 __attribute__((used))
@@ -433,10 +432,11 @@ __STATIC_FORCEINLINE  int16_t __REVSH(int16_t value)
   \param [in]    op2  Number of Bits to rotate
   \return               Rotated value
  */
-__STATIC_FORCEINLINE  uint32_t __ROR(uint32_t op1, uint32_t op2)
+__STATIC_FORCEINLINE uint32_t __ROR(uint32_t op1, uint32_t op2)
 {
   op2 %= 32U;
-  if (op2 == 0U) {
+  if (op2 == 0U)
+  {
     return op1;
   }
   return (op1 >> op2) | (op1 << (32U - op2));
@@ -448,7 +448,7 @@ __STATIC_FORCEINLINE  uint32_t __ROR(uint32_t op1, uint32_t op2)
   \param [in]    value  is ignored by the processor.
                  If required, a debugger can use it to store additional information about the breakpoint.
  */
-#define __BKPT(value)                       __ASM volatile ("bkpt "#value)
+#define __BKPT(value)   __ASM volatile ("bkpt "#value)
 
 /**
   \brief   Reverse bit order of value
@@ -669,16 +669,36 @@ __STATIC_FORCEINLINE void __enable_irq(void)
   \details Disables IRQ interrupts by setting the I-bit in the CPSR.
   Can only be executed in Privileged modes.
  */
-__STATIC_FORCEINLINE  void __disable_irq(void)
+__STATIC_FORCEINLINE void __disable_irq(void)
 {
   __ASM volatile ("cpsid i" : : : "memory");
 }
 
 /**
+  \brief   Enable FIQ
+  \details Enables FIQ interrupts by clearing the F-bit in the CPSR.
+           Can only be executed in Privileged modes.
+ */
+__STATIC_FORCEINLINE void __enable_fault_irq(void)
+{
+  __ASM volatile ("cpsie f" : : : "memory");
+}
+
+/**
+  \brief   Disable FIQ
+  \details Disables FIQ interrupts by setting the F-bit in the CPSR.
+           Can only be executed in Privileged modes.
+ */
+__STATIC_FORCEINLINE void __disable_fault_irq(void)
+{
+  __ASM volatile ("cpsid f" : : : "memory");
+}
+
+/**
   \brief   Get FPSCR
   \details Returns the current value of the Floating Point Status/Control register.
-  \return Floating Point Status/Control register value
-*/
+  \return               Floating Point Status/Control register value
+ */
 __STATIC_FORCEINLINE  uint32_t __get_FPSCR(void)
 {
   #if ((defined (__FPU_PRESENT) && (__FPU_PRESENT == 1U)) && \
@@ -702,8 +722,8 @@ __STATIC_FORCEINLINE  uint32_t __get_FPSCR(void)
 /**
   \brief   Set FPSCR
   \details Assigns the given value to the Floating Point Status/Control register.
-  \param [in] fpscr  Floating Point Status/Control value to set
-*/
+  \param [in]    fpscr  Floating Point Status/Control value to set
+ */
 __STATIC_FORCEINLINE void __set_FPSCR(uint32_t fpscr)
 {
   #if ((defined (__FPU_PRESENT) && (__FPU_PRESENT == 1U)) && \
@@ -736,7 +756,7 @@ __STATIC_FORCEINLINE uint32_t __get_CPSR(void)
  */
 __STATIC_FORCEINLINE void __set_CPSR(uint32_t cpsr)
 {
-__ASM volatile ("MSR cpsr, %0" : : "r" (cpsr) : "cc", "memory");
+  __ASM volatile ("MSR cpsr, %0" : : "r" (cpsr) : "cc", "memory");
 }
 
 /** \brief  Get Mode
@@ -744,7 +764,7 @@ __ASM volatile ("MSR cpsr, %0" : : "r" (cpsr) : "cc", "memory");
  */
 __STATIC_FORCEINLINE uint32_t __get_mode(void)
 {
-    return (__get_CPSR() & 0x1FU);
+  return (__get_CPSR() & 0x1FU);
 }
 
 /** \brief  Set Mode
@@ -810,7 +830,7 @@ __STATIC_FORCEINLINE uint32_t __get_FPEXC(void)
 {
 #if (__FPU_PRESENT == 1)
   uint32_t result;
-  __ASM volatile("VMRS %0, fpexc" : "=r" (result) );
+  __ASM volatile("VMRS %0, fpexc" : "=r" (result) : : "memory");
   return(result);
 #else
   return(0);
@@ -833,8 +853,8 @@ __STATIC_FORCEINLINE void __set_FPEXC(uint32_t fpexc)
 
 #define __get_CP(cp, op1, Rt, CRn, CRm, op2) __ASM volatile("MRC p" # cp ", " # op1 ", %0, c" # CRn ", c" # CRm ", " # op2 : "=r" (Rt) : : "memory" )
 #define __set_CP(cp, op1, Rt, CRn, CRm, op2) __ASM volatile("MCR p" # cp ", " # op1 ", %0, c" # CRn ", c" # CRm ", " # op2 : : "r" (Rt) : "memory" )
-#define __get_CP64(cp, op1, Rt, CRm) __ASM volatile("MRRC p" # cp ", " # op1 ", %Q0, %R0, c" # CRm  : "=r" (Rt) : : "memory" )
-#define __set_CP64(cp, op1, Rt, CRm) __ASM volatile("MCRR p" # cp ", " # op1 ", %Q0, %R0, c" # CRm  : : "r" (Rt) : "memory" )
+#define __get_CP64(cp, op1, Rt, CRm)         __ASM volatile("MRRC p" # cp ", " # op1 ", %Q0, %R0, c" # CRm  : "=r" (Rt) : : "memory" )
+#define __set_CP64(cp, op1, Rt, CRm)         __ASM volatile("MCRR p" # cp ", " # op1 ", %Q0, %R0, c" # CRm  : : "r" (Rt) : "memory" )
 
 #include "cmsis_cp15.h"
 

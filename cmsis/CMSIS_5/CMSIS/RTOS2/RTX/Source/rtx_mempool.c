@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018 Arm Limited. All rights reserved.
+ * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -27,7 +27,7 @@
 
 
 //  OS Runtime Object Memory Usage
-#if ((defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0)))
+#ifdef RTX_OBJ_MEM_USAGE
 osRtxObjectMemUsage_t osRtxMemoryPoolMemUsage \
 __attribute__((section(".data.os.mempool.obj"))) =
 { 0U, 0U, 0U };
@@ -191,20 +191,16 @@ static osMemoryPoolId_t svcRtxMemoryPoolNew (uint32_t block_count, uint32_t bloc
   const char       *name;
 
   // Check parameters
-  if ((block_count == 0U) || (block_size  == 0U)) {
-    EvrRtxMemoryPoolError(NULL, (int32_t)osErrorParameter);
-    //lint -e{904} "Return statement before end of function" [MISRA Note 1]
-    return NULL;
-  }
-  b_count =  block_count;
-  b_size  = (block_size + 3U) & ~3UL;
-  if ((__CLZ(b_count) + __CLZ(b_size)) < 32U) {
+  if ((block_count == 0U) || (block_size == 0U) ||
+      ((__CLZ(block_count) + __CLZ(block_size)) < 32U)) {
     EvrRtxMemoryPoolError(NULL, (int32_t)osErrorParameter);
     //lint -e{904} "Return statement before end of function" [MISRA Note 1]
     return NULL;
   }
 
-  size = b_count * b_size;
+  b_count =  block_count;
+  b_size  = (block_size + 3U) & ~3UL;
+  size    =  b_count * b_size;
 
   // Process attributes
   if (attr != NULL) {
@@ -229,7 +225,7 @@ static osMemoryPoolId_t svcRtxMemoryPoolNew (uint32_t block_count, uint32_t bloc
       }
     }
     if (mp_mem != NULL) {
-      //lint -e(923) -e(9078) "cast from pointer to unsigned int" [MISRA Note 7]
+      //lint -e{923} "cast from pointer to unsigned int" [MISRA Note 7]
       if ((((uint32_t)mp_mem & 3U) != 0U) || (mp_size < size)) {
         EvrRtxMemoryPoolError(NULL, osRtxErrorInvalidDataMemory);
         //lint -e{904} "Return statement before end of function" [MISRA Note 1]
@@ -257,7 +253,7 @@ static osMemoryPoolId_t svcRtxMemoryPoolNew (uint32_t block_count, uint32_t bloc
       //lint -e{9079} "conversion from pointer to void to pointer to other type" [MISRA Note 5]
       mp = osRtxMemoryAlloc(osRtxInfo.mem.common, sizeof(os_memory_pool_t), 1U);
     }
-#if (defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0))
+#ifdef RTX_OBJ_MEM_USAGE
     if (mp != NULL) {
       uint32_t used;
       osRtxMemoryPoolMemUsage.cnt_alloc++;
@@ -283,13 +279,13 @@ static osMemoryPoolId_t svcRtxMemoryPoolNew (uint32_t block_count, uint32_t bloc
         } else {
           (void)osRtxMemoryFree(osRtxInfo.mem.common, mp);
         }
-#if (defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0))
+#ifdef RTX_OBJ_MEM_USAGE
         osRtxMemoryPoolMemUsage.cnt_free++;
 #endif
       }
       mp = NULL;
     } else {
-      memset(mp_mem, 0, size);
+      (void)memset(mp_mem, 0, size);
     }
     flags |= osRtxFlagSystemMemory;
   }
@@ -508,7 +504,7 @@ static osStatus_t svcRtxMemoryPoolDelete (osMemoryPoolId_t mp_id) {
     } else {
       (void)osRtxMemoryFree(osRtxInfo.mem.common, mp);
     }
-#if (defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0))
+#ifdef RTX_OBJ_MEM_USAGE
     osRtxMemoryPoolMemUsage.cnt_free++;
 #endif
   }
@@ -594,7 +590,7 @@ osMemoryPoolId_t osMemoryPoolNew (uint32_t block_count, uint32_t block_size, con
   osMemoryPoolId_t mp_id;
 
   EvrRtxMemoryPoolNew(block_count, block_size, attr);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxMemoryPoolError(NULL, (int32_t)osErrorISR);
     mp_id = NULL;
   } else {
@@ -607,7 +603,7 @@ osMemoryPoolId_t osMemoryPoolNew (uint32_t block_count, uint32_t block_size, con
 const char *osMemoryPoolGetName (osMemoryPoolId_t mp_id) {
   const char *name;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxMemoryPoolGetName(mp_id, NULL);
     name = NULL;
   } else {
@@ -621,7 +617,7 @@ void *osMemoryPoolAlloc (osMemoryPoolId_t mp_id, uint32_t timeout) {
   void *memory;
 
   EvrRtxMemoryPoolAlloc(mp_id, timeout);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     memory = isrRtxMemoryPoolAlloc(mp_id, timeout);
   } else {
     memory =  __svcMemoryPoolAlloc(mp_id, timeout);
@@ -634,7 +630,7 @@ osStatus_t osMemoryPoolFree (osMemoryPoolId_t mp_id, void *block) {
   osStatus_t status;
 
   EvrRtxMemoryPoolFree(mp_id, block);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     status = isrRtxMemoryPoolFree(mp_id, block);
   } else {
     status =  __svcMemoryPoolFree(mp_id, block);
@@ -646,7 +642,7 @@ osStatus_t osMemoryPoolFree (osMemoryPoolId_t mp_id, void *block) {
 uint32_t osMemoryPoolGetCapacity (osMemoryPoolId_t mp_id) {
   uint32_t capacity;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     capacity = svcRtxMemoryPoolGetCapacity(mp_id);
   } else {
     capacity =  __svcMemoryPoolGetCapacity(mp_id);
@@ -658,7 +654,7 @@ uint32_t osMemoryPoolGetCapacity (osMemoryPoolId_t mp_id) {
 uint32_t osMemoryPoolGetBlockSize (osMemoryPoolId_t mp_id) {
   uint32_t block_size;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     block_size = svcRtxMemoryPoolGetBlockSize(mp_id);
   } else {
     block_size =  __svcMemoryPoolGetBlockSize(mp_id);
@@ -670,7 +666,7 @@ uint32_t osMemoryPoolGetBlockSize (osMemoryPoolId_t mp_id) {
 uint32_t osMemoryPoolGetCount (osMemoryPoolId_t mp_id) {
   uint32_t count;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     count = svcRtxMemoryPoolGetCount(mp_id);
   } else {
     count =  __svcMemoryPoolGetCount(mp_id);
@@ -682,7 +678,7 @@ uint32_t osMemoryPoolGetCount (osMemoryPoolId_t mp_id) {
 uint32_t osMemoryPoolGetSpace (osMemoryPoolId_t mp_id) {
   uint32_t space;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     space = svcRtxMemoryPoolGetSpace(mp_id);
   } else {
     space =  __svcMemoryPoolGetSpace(mp_id);
@@ -695,7 +691,7 @@ osStatus_t osMemoryPoolDelete (osMemoryPoolId_t mp_id) {
   osStatus_t status;
 
   EvrRtxMemoryPoolDelete(mp_id);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxMemoryPoolError(mp_id, (int32_t)osErrorISR);
     status = osErrorISR;
   } else {
