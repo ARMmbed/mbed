@@ -388,7 +388,7 @@ int OSPIFBlockDevice::deinit()
         tr_error("Write Disable failed");
         result = OSPIF_BD_ERROR_DEVICE_ERROR;
     }
-
+    _address_size = OSPI_CFG_ADDR_SIZE_24;
     _is_initialized = false;
 
     _mutex.unlock();

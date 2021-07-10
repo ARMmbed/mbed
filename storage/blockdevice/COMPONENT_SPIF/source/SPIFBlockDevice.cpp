@@ -217,6 +217,7 @@ int SPIFBlockDevice::deinit()
     if (status != SPIF_BD_ERROR_OK)  {
         tr_error("Write Disable failed");
     }
+    _address_size = SPIF_ADDR_SIZE_3_BYTES;
     _is_initialized = false;
 
 exit_point:
