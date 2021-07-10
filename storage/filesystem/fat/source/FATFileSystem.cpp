@@ -14,9 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "fat/ChaN/diskio.h"
 #include "fat/ChaN/ffconf.h"
 #include "fat/ChaN/ff.h"
+#include "fat/ChaN/diskio.h"
 #include "platform/mbed_debug.h"
 #include "platform/mbed_critical.h"
 #include "filesystem/mbed_filesystem.h"
@@ -199,7 +199,7 @@ extern "C" DSTATUS disk_initialize(BYTE pdrv)
     return (DSTATUS)_ffs[pdrv]->init();
 }
 
-extern "C" DRESULT disk_read(BYTE pdrv, BYTE *buff, DWORD sector, UINT count)
+extern "C" DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count)
 {
     debug_if(FFS_DBG, "disk_read(sector %lu, count %u) on pdrv [%d]\n", sector, count, pdrv);
     DWORD ssize = disk_get_sector_size(pdrv);
@@ -209,7 +209,7 @@ extern "C" DRESULT disk_read(BYTE pdrv, BYTE *buff, DWORD sector, UINT count)
     return err ? RES_PARERR : RES_OK;
 }
 
-extern "C" DRESULT disk_write(BYTE pdrv, const BYTE *buff, DWORD sector, UINT count)
+extern "C" DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count)
 {
     debug_if(FFS_DBG, "disk_write(sector %lu, count %u) on pdrv [%d]\n", sector, count, pdrv);
     DWORD ssize = disk_get_sector_size(pdrv);
@@ -409,7 +409,15 @@ int FATFileSystem::format(BlockDevice *bd, bd_size_t cluster_size)
     }
 
     // Logical drive number, Partitioning rule, Allocation unit size (bytes per cluster)
-    FRESULT res = f_mkfs(fs._fsid, FM_ANY | FM_SFD, cluster_size, NULL, 0);
+    MKFS_PARM opt;
+    FRESULT   res;
+    opt.fmt     = (FM_ANY | FM_SFD);
+    opt.n_fat   = 0U;
+    opt.align   = 0U;
+    opt.n_root  = 0U;
+    opt.au_size = (DWORD)cluster_size;
+
+    res = f_mkfs((const TCHAR*)fs._fsid, &opt, NULL, FF_MAX_SS);
     if (res != FR_OK) {
         fs.unmount();
         fs.unlock();
