@@ -503,6 +503,22 @@ https://github.com/ARMmbed/mbed-os/blob/master/connectivity/drivers/emac/TARGET_
 Option is also to define your own `HAL_ETH_MspInit` function,
 you then have to add **USE_USER_DEFINED_HAL_ETH_MSPINIT** macro.
 
+#### Custom IRQ Handler and Callback from user application
+To use the custom IRQ Handler and the callbacks, you need to add
+**USE_USER_DEFINED_HAL_ETH_IRQ_CALLBACK** macro
+inside any of the JASON file in either targets.json or in mbed_app.json file.
+
+For example in the targets.json,
+you need to add this line in your target:
+```"macros_add": ["USE_USER_DEFINED_HAL_ETH_IRQ_CALLBACK"],```
+or for example in the mbed_app.json, you need to add:
+``` "macros": ["USE_USER_DEFINED_HAL_ETH_IRQ_CALLBACK"]```
+
+By doing the any of the above json files, the corresponding user defined custom apis like
+HAL_ETH_RxCpltCallback() and STM_HAL_ETH_Handler() can be called from
+the user application.
+
+#### Changing default MAC address in STM32
 To change the default MAC address in STM32,
 If we have the function mbed_otp_mac_address() in the user application,the default ethernet address
 can be changed.

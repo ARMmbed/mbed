@@ -144,8 +144,8 @@ extern "C" {
 #endif
 
 void _eth_config_mac(ETH_HandleTypeDef *heth);
-void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *heth);
 void ETH_IRQHandler(void);
+MBED_WEAK void STM_HAL_ETH_Handler(ETH_HandleTypeDef *heth);
 
 #ifdef __cplusplus
 }
@@ -242,20 +242,14 @@ static void MPU_Config(void)
 
 #endif
 
-
-
 /**
- * Ethernet Rx Transfer completed callback
+ * IRQ Handler
  *
  * @param  heth: ETH handle
  * @retval None
  */
-void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *heth)
+MBED_WEAK void STM_HAL_ETH_Handler()
 {
-    STM32_EMAC &emac = STM32_EMAC::get_instance();
-    if (emac.thread) {
-        osThreadFlagsSet(emac.thread, FLAG_RX);
-    }
 }
 
 /**
@@ -266,8 +260,7 @@ void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *heth)
  */
 void ETH_IRQHandler(void)
 {
-    STM32_EMAC &emac = STM32_EMAC::get_instance();
-    HAL_ETH_IRQHandler(&emac.EthHandle);
+    STM_HAL_ETH_Handler();
 }
 
 STM32_EMAC::STM32_EMAC()
