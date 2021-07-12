@@ -1,7 +1,7 @@
 /* mbed Microcontroller Library
  * Copyright (c) 2020 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -27,7 +27,7 @@ public:
     SecurityManager(const SecurityManager&) = delete;
     SecurityManager& operator=(const SecurityManager&) = delete;
     virtual ~SecurityManager() {};
-    
+
     using SecurityIOCapabilities_t = ble::SecurityManager::SecurityIOCapabilities_t;
     using SecurityMode_t = ble::SecurityManager::SecurityMode_t;
     using SecurityManagerShutdownCallback_t = ble::SecurityManager::SecurityManagerShutdownCallback_t;
