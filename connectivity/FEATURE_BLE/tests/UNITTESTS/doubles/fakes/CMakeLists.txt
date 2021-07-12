@@ -5,7 +5,7 @@ add_library(mbed-fakes-ble)
 
 target_include_directories(mbed-fakes-ble
     PUBLIC
-        ${mbed-os_SOURCE_DIR}/UNITTESTS/fakes/ble/
+        ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/tests/UNITTESTS/doubles/fakes
         ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/include
         ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/include/ble
         ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/source
@@ -24,13 +24,13 @@ target_sources(mbed-fakes-ble
         ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/source/GattClient.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/source/GattServer.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/source/SecurityManager.cpp
-        ${mbed-os_SOURCE_DIR}/UNITTESTS/fakes/ble/BLE.cpp
-        ${mbed-os_SOURCE_DIR}/UNITTESTS/fakes/ble/source/GattServerImpl_mock.cpp
-        ${mbed-os_SOURCE_DIR}/UNITTESTS/fakes/ble/ble_mocks.h
-        ${mbed-os_SOURCE_DIR}/UNITTESTS/fakes/ble/GapImpl_mock.h
-        ${mbed-os_SOURCE_DIR}/UNITTESTS/fakes/ble/GattClientImpl_mock.h
-        ${mbed-os_SOURCE_DIR}/UNITTESTS/fakes/ble/GattServerImpl_mock.h
-        ${mbed-os_SOURCE_DIR}/UNITTESTS/fakes/ble/SecurityManagerImpl_mock.h
+        ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/tests/UNITTESTS/doubles/fakes/BLE.cpp
+        ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/tests/UNITTESTS/doubles/fakes/source/GattServerImpl_mock.cpp
+        ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/tests/UNITTESTS/doubles/fakes/ble_mocks.h
+        ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/tests/UNITTESTS/doubles/fakes/GapImpl_mock.h
+        ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/tests/UNITTESTS/doubles/fakes/GattClientImpl_mock.h
+        ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/tests/UNITTESTS/doubles/fakes/GattServerImpl_mock.h
+        ${mbed-os_SOURCE_DIR}/connectivity/FEATURE_BLE/tests/UNITTESTS/doubles/fakes/SecurityManagerImpl_mock.h
 )
 
 target_link_libraries(mbed-fakes-ble
