@@ -15,6 +15,11 @@
  * limitations under the License.
  */
 
+// Workaround for CMSIS 5.8.0, compat header must be placed before any CMSIS header inclusion
+#if defined(__ARMCC_VERSION)
+#   include <arm_compat.h>
+#endif
+
 #include <mstd_mutex>
 #include <time.h>
 #include "platform/platform.h"
@@ -53,7 +58,6 @@ struct DIR_impl {
 };
 
 #if defined(__ARMCC_VERSION)
-#   include <arm_compat.h>
 #   include <rt_sys.h>
 #   include <rt_misc.h>
 #   include <stdint.h>
