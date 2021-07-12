@@ -53,6 +53,7 @@ struct DIR_impl {
 };
 
 #if defined(__ARMCC_VERSION)
+#   include <arm_compat.h>
 #   include <rt_sys.h>
 #   include <rt_misc.h>
 #   include <stdint.h>
