@@ -35,7 +35,8 @@ target_sources(mbed-fakes-ble
 
 target_link_libraries(mbed-fakes-ble
     PRIVATE
-        mbed-headers
-        mbed-stubs-headers
+        mbed-headers-base
+        mbed-headers-platform
+        mbed-headers-events
         gcov
 )
