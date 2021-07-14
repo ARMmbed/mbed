@@ -1,0 +1,31 @@
+on:
+  schedule:
+    # * is a special character in YAML so you have to quote this string
+    # Run at 4.00 UTC every Friday morning
+    - cron:  '0 4 * * 5'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+
+      - name: Install Python environment
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Checkout mbed-os-ci-scripts repo (This repo is currently private)
+        uses: actions/checkout@v2
+        with:
+          repository: ARMmbed/mbed-os-ci-scripts
+          token: ${{ secrets.ISSUE_TRIAGING_PERMS }}
+          path: scripts
+          ref: master
+
+      - name: Run the script
+        run: |
+          python -m pip install pygithub
+          python ./scripts/mbed_weekly/__init__.py -t ${{ secrets.ISSUE_TRIAGING_PERMS }}
