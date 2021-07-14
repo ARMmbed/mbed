@@ -216,7 +216,7 @@
   * @{
   */
 
-#if defined(CAN)
+#if defined(CAN1)
 
 /** @defgroup CAN CAN
   * @brief CAN driver modules

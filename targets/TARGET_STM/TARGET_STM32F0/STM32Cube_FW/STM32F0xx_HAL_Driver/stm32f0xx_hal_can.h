@@ -32,7 +32,7 @@ extern "C" {
   * @{
   */
 
-#if defined (CAN)
+#if defined (CAN1)
 /** @addtogroup CAN
   * @{
   */
@@ -617,6 +617,26 @@ typedef  void (*pCAN_CallbackTypeDef)(CAN_HandleTypeDef *hcan); /*!< pointer to 
    (((__FLAG__) >> 8U) == 2U)? (((__HANDLE__)->Instance->RF0R) = (1U << ((__FLAG__) & CAN_FLAG_MASK))): \
    (((__FLAG__) >> 8U) == 4U)? (((__HANDLE__)->Instance->RF1R) = (1U << ((__FLAG__) & CAN_FLAG_MASK))): \
    (((__FLAG__) >> 8U) == 1U)? (((__HANDLE__)->Instance->MSR) = (1U << ((__FLAG__) & CAN_FLAG_MASK))): 0U)
+
+/**
+  * @brief  Check the transmission status of a CAN Frame.
+  * @param  __HANDLE__ CAN Handle
+  * @param  __TRANSMITMAILBOX__ the number of the mailbox that is used for transmission.
+  * @retval The new status of transmission  (TRUE or FALSE).
+  */
+#define __HAL_CAN_TRANSMIT_STATUS(__HANDLE__, __TRANSMITMAILBOX__)\
+(((__TRANSMITMAILBOX__) == CAN_TX_MAILBOX0)? ((((__HANDLE__)->Instance->TSR) & (CAN_TSR_RQCP0 | CAN_TSR_TXOK0 | CAN_TSR_TME0)) == (CAN_TSR_RQCP0 | CAN_TSR_TXOK0 | CAN_TSR_TME0)) :\
+ ((__TRANSMITMAILBOX__) == CAN_TX_MAILBOX1)? ((((__HANDLE__)->Instance->TSR) & (CAN_TSR_RQCP1 | CAN_TSR_TXOK1 | CAN_TSR_TME1)) == (CAN_TSR_RQCP1 | CAN_TSR_TXOK1 | CAN_TSR_TME1)) :\
+ ((((__HANDLE__)->Instance->TSR) & (CAN_TSR_RQCP2 | CAN_TSR_TXOK2 | CAN_TSR_TME2)) == (CAN_TSR_RQCP2 | CAN_TSR_TXOK2 | CAN_TSR_TME2)))
+
+/**
+  * @brief  Return the number of pending received messages.
+  * @param  __HANDLE__ CAN handle
+  * @param  __FIFONUMBER__ Receive FIFO number, CAN_FIFO0 or CAN_FIFO1.
+  * @retval The number of pending message.
+  */
+#define __HAL_CAN_MSG_PENDING(__HANDLE__, __FIFONUMBER__) (((__FIFONUMBER__) == CAN_RX_FIFO0)? \
+((uint8_t)((__HANDLE__)->Instance->RF0R&0x03U)) : ((uint8_t)((__HANDLE__)->Instance->RF1R&0x03U)))
 
 /**
  * @}
