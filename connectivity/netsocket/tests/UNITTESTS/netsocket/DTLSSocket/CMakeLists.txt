@@ -6,7 +6,7 @@ set(TEST_NAME netsocket-dtls-socket-unittest)
 add_executable(${TEST_NAME})
 
 target_compile_definitions(${TEST_NAME}
-    PRIVATE        
+    PRIVATE
         MBED_CONF_NSAPI_DNS_ADDRESSES_LIMIT=10
 )
 
@@ -24,7 +24,7 @@ target_sources(${TEST_NAME}
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/ip6tos.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip4string/stoip4.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/stoip6.c
-        ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libBits/common_functions.c        
+        ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libBits/common_functions.c
         test_DTLSSocket.cpp
 )
 

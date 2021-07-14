@@ -6,10 +6,10 @@ set(TEST_NAME netsocket-network-interface-unittest)
 add_executable(${TEST_NAME})
 
 target_compile_definitions(${TEST_NAME}
-    PRIVATE        
+    PRIVATE
         MBED_CONF_PLATFORM_CALLBACK_COMPARABLE
         MBED_CONF_NSAPI_DNS_ADDRESSES_LIMIT=10
-        
+
 )
 
 target_sources(${TEST_NAME}

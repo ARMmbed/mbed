@@ -6,7 +6,7 @@ set(TEST_NAME netsocket-iface-dns-socket-unittest)
 add_executable(${TEST_NAME})
 
 target_compile_definitions(${TEST_NAME}
-    PRIVATE        
+    PRIVATE
         MBED_CONF_NSAPI_DNS_ADDRESSES_LIMIT=10
         DEVICE_EMAC
         MBED_CONF_TARGET_NETWORK_DEFAULT_INTERFACE_TYPE=ETHERNET
