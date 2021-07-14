@@ -26,7 +26,9 @@
 #include "source/pal/PalAttClient.h"
 #include "source/pal/PalSecurityManager.h"
 #include "source/pal/PalGap.h"
+#if BLE_FEATURE_SIGNING
 #include "source/pal/PalSigningMonitor.h"
+#endif //BLE_FEATURE_SIGNING
 #include "source/pal/PalAttClientToGattClient.h"
 
 #include "source/BLEInstanceBaseImpl.h"
@@ -283,6 +285,7 @@ PalGattClient &BLEInstanceBase::getPalGattClient()
 #if BLE_FEATURE_SECURITY
 ble::impl::SecurityManager &BLEInstanceBase::getSecurityManagerImpl()
 {
+#if BLE_FEATURE_SIGNING
     // Creation of a proxy monitor to let the security manager register to
     // the gatt client and gatt server.
     static struct : ble::PalSigningMonitor {
@@ -296,11 +299,14 @@ ble::impl::SecurityManager &BLEInstanceBase::getSecurityManagerImpl()
 #endif // BLE_FEATURE_GATT_SERVER
         }
     } signing_event_monitor;
+#endif //BLE_FEATURE_SIGNING
 
     static ble::impl::SecurityManager m_instance(
         ble::impl::PalSecurityManager::get_security_manager(),
-        getGapImpl(),
-        signing_event_monitor
+        getGapImpl()
+#if BLE_FEATURE_SIGNING
+        , signing_event_monitor
+#endif //BLE_FEATURE_SIGNING
 #if BLE_FEATURE_PRIVACY
         , getPrivateAddressRegistry()
 #endif //BLE_FEATURE_PRIVACY

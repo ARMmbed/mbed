@@ -30,7 +30,9 @@
 #include "ble/gatt/CharacteristicDescriptorDiscovery.h"
 #include "ble/gatt/GattCallbackParamTypes.h"
 #include "source/pal/PalGattClient.h"
+#if BLE_FEATURE_SIGNING
 #include "source/pal/PalSigningMonitor.h"
+#endif //BLE_FEATURE_SIGNING
 #include "ble/GattClient.h"
 
 namespace ble {
@@ -40,9 +42,13 @@ class BLEInstanceBase;
 namespace impl {
 
 class GattClient :
+#if BLE_FEATURE_SIGNING
     public PalSigningMonitor,
+#endif //BLE_FEATURE_SIGNING
     public PalGattClientEventHandler {
+#if BLE_FEATURE_SIGNING
     friend PalSigningMonitor;
+#endif //BLE_FEATURE_SIGNING
     friend BLEInstanceBase;
 public:
     using EventHandler = ble::GattClient::EventHandler;
@@ -163,11 +169,12 @@ private:
     /*                    private implementation follows                     */
 
 private:
+#if BLE_FEATURE_SIGNING
     /**
      * @see ble::PalSigningMonitor::set_signing_event_handler
      */
     void set_signing_event_handler(PalSigningMonitorEventHandler *signing_event_handler) override;
-
+#endif //BLE_FEATURE_SIGNING
     /**
      * @see PalGattClient::EventHandler::on_att_mtu_change
      */
@@ -244,7 +251,9 @@ private:
 
     PalGattClient &_pal_client;
     ServiceDiscovery::TerminationCallback_t _termination_callback;
+#if BLE_FEATURE_SIGNING
     PalSigningMonitorEventHandler *_signing_event_handler;
+#endif // BLE_FEATURE_SIGNING
     mutable ProcedureControlBlock *control_blocks;
     bool _is_reseting;
 

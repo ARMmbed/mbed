@@ -472,7 +472,7 @@ public:
         attribute_handle_t characteristic_value_handle,
         const Span<const uint8_t>& value
     ) = 0;
-
+#if BLE_FEATURE_SIGNING
     /**
      * Send a Signed Write without Response command to the server.
      *
@@ -494,7 +494,7 @@ public:
         attribute_handle_t characteristic_value_handle,
         const Span<const uint8_t>& value
     ) = 0;
-
+#endif //BLE_FEATURE_SIGNING
     /**
      * Send a write request to the server.
      *

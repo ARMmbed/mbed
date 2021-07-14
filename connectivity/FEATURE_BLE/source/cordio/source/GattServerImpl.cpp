@@ -1629,7 +1629,9 @@ GattServer::GattServer() :
     updatesEnabledCallback(nullptr),
     updatesDisabledCallback(nullptr),
     confirmationReceivedCallback(nullptr),
+#if BLE_FEATURE_SIGNING
     _signing_event_handler(nullptr),
+#endif //BLE_FEATURE_SIGNING
     cccds(),
     cccd_values(),
     cccd_handles(),
@@ -1645,12 +1647,14 @@ GattServer::GattServer() :
 {
 }
 
+#if BLE_FEATURE_SIGNING
 void GattServer::set_signing_event_handler(
     PalSigningMonitorEventHandler *signing_event_handler
 )
 {
     _signing_event_handler = signing_event_handler;
 }
+#endif //BLE_FEATURE_SIGNING
 
 void GattServer::onDataSent(const DataSentCallback_t &callback)
 {

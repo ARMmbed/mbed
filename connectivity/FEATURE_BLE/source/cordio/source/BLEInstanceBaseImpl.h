@@ -54,8 +54,9 @@
 #endif
 
 namespace ble {
-
+#if BLE_FEATURE_SIGNING
 class PalSigningMonitor;
+#endif //BLE_FEATURE_SIGNING
 
 namespace impl {
 
@@ -70,8 +71,9 @@ class BLEInstanceBase final : public ble::BLEInstanceBase {
     using Timeout = mbed::Timeout;
     using Timer   = mbed::Timer;
 #endif
-
+#if BLE_FEATURE_SIGNING
     friend PalSigningMonitor;
+#endif //BLE_FEATURE_SIGNING
 
     /**
      * Construction with an HCI driver.

@@ -39,7 +39,9 @@
 
 #include "source/BLEInstanceBase.h"
 #include "source/generic/GattServerEvents.h"
+#if BLE_FEATURE_SIGNING
 #include "source/pal/PalSigningMonitor.h"
+#endif //BLE_FEATURE_SIGNING
 
 namespace ble {
 
@@ -49,10 +51,16 @@ class PalGenericAccessService;
 class BLE;
 
 namespace impl {
-class GattServer : public PalSigningMonitor {
+class GattServer
+#if BLE_FEATURE_SIGNING
+    : public PalSigningMonitor
+#endif //BLE_FEATURE_SIGNING
+{
     friend ble::BLE;
     friend ble::PalAttClient;
+#if BLE_FEATURE_SIGNING
     friend PalSigningMonitor;
+#endif //BLE_FEATURE_SIGNING
     friend PalGenericAccessService;
 
     using EventHandler = ble::GattServer::EventHandler;
@@ -214,11 +222,11 @@ public:
     void initialize();
 
     static uint8_t atts_auth_cb(dmConnId_t connId, uint8_t permit, uint16_t handle);
-
+#if BLE_FEATURE_SIGNING
     void set_signing_event_handler(
         PalSigningMonitorEventHandler *signing_event_handler
     ) override;
-
+#endif //BLE_FEATURE_SIGNING
 private:
 
     GattServer();
@@ -361,8 +369,9 @@ private:
      * The registered callback handler for confirmation received events.
      */
     EventCallback_t confirmationReceivedCallback;
-
+#if BLE_FEATURE_SIGNING
     PalSigningMonitorEventHandler *_signing_event_handler;
+#endif //BLE_FEATURE_SIGNING
 
     attsCccSet_t cccds[MBED_CONF_BLE_API_IMPLEMENTATION_MAX_CCCD_COUNT];
     uint16_t cccd_values[MBED_CONF_BLE_API_IMPLEMENTATION_MAX_CCCD_COUNT];

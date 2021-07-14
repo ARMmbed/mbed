@@ -184,7 +184,7 @@ ble_error_t PalAttClientToGattClient::write_without_response(
     );
 }
 
-
+#if BLE_FEATURE_SIGNING
 ble_error_t PalAttClientToGattClient::signed_write_without_response(
     connection_handle_t connection_handle,
     attribute_handle_t characteristic_value_handle,
@@ -197,7 +197,7 @@ ble_error_t PalAttClientToGattClient::signed_write_without_response(
         value
     );
 }
-
+#endif // BLE_FEATURE_SIGNING
 
 ble_error_t PalAttClientToGattClient::write_attribute(
     connection_handle_t connection_handle,

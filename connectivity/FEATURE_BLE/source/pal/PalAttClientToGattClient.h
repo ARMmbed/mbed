@@ -140,7 +140,7 @@ public:
         attribute_handle_t characteristic_value_handle,
         const Span<const uint8_t>& value
     ) override;
-
+#if BLE_FEATURE_SIGNING
     /**
      * @see ble::PalGattClient::signed_write_without_response
      */
@@ -149,7 +149,7 @@ public:
         attribute_handle_t characteristic_value_handle,
         const Span<const uint8_t>& value
     ) override;
-
+#endif //BLE_FEATURE_SIGNING
     /**
      * @see ble::PalGattClient::write_attribute
      */
