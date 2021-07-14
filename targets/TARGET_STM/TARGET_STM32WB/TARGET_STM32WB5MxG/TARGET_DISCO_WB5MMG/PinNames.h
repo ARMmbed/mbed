@@ -27,6 +27,13 @@
 extern "C" {
 #endif
 
+void rgb_led_on(uint8_t RedValue, uint8_t GreenValue, uint8_t BlueValue);
+void rgb_led_off(void);
+void rgb_led_red(void);
+void rgb_led_green(void);
+void rgb_led_blue(void);
+
+
 typedef enum {
     ALT0  = 0x100,
 } ALTx;
@@ -185,9 +192,12 @@ typedef enum {
 } PinName;
 
 // Standardized LED and button names
-#define LED1     PA_7  // LD4 is a RGB LED connected to a PWM LED driver // TODO
 #define BUTTON1  PC_12
 #define BUTTON2  PC_13
+
+// RBG LED
+#define RGB_LED       PA_7  // LD4 is a RGB LED connected to a PWM LED driver
+#define GPIO_SELECT2  PH_1  // See User Manual
 
 #ifdef __cplusplus
 }
