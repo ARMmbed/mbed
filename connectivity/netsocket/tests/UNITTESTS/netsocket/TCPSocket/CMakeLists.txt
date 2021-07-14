@@ -23,7 +23,8 @@ target_sources(${TEST_NAME}
 
 target_link_libraries(${TEST_NAME}
     PRIVATE
-        mbed-headers
+        mbed-headers-drivers
+        mbed-headers-rtos
         mbed-headers-nanostack-libservice
         mbed-headers-netsocket
         mbed-stubs
