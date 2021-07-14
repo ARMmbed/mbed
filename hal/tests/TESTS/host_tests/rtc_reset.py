@@ -17,7 +17,7 @@ limitations under the License.
 """
 from __future__ import print_function
 
-from mbed_host_tests import BaseHostTest
+from htrun import BaseHostTest
 from time import sleep
 
 

@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 import time
-from mbed_host_tests import BaseHostTest
+from htrun import BaseHostTest
 
 DEFAULT_SYNC_DELAY = 4.0
 

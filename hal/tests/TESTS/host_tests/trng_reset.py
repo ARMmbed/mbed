@@ -24,8 +24,8 @@ for more details see main.cpp file)
 """
 
 import time
-from mbed_host_tests import BaseHostTest
-from mbed_host_tests.host_tests_runner.host_test_default import DefaultTestSelector
+from htrun import BaseHostTest
+from htrun.host_tests_runner.host_test_default import DefaultTestSelector
 from time import sleep
 
 DEFAULT_CYCLE_PERIOD      = 1.0

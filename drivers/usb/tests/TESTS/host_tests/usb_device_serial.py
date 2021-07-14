@@ -25,7 +25,7 @@ import sys
 import serial
 import serial.tools.list_ports as stlp
 import six
-import mbed_host_tests
+import htrun
 
 
 MSG_KEY_DEVICE_READY = 'ready'
@@ -90,7 +90,7 @@ def retry_fun_call(fun, num_retries=3, retry_delay=0.0):
     raise RetryError(err_msg.format(final_err, num_retries))
 
 
-class USBSerialTest(mbed_host_tests.BaseHostTest):
+class USBSerialTest(htrun.BaseHostTest):
     """Host side test for USB CDC & Serial classes."""
 
     _BYTESIZES = {

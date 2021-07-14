@@ -17,7 +17,7 @@ limitations under the License.
 
 
 import uuid
-from mbed_host_tests import BaseHostTest
+from htrun import BaseHostTest
 
 class Device_Echo(BaseHostTest):
 

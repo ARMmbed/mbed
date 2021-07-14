@@ -16,7 +16,7 @@ limitations under the License.
 """
 import collections
 import threading
-from mbed_host_tests import BaseHostTest
+from htrun import BaseHostTest
 
 TestCaseData = collections.namedtuple('TestCaseData', ['index', 'data_to_send'])
 

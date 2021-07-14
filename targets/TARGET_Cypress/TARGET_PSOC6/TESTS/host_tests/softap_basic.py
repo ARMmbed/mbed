@@ -16,8 +16,8 @@ limitations under the License.
 """
 
 
-from mbed_host_tests import BaseHostTest
-from mbed_host_tests.host_tests_logger import HtrunLogger
+from htrun import BaseHostTest
+from htrun.host_tests_logger import HtrunLogger
 import platform
 import time, re, os
 import subprocess

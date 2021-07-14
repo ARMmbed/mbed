@@ -15,8 +15,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 import time
-from mbed_host_tests import BaseHostTest
-from mbed_host_tests.host_tests_runner.host_test_default import DefaultTestSelector
+from htrun import BaseHostTest
+from htrun.host_tests_runner.host_test_default import DefaultTestSelector
 
 DEFAULT_CYCLE_PERIOD = 1.0
 

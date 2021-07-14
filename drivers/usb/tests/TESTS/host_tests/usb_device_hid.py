@@ -21,7 +21,7 @@ import time
 import threading
 import uuid
 import sys
-import mbed_host_tests
+import htrun
 import usb.core
 from usb.util import (
     CTRL_IN,
@@ -218,7 +218,7 @@ def raise_if_false(expression, text):
         raise RuntimeError(text)
 
 
-class USBHIDTest(mbed_host_tests.BaseHostTest):
+class USBHIDTest(htrun.BaseHostTest):
     """Host side test for USB device HID class."""
 
     @staticmethod
