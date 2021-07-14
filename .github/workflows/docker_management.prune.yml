@@ -1,0 +1,27 @@
+name: Prune temporary docker images
+
+on:    
+  schedule:
+    - cron:  '15 4 * * *'
+
+  workflow_dispatch:
+
+jobs:
+  prune-images:
+    if: github.repository_owner == 'ARMmbed'
+    runs-on: ubuntu-latest
+
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v2
+
+      - 
+        name: Delete old temporary images
+        run: |
+          # the following command may fail because github package doesn't allow 
+          # deletion if only one image exists or if DOCKER_MANAGEMENT_TOKEN is not 
+          # setup. This shouldn't create any alarm as temporary image deletion is 
+          # not a critical activity.
+          python ./.github/workflows/ci_scripts/github_utils.py -u ${{ github.actor }} -p ${{ secrets.DOCKER_MANAGEMENT_TOKEN }} delete-old-images -r mbed-os-env-tmp | true
+          
