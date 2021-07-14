@@ -115,7 +115,7 @@ void EmacTestNetworkStack::socket_attach(nsapi_socket_t handle, void (*callback)
 
 }
 
-nsapi_error_t EmacTestNetworkStack::add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out)
+nsapi_error_t EmacTestNetworkStack::add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out, NetworkInterface *user_network_interface)
 {
     // Test network stack supports only one interface
     TEST_ASSERT_MESSAGE(!m_interface, "Only one interface supported!");

@@ -157,6 +157,55 @@ public:
     virtual nsapi_size_or_error_t recvfrom(SocketAddress *address,
                                            void *data, nsapi_size_t size) = 0;
 
+    /** Send a message on a socket.
+     *
+     * The sendmsg() function sends a message through a connection-mode or connectionless-mode socket.
+     * If the socket is a connectionless-mode socket, the message is sent to the address specified.
+     * If the socket is a connected-mode socket, address is ignored.
+     *
+     * Additional control information can be passed to the stack for specific operations.
+     *
+     * By default, sendto blocks until data is sent. If socket is set to
+     * non-blocking or times out, NSAPI_ERROR_WOULD_BLOCK is returned
+     * immediately.
+     *
+     *  @param address  Remote address
+     *  @param data     Buffer of data to send to the host
+     *  @param size     Size of the buffer in bytes
+     *  @return         Number of sent bytes on success, negative subclass-dependent error
+     *                  code on failure
+     */
+    virtual nsapi_size_or_error_t sendmsg(const SocketAddress &address,
+                                          const void *data, nsapi_size_t size,
+                                          nsapi_msghdr_t *control, nsapi_size_t control_size) = 0;
+
+
+    /** Receive a data from a socket
+     *
+     *  Receives a data and stores the source address in address if address
+     *  is not NULL. Returns the number of bytes written into the buffer.
+     *
+     *  If socket is connected, only packets coming from connected peer address
+     *  are accepted.
+     *
+     * Additional information related to the message can be retrieved with the control data.
+     *
+     *  @note recvmsg() is allowed write to address and data buffers even if error occurs.
+     *
+     *  By default, recvfrom blocks until a datagram is received. If socket is set to
+     *  non-blocking or times out with no data, NSAPI_ERROR_WOULD_BLOCK
+     *  is returned.
+     *
+     *  @param address  Destination for the source address or NULL
+     *  @param data     Destination buffer for datagram received from the host
+     *  @param size     Size of the buffer in bytes
+     *  @return         Number of received bytes on success, negative subclass-dependent
+     *                  error code on failure
+     */
+    virtual nsapi_size_or_error_t recvmsg(SocketAddress *address,
+                                          void *data, nsapi_size_t size,
+                                          nsapi_msghdr_t *control, nsapi_size_t control_size) = 0;
+
     /** Bind a specific address to a socket.
      *
      *  Binding a socket specifies the address and port on which to receive

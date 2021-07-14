@@ -46,6 +46,8 @@ public:
     MOCK_METHOD4(socket_recvfrom, nsapi_error_t(nsapi_socket_t handle, SocketAddress *address, void *data, nsapi_size_t size));
     MOCK_METHOD5(setsockopt, nsapi_error_t(nsapi_socket_t handle, int level, int optname, const void *optval, unsigned optlen));
     MOCK_METHOD5(getsockopt, nsapi_error_t(nsapi_socket_t handle, int level, int optname, const void *optval, unsigned *optlen));
+    MOCK_METHOD6(socket_sendmsg, nsapi_error_t(nsapi_socket_t handle, SocketAddress *address, void *data, nsapi_size_t size, nsapi_msghdr_t *control, nsapi_size_t control_size));
+    MOCK_METHOD6(socket_recvmsg, nsapi_error_t(nsapi_socket_t handle, SocketAddress *address, void *data, nsapi_size_t size, nsapi_msghdr_t *control, nsapi_size_t control_size));
 //    MOCK_METHOD3(socket_attach, void(nsapi_socket_t handle, void (*callback)(void *), void *data));
     MOCK_METHOD3(add_ethernet_interface, nsapi_error_t(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out));
     MOCK_METHOD3(add_ppp_interface, nsapi_error_t(PPP &ppp, bool default_if, OnboardNetworkStack::Interface **interface_out));

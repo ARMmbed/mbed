@@ -148,7 +148,7 @@ public:
      * @param[out] interface_out    pointer to stack interface object controlling the EMAC
      * @return                      NSAPI_ERROR_OK on success, or error code
      */
-    virtual nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out);
+    virtual nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out, NetworkInterface *user_network_interface);
 
     /** Translates a hostname to an IP address with specific version
      *

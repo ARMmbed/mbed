@@ -42,6 +42,28 @@
 
 LWIP::Interface *LWIP::Interface::list;
 
+NetworkInterface *LWIP::Interface::network_if_from_netif_id(int id)
+{
+    for (Interface *interface = list; interface; interface = interface->next) {
+        if (id == netif_get_index(&interface->netif)) {
+            return interface->user_network_interface;
+        }
+    }
+    return NULL;
+}
+
+int LWIP::Interface::netif_id_from_network_if(NetworkInterface *userInterface)
+{
+    if (userInterface != NULL) {
+        for (Interface *interface = list; interface; interface = interface->next) {
+            if (userInterface == interface->user_network_interface) {
+                return netif_get_index(&interface->netif);
+            }
+        }
+    }
+    return 0;
+}
+
 LWIP::Interface *LWIP::Interface::our_if_from_netif(struct netif *netif)
 {
     for (Interface *interface = list; interface; interface = interface->next) {
@@ -408,7 +430,7 @@ LWIP::Interface::Interface() :
     list = this;
 }
 
-nsapi_error_t LWIP::add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out)
+nsapi_error_t LWIP::add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out, NetworkInterface *user_network_interface)
 {
 #if LWIP_ETHERNET
     Interface *interface = new (std::nothrow) Interface();
@@ -431,7 +453,7 @@ nsapi_error_t LWIP::add_ethernet_interface(EMAC &emac, bool default_if, OnboardN
 #endif
 
     interface->netif.hwaddr_len = 6;
-
+    interface->user_network_interface = user_network_interface;
     if (!netif_add(&interface->netif,
 #if LWIP_IPV4
                    0, 0, 0,

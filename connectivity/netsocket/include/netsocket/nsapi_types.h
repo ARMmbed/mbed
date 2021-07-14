@@ -318,7 +318,8 @@ typedef enum nsapi_socket_option {
     NSAPI_LATENCY,           /*!< Read estimated latency to destination */
     NSAPI_STAGGER,           /*!< Read estimated stagger value to destination */
     NSAPI_IPTOS,             /*!< Set IP type of service to set specific precedence */
-    NSAPI_BROADCAST          /*!< Set broadcast flag for UDP socket */
+    NSAPI_BROADCAST,         /*!< Set broadcast flag for UDP socket */
+    NSAPI_PKTINFO            /*!< Get additional information when using sendmsg/recvmsg */
 } nsapi_socket_option_t;
 
 typedef enum nsapi_tlssocket_level {
@@ -405,6 +406,23 @@ typedef struct nsapi_stagger_req {
     uint16_t stagger_max;   /* [OUT] Maximum stagger value in seconds */
     uint16_t stagger_rand;  /* [OUT] Randomized stagger value in seconds */
 } nsapi_stagger_req_t;
+
+/** nsapi_msghdr
+ */
+typedef struct nsapi_msghdr {
+    nsapi_size_t len;    /* Data byte count, including header */
+    int          level;  /* Originating protocol */
+    int          type;   /* Protocol-specific type */
+} nsapi_msghdr_t;
+
+/** nsapi_pktinfo structure
+ */
+typedef struct nsapi_pktinfo {
+    nsapi_msghdr_t hdr;         /* Header identifying the message control structure */
+    nsapi_addr_t   ipi_addr;    /* Address associated with the packet */
+    int            ipi_ifindex; /* Interface associated with the packet */
+    void          *network_interface; /* Network interface pointer*/
+} nsapi_pktinfo_t;
 
 /** nsapi_stack_api structure
  *
@@ -643,6 +661,17 @@ typedef struct nsapi_stack_api {
      */
     nsapi_size_or_error_t (*socket_recvfrom)(nsapi_stack_t *stack, nsapi_socket_t socket,
                                              nsapi_addr_t *addr, uint16_t *port, void *buffer, nsapi_size_t size);
+
+    // TODO: Documentation
+    nsapi_size_or_error_t (*socket_sendmsg)(nsapi_stack_t *stack, nsapi_socket_t socket,
+                                            nsapi_addr_t addr, uint16_t port,
+                                            const void *data, nsapi_size_t size,
+                                            const nsapi_msghdr_t *control, nsapi_size_t control_size);
+
+    nsapi_size_or_error_t (*socket_recvmsg)(nsapi_stack_t *stack, nsapi_socket_t socket,
+                                            nsapi_addr_t *addr, uint16_t *port,
+                                            void *data, nsapi_size_t size,
+                                            nsapi_msghdr_t *control, nsapi_size_t control_size);
 
     /** Register a callback on state change of the socket
      *

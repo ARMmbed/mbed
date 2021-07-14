@@ -395,6 +395,51 @@ protected:
     virtual nsapi_size_or_error_t socket_recvfrom(nsapi_socket_t handle, SocketAddress *address,
                                                   void *buffer, nsapi_size_t size) = 0;
 
+    /** Send a packet with ancillary data over a UDP socket
+     *
+     *  Sends data to the specified address. Returns the number of bytes
+     *  sent from the buffer.
+     *
+     *  This call is non-blocking. If sendto would block,
+     *  NSAPI_ERROR_WOULD_BLOCK is returned immediately.
+     *
+     *  @param handle   Socket handle
+     *  @param address  The SocketAddress of the remote host
+     *  @param data     Buffer of data to send to the host
+     *  @param size     Size of the buffer in bytes
+     *  @param control     Storage for ancillary data
+     *  @param control_size   Size of  ancillary data
+     *  @return         Number of sent bytes on success, negative error
+     *                  code on failure
+     */
+    virtual nsapi_size_or_error_t socket_sendmsg(nsapi_socket_t handle, const SocketAddress &address,
+                                                 const void *data, nsapi_size_t size,
+                                                 nsapi_msghdr_t *control, nsapi_size_t control_size) = 0;
+
+    /** Receive a packet with ancillary data over a UDP socket
+     *
+     *  Receives data and stores the source address in address if address
+     *  is not NULL. Returns the number of bytes received into the buffer.
+     *
+     *  Additional information related to the message can be retrieved with
+     *  the control data.
+     *
+     *  This call is non-blocking. If recvfrom would block,
+     *  NSAPI_ERROR_WOULD_BLOCK is returned immediately.
+     *
+     *  @param handle   Socket handle
+     *  @param address  Destination for the source address or NULL
+     *  @param buffer   Destination buffer for data received from the host
+     *  @param size     Size of the buffer in bytes
+     *  @param control     Storage for ancillary data
+     *  @param control_size   Size of  ancillary data
+     *  @return         Number of received bytes on success, negative error
+     *                  code on failure
+     */
+    virtual nsapi_size_or_error_t socket_recvmsg(nsapi_socket_t handle, SocketAddress *address,
+                                                 void *data, nsapi_size_t size,
+                                                 nsapi_msghdr_t *control, nsapi_size_t control_size) = 0;
+
     /** Register a callback on state change of the socket
      *
      *  The specified callback will be called on state changes such as when

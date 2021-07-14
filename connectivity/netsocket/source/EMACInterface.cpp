@@ -55,14 +55,14 @@ nsapi_error_t EMACInterface::connect()
         nsapi_error_t err = NSAPI_ERROR_UNSUPPORTED;
 
         if (_hw_mac_addr_set) {
-            err = _stack.add_ethernet_interface(_emac, true, &_interface, _hw_mac_addr);
+            err = _stack.add_ethernet_interface(_emac, true, &_interface, _hw_mac_addr, this);
             if (err == NSAPI_ERROR_UNSUPPORTED) {
                 tr_error("Failed to set user MAC address");
             }
         }
 
         if (err == NSAPI_ERROR_UNSUPPORTED) {
-            err = _stack.add_ethernet_interface(_emac, true, &_interface);
+            err = _stack.add_ethernet_interface(_emac, true, &_interface, this);
         }
 
         if (err != NSAPI_ERROR_OK) {

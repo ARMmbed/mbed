@@ -163,6 +163,9 @@ public:
         static void netif_status_irq(struct netif *netif);
         static Interface *our_if_from_netif(struct netif *netif);
         static void delete_interface(OnboardNetworkStack::Interface **interface_out);
+        NetworkInterface *network_if_from_netif_id(int id);
+        int netif_id_from_network_if(NetworkInterface *userInterface);
+
 
 #if LWIP_ETHERNET
         static err_t emac_low_level_output(struct netif *netif, struct pbuf *p);
@@ -222,6 +225,8 @@ public:
             void *hw; /**< alternative implementation pointer - used for PPP */
         };
 
+        NetworkInterface *user_network_interface;
+
         mbed_rtos_storage_semaphore_t remove_interface_sem;
         osSemaphoreId_t remove_interface;
         mbed_rtos_storage_semaphore_t linked_sem;
@@ -265,7 +270,7 @@ public:
      * @param[out] interface_out    pointer to stack interface object controlling the EMAC
      * @return                      NSAPI_ERROR_OK on success, or error code
      */
-    nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out) override;
+    nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out, NetworkInterface *user_network_interface = NULL) override;
 
     /** Register a network interface with the IP stack
      *
@@ -450,6 +455,27 @@ protected:
     nsapi_size_or_error_t socket_send(nsapi_socket_t handle,
                                       const void *data, nsapi_size_t size) override;
 
+    /** Send a packet with ancillary data over a UDP socket
+      *
+      *  Sends data to the specified address. Returns the number of bytes
+      *  sent from the buffer.
+      *
+      *  This call is non-blocking. If sendto would block,
+      *  NSAPI_ERROR_WOULD_BLOCK is returned immediately.
+      *
+      *  @param handle        Socket handle
+      *  @param address       The SocketAddress of the remote host
+      *  @param data          Buffer of data to send to the host
+      *  @param size          Size of the buffer in bytes
+      *  @param control       Ancillary data storage
+      *  @param control_size  Size of the Ancillary data in bytes
+      *  @return              Number of sent bytes on success, negative error
+      *                       code on failure
+      */
+    nsapi_size_or_error_t socket_sendmsg(nsapi_socket_t handle, const SocketAddress &address,
+                                         const void *data, nsapi_size_t size,
+                                         nsapi_msghdr_t *control, nsapi_size_t control_size) override;
+
     /** Receive data over a TCP socket
      *
      *  The socket must be connected to a remote host. Returns the number of
@@ -493,6 +519,7 @@ protected:
      *  This call is non-blocking. If recvfrom would block,
      *  NSAPI_ERROR_WOULD_BLOCK is returned immediately.
      *
+     *  It uses socket_recvmsg with  zero ancillary data.
      *  @param handle   Socket handle
      *  @param address  Destination for the source address or NULL
      *  @param buffer   Destination buffer for data received from the host
@@ -502,6 +529,27 @@ protected:
      */
     nsapi_size_or_error_t socket_recvfrom(nsapi_socket_t handle, SocketAddress *address,
                                           void *buffer, nsapi_size_t size) override;
+
+    /** Receive a packet with ancillary data over a UDP socket
+    *
+    *  Receives data and stores the source address in address if address
+    *  is not NULL. Returns the number of bytes received into the buffer.
+    *
+    *  This call is non-blocking. If recvfrom would block,
+    *  NSAPI_ERROR_WOULD_BLOCK is returned immediately.
+    *
+    *  @param handle   Socket handle
+    *  @param address  Destination for the source address or NULL
+    *  @param buffer   Destination buffer for data received from the host
+    *  @param size     Size of the buffer in bytes
+    *  @param control     Ancillary data storage
+    *  @param control_size   Size of the Ancillary data in bytes
+    *  @return         Number of received bytes on success, negative error
+    *                  code on failure
+    */
+    nsapi_size_or_error_t socket_recvmsg(nsapi_socket_t handle, SocketAddress *address,
+                                         void *data, nsapi_size_t size,
+                                         nsapi_msghdr_t *control, nsapi_size_t control_size) override;
 
     /** Register a callback on state change of the socket
      *

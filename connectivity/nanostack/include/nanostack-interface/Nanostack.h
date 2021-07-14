@@ -40,11 +40,11 @@ public:
     class PPPInterface;
 
     /* Implement OnboardNetworkStack method */
-    nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out) override;
-    nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out, const uint8_t *mac_addr) override;
+    nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out, NetworkInterface *user_network_interface = NULL) override;
+    nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, OnboardNetworkStack::Interface **interface_out, const uint8_t *mac_addr, NetworkInterface *user_network_interface = NULL) override;
 
     /* Local variant with stronger typing and manual address specification */
-    nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, Nanostack::EthernetInterface **interface_out, const uint8_t *mac_addr = NULL);
+    nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, Nanostack::EthernetInterface **interface_out, const uint8_t *mac_addr = NULL, NetworkInterface *user_network_interface = NULL);
 
     nsapi_error_t add_ppp_interface(PPP &ppp, bool default_if, OnboardNetworkStack::Interface **interface_out) override;
 
@@ -301,6 +301,21 @@ protected:
      *  @return         0 on success, negative error code on failure
      */
     nsapi_error_t getsockopt(void *handle, int level, int optname, void *optval, unsigned *optlen) override;
+
+    // FIXME: Implement
+    nsapi_size_or_error_t socket_sendmsg(nsapi_socket_t handle, const SocketAddress &address,
+                                         const void *data, nsapi_size_t size,
+                                         nsapi_msghdr_t *control, nsapi_size_t control_size) override
+    {
+        return NSAPI_ERROR_UNSUPPORTED;
+    }
+
+    nsapi_size_or_error_t socket_recvmsg(nsapi_socket_t handle, SocketAddress *address,
+                                         void *data, nsapi_size_t size,
+                                         nsapi_msghdr_t *control, nsapi_size_t control_size) override
+    {
+        return NSAPI_ERROR_UNSUPPORTED;
+    }
 
 private:
 

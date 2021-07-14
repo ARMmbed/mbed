@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 #include "nsapi.h"
+#include "netsocket/MsgHeader.h"
 #include "mbed_interface.h"
 #include "mbed_assert.h"
 #include "Semaphore.h"
-#include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -37,6 +37,7 @@
 #include "lwip/raw.h"
 #include "lwip/netif.h"
 #include "lwip/lwip_errno.h"
+#include "lwip/ip_addr.h"
 #include "lwip-sys/arch/sys_arch.h"
 
 #include "LWIPStack.h"
@@ -271,7 +272,9 @@ nsapi_error_t LWIP::socket_open(nsapi_socket_t *handle, nsapi_protocol_t proto)
         arena_dealloc(s);
         return NSAPI_ERROR_NO_SOCKET;
     }
-
+#if LWIP_NETBUF_RECVINFO
+    s->conn->flags &= ~NETCONN_FLAG_PKTINFO;
+#endif
     netconn_set_nonblocking(s->conn, true);
     *(struct mbed_lwip_socket **)handle = s;
     return 0;
@@ -440,41 +443,18 @@ nsapi_size_or_error_t LWIP::socket_recv(nsapi_socket_t handle, void *data, nsapi
 
 nsapi_size_or_error_t LWIP::socket_sendto(nsapi_socket_t handle, const SocketAddress &address, const void *data, nsapi_size_t size)
 {
-    struct mbed_lwip_socket *s = (struct mbed_lwip_socket *)handle;
-    ip_addr_t ip_addr;
-
-    nsapi_addr_t addr = address.get_addr();
-    if (!convert_mbed_addr_to_lwip(&ip_addr, &addr)) {
-        return NSAPI_ERROR_PARAMETER;
-    }
-    struct netif *netif_ = netif_get_by_index(s->conn->pcb.ip->netif_idx);
-    if (!netif_) {
-        netif_ = &default_interface->netif;
-    }
-    if (netif_) {
-        if ((addr.version == NSAPI_IPv4 && !get_ipv4_addr(netif_)) ||
-                (addr.version == NSAPI_IPv6 && !get_ipv6_addr(netif_) && !get_ipv6_link_local_addr(netif_))) {
-            return NSAPI_ERROR_PARAMETER;
-        }
-    }
-    struct netbuf *buf = netbuf_new();
-
-    err_t err = netbuf_ref(buf, data, (u16_t)size);
-    if (err != ERR_OK) {
-        netbuf_free(buf);
-        return err_remap(err);
-    }
-
-    err = netconn_sendto(s->conn, buf, &ip_addr, address.get_port());
-    netbuf_delete(buf);
-    if (err != ERR_OK) {
-        return err_remap(err);
-    }
-
-    return size;
+    return socket_sendmsg(handle, address, data, size, NULL, 0);
 }
 
 nsapi_size_or_error_t LWIP::socket_recvfrom(nsapi_socket_t handle, SocketAddress *address, void *data, nsapi_size_t size)
+{
+    return socket_recvmsg(handle, address, data, size, NULL, 0);
+
+}
+
+nsapi_size_or_error_t LWIP::socket_recvmsg(nsapi_socket_t handle, SocketAddress *address,
+                                           void *data, nsapi_size_t size,
+                                           nsapi_msghdr_t *control, nsapi_size_t control_size)
 {
     struct mbed_lwip_socket *s = (struct mbed_lwip_socket *)handle;
     struct netbuf *buf;
@@ -490,11 +470,114 @@ nsapi_size_or_error_t LWIP::socket_recvfrom(nsapi_socket_t handle, SocketAddress
         address->set_addr(addr);
         address->set_port(netbuf_fromport(buf));
     }
-
+#if LWIP_NETBUF_RECVINFO
+    if ((s->conn->flags & NETCONN_FLAG_PKTINFO) && control && control_size >= sizeof(nsapi_pktinfo_t)) {
+        nsapi_pktinfo_t *pkt_info = reinterpret_cast<nsapi_pktinfo *>(control);
+        memset(control, 0, control_size);
+        // Not optimal but sufficient. It should help the caller in not iterating over
+        // the control data structure
+        control->len = control_size;
+        control->level = NSAPI_SOCKET;
+        control->type = NSAPI_PKTINFO;
+        // retrieve the destination
+        convert_lwip_addr_to_mbed(&pkt_info->ipi_addr, netbuf_destaddr(buf));
+        // retrieve the interface id
+        pkt_info->network_interface = default_interface->network_if_from_netif_id(buf->p->if_idx);
+    }
+#endif
     u16_t recv = netbuf_copy(buf, data, (u16_t)size);
     netbuf_delete(buf);
 
     return recv;
+}
+
+nsapi_size_or_error_t LWIP::socket_sendmsg(nsapi_socket_t handle, const SocketAddress &address,
+                                           const void *data, nsapi_size_t size,
+                                           nsapi_msghdr_t *control, nsapi_size_t control_size)
+{
+    struct mbed_lwip_socket *s = (struct mbed_lwip_socket *)handle;
+    ip_addr_t ip_addr = {};
+
+    // Used for backup the bound address if the packet must be sent from a specific address,
+    ip_addr_t bound_addr = {};
+    ip_addr_t src_addr = {};
+
+    nsapi_pktinfo_t *pkt_info = nullptr;
+
+    nsapi_addr_t addr = address.get_addr();
+    if (!convert_mbed_addr_to_lwip(&ip_addr, &addr)) {
+        return NSAPI_ERROR_PARAMETER;
+    }
+
+    // We try to extract the pktinfo from the header
+
+    if (control) {
+        MsgHeaderIterator it(control, control_size);
+        while (it.has_next()) {
+            auto *hdr = it.next();
+            if (hdr->level == NSAPI_SOCKET && hdr->type == NSAPI_PKTINFO) {
+                pkt_info = reinterpret_cast<nsapi_pktinfo_t *>(hdr);
+                break;
+            }
+        }
+    }
+
+    if (pkt_info) {
+        if (!convert_mbed_addr_to_lwip(&src_addr, &pkt_info->ipi_addr)) {
+            return NSAPI_ERROR_PARAMETER;
+        }
+    }
+
+    struct netif *netif_ = nullptr;
+
+    if (pkt_info) {
+        int index = default_interface->netif_id_from_network_if((NetworkInterface *)pkt_info->network_interface);
+        netif_ = netif_get_by_index(index);
+    } else {
+        netif_ = netif_get_by_index(s->conn->pcb.ip->netif_idx);
+    }
+    if (!netif_) {
+        netif_ = &default_interface->netif;
+    }
+
+    if (netif_) {
+        if ((addr.version == NSAPI_IPv4 && !get_ipv4_addr(netif_)) ||
+                (addr.version == NSAPI_IPv6 && !get_ipv6_addr(netif_) && !get_ipv6_link_local_addr(netif_))) {
+            return NSAPI_ERROR_PARAMETER;
+        }
+    }
+
+    struct netbuf *buf = netbuf_new();
+
+    err_t err = netbuf_ref(buf, data, (u16_t)size);
+    if (err != ERR_OK) {
+        netbuf_free(buf);
+        return err_remap(err);
+    }
+
+    // handle src destination if required
+    if (pkt_info) {
+        // Backup the bound address
+        ip_addr_copy(bound_addr, s->conn->pcb.udp->local_ip);
+        // replace it with the source address
+        if (!ip_addr_isany(&src_addr)) {
+            ip_addr_copy(s->conn->pcb.udp->local_ip, src_addr);
+        }
+    }
+
+    err = netconn_sendto(s->conn, buf, &ip_addr, address.get_port());
+
+    if (pkt_info) {
+        // restore bound address
+        ip_addr_copy(s->conn->pcb.udp->local_ip, bound_addr);
+    }
+
+    netbuf_delete(buf);
+    if (err != ERR_OK) {
+        return err_remap(err);
+    }
+
+    return size;
 }
 
 int32_t LWIP::find_multicast_member(const struct mbed_lwip_socket *s, const nsapi_ip_mreq_t *imr)
@@ -687,6 +770,19 @@ nsapi_error_t LWIP::setsockopt(nsapi_socket_t handle, int level, int optname, co
             }
             s->conn->pcb.ip->tos = (u8_t)(*(const int *)optval);
             return 0;
+
+        case NSAPI_PKTINFO:
+#if LWIP_NETBUF_RECVINFO
+            if (optlen != sizeof(int)) {
+                return NSAPI_ERROR_UNSUPPORTED;
+            }
+            if (*(const int *)optval) {
+                s->conn->flags |= NETCONN_FLAG_PKTINFO;
+            } else {
+                s->conn->flags &= ~NETCONN_FLAG_PKTINFO;
+            }
+            return 0;
+#endif
         default:
             return NSAPI_ERROR_UNSUPPORTED;
     }

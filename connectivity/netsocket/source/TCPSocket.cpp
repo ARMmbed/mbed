@@ -173,6 +173,17 @@ nsapi_size_or_error_t TCPSocket::sendto(const SocketAddress &address, const void
     return send(data, size);
 }
 
+nsapi_size_or_error_t TCPSocket::sendmsg(const SocketAddress &address,
+                                         const void *data, nsapi_size_t size,
+                                         nsapi_msghdr_t *control, nsapi_size_t control_size)
+{
+    // FIXME: Implement
+    if (control) {
+        return NSAPI_ERROR_UNSUPPORTED;
+    }
+    return sendto(address, data, size);
+}
+
 nsapi_size_or_error_t TCPSocket::recv(void *data, nsapi_size_t size)
 {
     _lock.lock();
@@ -227,6 +238,17 @@ nsapi_size_or_error_t TCPSocket::recvfrom(SocketAddress *address, void *data, ns
         *address = _remote_peer;
     }
     return recv(data, size);
+}
+
+nsapi_size_or_error_t TCPSocket::recvmsg(SocketAddress *address,
+                                         void *data, nsapi_size_t size,
+                                         nsapi_msghdr_t *control, nsapi_size_t control_size)
+{
+    // FIXME: Implement
+    if (control) {
+        return NSAPI_ERROR_UNSUPPORTED;
+    }
+    return recvfrom(address, data, size);
 }
 
 nsapi_error_t TCPSocket::listen(int backlog)

@@ -399,6 +399,44 @@ protected:
         return err;
     }
 
+    nsapi_size_or_error_t socket_sendmsg(nsapi_socket_t socket, const SocketAddress &address, const void *data, nsapi_size_t size, nsapi_msghdr_t *control, nsapi_size_t control_size) override
+    {
+        if (control != NULL) {
+            return NSAPI_ERROR_UNSUPPORTED;
+        }
+
+        if (!_stack_api()->socket_sendmsg) {
+            return NSAPI_ERROR_UNSUPPORTED;
+        }
+
+        return _stack_api()->socket_sendmsg(_stack(), socket, address.get_addr(), address.get_port(), data, size, control, control_size);
+    }
+
+    nsapi_size_or_error_t socket_recvmsg(nsapi_socket_t socket, SocketAddress *address, void *data, nsapi_size_t size, nsapi_msghdr_t *control, nsapi_size_t control_size) override
+    {
+        if (control != NULL) {
+            return NSAPI_ERROR_UNSUPPORTED;
+        }
+
+        if (!_stack_api()->socket_recvmsg) {
+            return NSAPI_ERROR_UNSUPPORTED;
+        }
+
+        nsapi_addr_t addr = {NSAPI_IPv4, 0};
+        uint16_t port = 0;
+
+        nsapi_size_or_error_t err = _stack_api()->socket_recvmsg(_stack(), socket, &addr, &port, data, size, control, control_size);
+
+        if (address) {
+            address->set_addr(addr);
+            address->set_port(port);
+        }
+
+        return err;
+    }
+
+
+
     void socket_attach(nsapi_socket_t socket, void (*callback)(void *), void *data) override
     {
         if (!_stack_api()->socket_attach) {

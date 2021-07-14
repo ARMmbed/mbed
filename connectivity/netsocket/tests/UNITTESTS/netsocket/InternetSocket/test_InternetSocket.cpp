@@ -56,6 +56,16 @@ public:
     {
         return return_value;
     }
+    virtual nsapi_size_or_error_t sendmsg(const SocketAddress &address,
+                                          const void *data, nsapi_size_t size,  nsapi_msghdr_t *control, nsapi_size_t control_size)
+    {
+        return return_value;
+    }
+    virtual nsapi_size_or_error_t recvmsg(SocketAddress *address,
+                                          void *data, nsapi_size_t size, nsapi_msghdr_t *control, nsapi_size_t control_size)
+    {
+        return return_value;
+    }
     virtual Socket *accept(nsapi_error_t *error = NULL)
     {
         return NULL;

@@ -160,9 +160,10 @@ public:
      * @param[out] interface_out    pointer to stack interface object controlling the EMAC
      * @return                      NSAPI_ERROR_OK on success, or error code
      */
-    virtual nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, Interface **interface_out) = 0;
+    virtual nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, Interface **interface_out, NetworkInterface *user_network_interface = NULL) = 0;
 
-    virtual nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, Interface **interface_out, const uint8_t *mac_addr)
+    virtual nsapi_error_t add_ethernet_interface(EMAC &emac, bool default_if, Interface **interface_out, const uint8_t *mac_addr, NetworkInterface *user_network_interface = NULL)
+
     {
         return NSAPI_ERROR_UNSUPPORTED;
     }

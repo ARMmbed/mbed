@@ -88,6 +88,21 @@ protected: // NetworkStack
 
     virtual void socket_attach(nsapi_socket_t handle, void (*callback)(void *), void *data);
 
+
+    nsapi_size_or_error_t socket_sendmsg(nsapi_socket_t handle, const SocketAddress &address,
+                                         const void *data, nsapi_size_t size,
+                                         nsapi_msghdr_t *control, nsapi_size_t control_size) override
+    {
+        return NSAPI_ERROR_UNSUPPORTED;
+    }
+
+    nsapi_size_or_error_t socket_recvmsg(nsapi_socket_t handle, SocketAddress *address,
+                                         void *data, nsapi_size_t size,
+                                         nsapi_msghdr_t *control, nsapi_size_t control_size) override
+    {
+        return NSAPI_ERROR_UNSUPPORTED;
+    }
+
 protected:
     class CellularSocket {
     public:
