@@ -299,7 +299,7 @@ int QSPIFBlockDevice::deinit()
         tr_error("Write Disable failed");
         result = QSPIF_BD_ERROR_DEVICE_ERROR;
     }
-
+    _address_size = QSPI_CFG_ADDR_SIZE_24;
     _is_initialized = false;
 
     _mutex.unlock();
