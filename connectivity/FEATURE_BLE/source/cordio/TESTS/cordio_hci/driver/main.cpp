@@ -37,8 +37,9 @@
 
 using namespace utest::v1;
 using mbed::callback;
+using namespace std::chrono_literals;
 
-#define INITIALIZATION_TIMEOUT (10 * 1000)
+#define INITIALIZATION_TIMEOUT 10000ms
 
 static EventQueue event_queue(/* event count */ 10 * EVENTS_EVENT_SIZE);
 
@@ -72,7 +73,7 @@ static void test_stack_initialization()
     BLE &ble = BLE::Instance();
     ble.onEventsToProcess(process_ble_events);
     ble.init(on_initialization_complete);
-    event_queue.dispatch(INITIALIZATION_TIMEOUT);
+    event_queue.dispatch_for(INITIALIZATION_TIMEOUT);
 
     // At this point ble is suppose to be initialized; inspect the various state
     // of the stack.
