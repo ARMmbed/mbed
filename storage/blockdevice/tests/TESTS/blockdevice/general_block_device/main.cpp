@@ -774,9 +774,12 @@ void test_unaligned_erase_blocks()
 
     utest_printf("\ntest  %0*llx:%llu...", addrwidth, addr, sector_erase_size);
 
+    int err = block_device->init();
+    TEST_ASSERT_EQUAL(0, err);
+
     //unaligned start address
     addr += 1;
-    int err = block_device->erase(addr, sector_erase_size - 1);
+    err = block_device->erase(addr, sector_erase_size - 1);
     TEST_ASSERT_NOT_EQUAL(0, err);
 
     err = block_device->erase(addr, sector_erase_size);
@@ -800,6 +803,9 @@ void test_unaligned_erase_blocks()
 
     // Valid erase
     err = block_device->erase(addr, sector_erase_size);
+    TEST_ASSERT_EQUAL(0, err);
+
+    err = block_device->deinit();
     TEST_ASSERT_EQUAL(0, err);
 }
 
