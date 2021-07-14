@@ -474,6 +474,13 @@ Detailed sleep Mbed OS description : https://os.mbed.com/docs/mbed-os/latest/api
 - deepsleep can also be disabled by application or drivers using sleep_manager_lock_deep_sleep()
 - deep-sleep-latency value is configured to 4 by default for STM32
 
+To enable the tracing, it is recommended to **not** define MBED_SLEEP_TRACING_ENABLED macro,
+but **MBED_SLEEP_STAT_ENABLED** macro.
+
+```
+mbed compile -m XXX -t XXX -DMBED_SLEEP_STAT_ENABLED
+```
+
 
 ### WiFi configuration
 

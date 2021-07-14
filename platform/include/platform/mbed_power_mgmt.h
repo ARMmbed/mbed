@@ -90,7 +90,7 @@ extern "C" {
  *
  */
 
-#ifdef MBED_SLEEP_TRACING_ENABLED
+#if defined(MBED_SLEEP_TRACING_ENABLED) || defined(MBED_SLEEP_STAT_ENABLED)
 
 void sleep_tracker_lock(const char *const filename, int line);
 void sleep_tracker_unlock(const char *const filename, int line);

@@ -84,7 +84,7 @@ us_timestamp_t mbed_time_deepsleep(void)
 #endif
 }
 
-#ifdef MBED_SLEEP_TRACING_ENABLED
+#if defined(MBED_SLEEP_TRACING_ENABLED) || defined(MBED_SLEEP_STAT_ENABLED)
 
 // Length of the identifier extracted from the driver name to store for logging.
 #define IDENTIFIER_WIDTH 15
@@ -164,7 +164,9 @@ void sleep_tracker_lock(const char *const filename, int line)
 
     core_util_atomic_incr_u8(&stat->count, 1);
 
+#if defined(MBED_SLEEP_TRACING_ENABLED)
     mbed_error_printf("LOCK: %s, ln: %i, lock count: %u\r\n", filename, line, deep_sleep_lock);
+#endif
 }
 
 void sleep_tracker_unlock(const char *const filename, int line)
@@ -179,7 +181,9 @@ void sleep_tracker_unlock(const char *const filename, int line)
 
     core_util_atomic_decr_u8(&stat->count, 1);
 
+#if defined(MBED_SLEEP_TRACING_ENABLED)
     mbed_error_printf("UNLOCK: %s, ln: %i, lock count: %u\r\n", filename, line, deep_sleep_lock);
+#endif
 }
 
 #endif // MBED_SLEEP_TRACING_ENABLED
@@ -220,7 +224,7 @@ bool sleep_manager_can_deep_sleep_test_check()
 
 void sleep_manager_sleep_auto(void)
 {
-#ifdef MBED_SLEEP_TRACING_ENABLED
+#if defined(MBED_SLEEP_TRACING_ENABLED)
     sleep_tracker_print_stats();
 #endif
     core_util_critical_section_enter();
@@ -239,6 +243,9 @@ void sleep_manager_sleep_auto(void)
 #endif
         hal_deepsleep();
     } else {
+#if defined(MBED_SLEEP_STAT_ENABLED)
+        sleep_tracker_print_stats();
+#endif
         hal_sleep();
     }
 #endif
