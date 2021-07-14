@@ -306,11 +306,19 @@ private:
     // module busy control
     mbed::DigitalIn _busy;
 
-    // module frequency selection
+// module frequency selection
+#if MBED_CONF_SX126X_LORA_DRIVER_FREQ_SUPPORT == -1
     mbed::AnalogIn _freq_select;
+#else
+    mbed::DigitalIn _freq_select; // AnalogIn errors if NC
+#endif
 
-    // module device variant selection
+// module device variant selection
+#if MBED_CONF_SX126X_LORA_DRIVER_DEVICE_VARIANT == -1
     mbed::AnalogIn _dev_select;
+#else
+    mbed::DigitalIn _dev_select;  // AnalogIn errors if NC
+#endif
 
     // module TCXO/XTAL control
     mbed::DigitalIn _crystal_select;

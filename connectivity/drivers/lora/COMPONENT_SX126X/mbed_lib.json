@@ -25,6 +25,18 @@
         	"help": "Default: STDBY_RC = 0, STDBY_XOSC = 1",
         	"value": 0
         },
+        "device-variant": {
+            "help": "Default: -1 = use device-select, SX1261, SX1262, SX1268",
+            "value": -1
+        },
+        "freq-support": {
+            "help": "Default: -1 = use freq-select, MATCHING_FREQ_169, MATCHING_FREQ_280, MATCHING_FREQ_434, MATCHING_FREQ_490, MATCHING_FREQ_780, MATCHING_FREQ_868, MATCHING_FREQ_915",
+            "value": -1
+        },
+        "xtal": {
+            "help": "Default: -1 = use crystal-select, TXCO = 0, XTAL = 1",
+            "value": -1
+        },
         "spi-mosi": {
             "value": "NC"
         },
