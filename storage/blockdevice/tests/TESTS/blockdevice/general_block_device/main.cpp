@@ -53,6 +53,10 @@
 #include "FlashIAPBlockDevice.h"
 #endif
 
+#if COMPONENT_SPINAND
+#include "SPINANDBlockDevice.h"
+#endif
+
 // Debug available
 #ifndef MODE_DEBUG
 #define MODE_DEBUG      0
@@ -92,6 +96,7 @@ enum bd_type {
     sd,
     flashiap,
     ospif,
+    spinand,
     default_bd
 };
 
@@ -163,6 +168,23 @@ static BlockDevice *get_bd_instance(uint8_t bd_type)
 #endif
             break;
         }
+        case spinand: {
+#if COMPONENT_SPINAND
+            static SPINANDBlockDevice default_bd(
+                MBED_CONF_SPINAND_SPINAND_IO0,
+                MBED_CONF_SPINAND_SPINAND_IO1,
+                MBED_CONF_SPINAND_SPINAND_IO2,
+                MBED_CONF_SPINAND_SPINAND_IO3,
+                MBED_CONF_SPINAND_SPINAND_SCK,
+                MBED_CONF_SPINAND_SPINAND_CSN,
+                MBED_CONF_SPINAND_SPINAND_POLARITY_MODE,
+                MBED_CONF_SPINAND_SPINAND_FREQ
+            );
+            return &default_bd;
+#endif
+            break;
+        }
+
         case dataflash: {
 #if COMPONENT_DATAFLASH
             static DataFlashBlockDevice default_bd(
@@ -298,7 +320,11 @@ void test_init_bd()
         if (curr_sector_size > max_sector_size) {
             max_sector_size = curr_sector_size;
         }
+#if COMPONENT_SPINAND
+        start_address += 0x40000;
+#else
         start_address += curr_sector_size;
+#endif
     }
     num_of_sectors = i;
 }
@@ -638,11 +664,19 @@ void test_contiguous_erase_write_read()
     // helping to avoid test timeouts. Try 256-byte chunks if contiguous_erase_size
     // (which should be a power of 2) is greater than that. If it's less than
     // that, the test finishes quickly anyway...
+#if COMPONENT_SPINAND
+    if ((program_size < 2048) && (2048 % program_size == 0)
+            && (contiguous_erase_size >= 2048) && (contiguous_erase_size % 2048 == 0)) {
+        utest_printf("using 2048-byte write/read buffer\n");
+        write_read_buf_size = 2048;
+    }
+#else
     if ((program_size < 256) && (256 % program_size == 0)
             && (contiguous_erase_size >= 256) && (contiguous_erase_size % 256 == 0)) {
         utest_printf("using 256-byte write/read buffer\n");
         write_read_buf_size = 256;
     }
+#endif
 
     // Allocate write/read buffer
     uint8_t *write_read_buf = new (std::nothrow) uint8_t[write_read_buf_size];
@@ -655,7 +689,11 @@ void test_contiguous_erase_write_read()
 
     // Pre-fill the to-be-erased region. By pre-filling the region,
     // we can be sure the test will not pass if the erase doesn't work.
+#if COMPONENT_SPINAND
+    for (bd_size_t offset = 0; start_address + offset < stop_address; offset += 0x40000) {
+#else
     for (bd_size_t offset = 0; start_address + offset < stop_address; offset += write_read_buf_size) {
+#endif
         for (size_t i = 0; i < write_read_buf_size; i++) {
             write_read_buf[i] = (uint8_t)rand();
         }
@@ -672,8 +710,11 @@ void test_contiguous_erase_write_read()
 
     // Loop through all write/read regions
     int region = 0;
+#if COMPONENT_SPINAND
+    for (; start_address < stop_address; start_address += 0x40000) {
+#else
     for (; start_address < stop_address; start_address += write_read_buf_size) {
-
+#endif
         // Generate test data
         unsigned int seed = rand();
         srand(seed);
@@ -873,6 +914,8 @@ void test_get_type_functionality()
     TEST_ASSERT_EQUAL(0, strcmp(bd_type, "SD"));
 #elif COMPONENT_FLASHIAP
     TEST_ASSERT_EQUAL(0, strcmp(bd_type, "FLASHIAP"));
+#elif COMPONENT_SPINAND
+    TEST_ASSERT_EQUAL(0, strcmp(bd_type, "SPINAND"));
 #endif
 }
 
@@ -934,11 +977,14 @@ int get_bd_count()
 #if COMPONENT_OSPIF
     bd_arr[count++] = ospif;          //5
 #endif
+#if COMPONENT_SPINAND
+    bd_arr[count++] = spinand;        //6
+#endif
 
     return count;
 }
 
-static const char *prefix[] = {"SPIF ", "QSPIF ", "DATAFLASH ", "SD ", "FLASHIAP ", "OSPIF ", "DEFAULT "};
+static const char *prefix[] = {"SPIF ", "QSPIF ", "DATAFLASH ", "SD ", "FLASHIAP ", "OSPIF ", "SPINAND ", "DEFAULT "};
 
 int main()
 {

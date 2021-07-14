@@ -1,0 +1,31 @@
+{
+    "name": "spinand",
+    "config": {
+        "enable-and-reset": {
+            "help": "(Legacy SFDP 1.0 ONLY) Reset sequence is enable reset (0x66) then reset (0x99)",
+            "value": false
+        },
+        "direct-reset": {
+            "help": "(Legacy SFDP 1.0 ONLY) Reset involves a single command (0xF0)",
+            "value": false
+        },
+        "SPINAND_IO0": "MBED_CONF_DRIVERS_QSPI_IO0",
+        "SPINAND_IO1": "MBED_CONF_DRIVERS_QSPI_IO1",
+        "SPINAND_IO2": "MBED_CONF_DRIVERS_QSPI_IO2",
+        "SPINAND_IO3": "MBED_CONF_DRIVERS_QSPI_IO3",
+        "SPINAND_SCK": "MBED_CONF_DRIVERS_QSPI_SCK",
+        "SPINAND_CSN": "MBED_CONF_DRIVERS_QSPI_CSN",
+        "SPINAND_POLARITY_MODE": 0,
+        "SPINAND_FREQ": "40000000",
+        "SPINAND_MIN_READ_SIZE": "1",
+        "SPINAND_MIN_PROG_SIZE": "1",
+        "SPINAND_FLASH_SIZE": "2048*64*512",
+        "SPINAND_BLOCK_SIZE": "2048*64",
+        "SPINAND_PAGE_SIZE": "2048"
+    },
+    "target_overrides": {
+        "MX31LF4GE4BC": {
+            "SPINAND_FREQ": "2000000"
+        }
+    }
+}
