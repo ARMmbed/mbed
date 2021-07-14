@@ -11,6 +11,7 @@ if(CCACHE)
 endif()
 
 include(${MBED_CONFIG_PATH}/mbed_config.cmake)
+include(mbed_set_post_build)
 
 # Load toolchain file
 if(NOT CMAKE_TOOLCHAIN_FILE OR MBED_TOOLCHAIN_FILE_USED)

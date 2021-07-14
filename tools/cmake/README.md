@@ -97,7 +97,7 @@ Install prerequisites suggested in the previous section and follow the below ste
   ```
   Or build the test binary with the baremetal profile
   ```
-  cd cmake_build/<MBED_TARGET>/<PROFILE>/<TOOLCHAIN>/ && cmake ../../../.. -G Ninja -DMBED_TEST_BAREMETAL=ON && cmake --build .
+  cd cmake_build/<MBED_TARGET>/<PROFILE>/<TOOLCHAIN>/ && cmake ../../../.. -G Ninja -DMBED_GREENTEA_TEST_BAREMETAL=ON && cmake --build .
   ```
 
 Notes:
