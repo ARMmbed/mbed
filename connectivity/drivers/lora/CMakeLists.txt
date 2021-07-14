@@ -16,3 +16,7 @@ endif()
 if("STM32WL" IN_LIST MBED_TARGET_LABELS)
     add_subdirectory(TARGET_STM32WL)
 endif()
+
+if("lr1110" IN_LIST MBED_TARGET_LABELS)
+    add_subdirectory(COMPONENT_lr1110)
+endif()
