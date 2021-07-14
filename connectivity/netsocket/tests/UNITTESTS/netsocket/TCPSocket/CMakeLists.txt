@@ -13,7 +13,6 @@ target_compile_definitions(${TEST_NAME}
 target_sources(${TEST_NAME}
     PRIVATE
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/SocketAddress.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/NetworkStack.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/InternetSocket.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/TCPSocket.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip4string/ip4tos.c

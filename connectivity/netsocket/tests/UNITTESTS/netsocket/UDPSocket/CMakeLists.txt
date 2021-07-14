@@ -13,7 +13,6 @@ target_compile_definitions(${TEST_NAME}
 target_sources(${TEST_NAME}
     PRIVATE
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/SocketAddress.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/NetworkStack.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/InternetSocket.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/InternetDatagramSocket.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/UDPSocket.cpp
