@@ -47,6 +47,10 @@
         },
         "debug_tx": {
             "help": "GPIO pin for TX debug"
+        },
+        "debug_led_off": {
+            "help": "value to set the led in off state. Default: 0 (1:On 0:Off), 1 (1:Off 0:On)",
+            "value" : 0
         }
     },
     "target_overrides": {
