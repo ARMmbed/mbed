@@ -114,6 +114,12 @@ public:
         return -ESPIPE;
     }
 
+    /** Flush any buffers associated with the file
+     *
+     *  @return         0 on success, negative error code on failure
+     */
+    int sync() override;
+
     /** Get the size of the file
      *
      *  @return         Size of the file in bytes

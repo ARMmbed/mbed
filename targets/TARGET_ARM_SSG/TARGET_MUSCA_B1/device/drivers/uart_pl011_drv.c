@@ -97,6 +97,8 @@ struct _uart_pl011_reg_map_t {
             0x1u<<UART_PL011_UARTFR_RX_FIFO_EMPTY_OFF)
 #define UART_PL011_UARTFR_TX_FIFO_FULL (                \
             0x1u<<UART_PL011_UARTFR_TX_FIFO_FULL_OFF)
+#define UART_PL011_UARTFR_TX_FIFO_EMPTY (                \
+            0x1u<<UART_PL011_UARTFR_TX_FIFO_EMPTY_OFF)
 #define UART_PL011_UARTFR_RI_MASK (                     \
             0x1u<<UART_PL011_UARTFR_RI_OFF)
 
@@ -630,6 +632,21 @@ bool uart_pl011_is_writable(struct uart_pl011_dev_t* dev)
                 /* Transmit is enabled */
         ((p_uart->uartfr & UART_PL011_UARTFR_TX_FIFO_FULL) == 0)) {
                 /* Transmit Fifo is not full */
+        return true;
+    }
+    return false;
+
+}
+
+bool uart_pl011_is_tx_empty(struct uart_pl011_dev_t* dev)
+{
+    struct _uart_pl011_reg_map_t* p_uart =
+        (struct _uart_pl011_reg_map_t*)dev->cfg->base;
+
+    if( ((p_uart->uartfr & UART_PL011_UARTFR_TX_FIFO_EMPTY) == 1) &&
+                /* Transmit Fifo is empty */
+        ((p_uart->uartfr & UART_PL011_UARTFR_BUSYBIT) == 0)) {
+                /* Tx is not BUSY */
         return true;
     }
     return false;

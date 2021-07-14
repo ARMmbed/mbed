@@ -20,6 +20,7 @@ from mbed_host_tests import BaseHostTest
 
 
 MSG_KEY_ECHO_MESSAGE = "echo_message"
+MSG_KEY_SYNC_MESSAGE = "sync_message"
 
 
 class SerialComms(BaseHostTest):
@@ -32,7 +33,12 @@ class SerialComms(BaseHostTest):
     def setup(self):
         """Register call backs to handle message from the target."""
         self.register_callback(MSG_KEY_ECHO_MESSAGE, self.cb_echo_message)
+        self.register_callback(MSG_KEY_SYNC_MESSAGE, self.cb_sync_message)
 
     def cb_echo_message(self, key, value, timestamp):
         """Send back the key and value received."""
         self.send_kv(key, value)
+
+    def cb_sync_message(self, key, value, timestamp):
+        """Test completed."""
+        self.notify_complete(True)

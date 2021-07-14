@@ -115,7 +115,7 @@ int BufferedSerial::sync()
 
     api_unlock();
 
-    return 0;
+    return SerialBase::sync();
 }
 
 void BufferedSerial::sigio(Callback<void()> func)

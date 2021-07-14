@@ -123,7 +123,7 @@ static void uart_test_common(int baudrate, int data_bits, SerialParity parity, i
 
     // start_bit + data_bits + parity_bit + stop_bits
     int packet_bits = 1 + data_bits + stop_bits + (parity == ParityNone ? 0 : 1);
-    us_timestamp_t packet_tx_time = 1000000 * packet_bits / baudrate;
+    us_timestamp_t packet_tx_time = (1000000 * packet_bits / baudrate) + 0.5;
     const ticker_data_t *const us_ticker = get_us_ticker_data();
 
     bool use_flow_control = (cts != NC && rts != NC) ? true : false;
@@ -211,10 +211,12 @@ static void uart_test_common(int baudrate, int data_bits, SerialParity parity, i
         checksum += tx_val;
         serial_putc(&serial, tx_val);
         us_timestamp_t end_ts = ticker_read_us(us_ticker) + 2 * packet_tx_time;
-        while (tester.rx_get_count() != reps && ticker_read_us(us_ticker) <= end_ts) {
+        while ((!serial_tx_empty(&serial) || tester.rx_get_count() != reps)  && ticker_read_us(us_ticker) <= end_ts) {
             // Wait (no longer than twice the time of one packet transfer) for
+            // the DUT to send all buffered data to the bus and for
             // the FPGA to receive data and update the byte counter.
         }
+        TEST_ASSERT_EQUAL(1, serial_tx_empty(&serial));
         TEST_ASSERT_EQUAL_UINT32(reps, tester.rx_get_count());
         TEST_ASSERT_EQUAL(0, tester.rx_get_parity_errors());
         TEST_ASSERT_EQUAL(0, tester.rx_get_stop_errors());
@@ -265,10 +267,12 @@ static void uart_test_common(int baudrate, int data_bits, SerialParity parity, i
     serial_irq_set(&serial, TxIrq, 0);
     core_util_critical_section_exit();
     us_timestamp_t end_ts = ticker_read_us(us_ticker) + 2 * packet_tx_time;
-    while (ticker_read_us(us_ticker) <= end_ts) {
-        // Wait twice the time of one packet transfer for the FPGA
-        // to receive and process data.
+    while (!serial_tx_empty(&serial) && ticker_read_us(us_ticker) <= end_ts) {
+        // Wait (no longer than twice the time of one packet transfer) for
+        // the DUT to send all buffered data to the bus and for
+        // the FPGA to receive and process data.
     };
+    TEST_ASSERT_EQUAL(1, serial_tx_empty(&serial));
     tester.rx_stop();
     TEST_ASSERT_EQUAL_UINT32(2 * PUTC_REPS, tester.rx_get_count());
     TEST_ASSERT_EQUAL(0, tester.rx_get_parity_errors());

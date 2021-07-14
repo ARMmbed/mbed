@@ -18,6 +18,8 @@
 #include "platform/mbed_wait_api.h"
 #include "platform/mbed_critical.h"
 #include "platform/mbed_power_mgmt.h"
+#include "platform/mbed_chrono.h"
+#include "rtos/ThisThread.h"
 
 #if DEVICE_SERIAL
 
@@ -162,6 +164,29 @@ void SerialBase::_init_direct()
 void SerialBase::_deinit()
 {
     serial_free(&_serial);
+}
+
+int SerialBase::sync()
+{
+    int count = 0;
+    // See send_break(), ensure at least 1ms sleep time
+    auto char_time_allowance = chrono::milliseconds_u32((18000 / _baud) + 1);
+    lock();
+    // Assuming the biggest Tx FIFO of 128 bytes (as for CY8CPROTO_062_4343W)
+    while ((!serial_tx_empty(&_serial)) && (count < 128)) {
+        rtos::ThisThread::sleep_for(char_time_allowance);
+#if DEVICE_SERIAL_FC
+        if ((_flow_type == RTS) || (_flow_type == Disabled))
+#endif
+            count++;
+    }
+    unlock();
+
+    if (count < 128) {
+        return 0;
+    } else {
+        return -ETIME;
+    }
 }
 
 void SerialBase::enable_input(bool enable)

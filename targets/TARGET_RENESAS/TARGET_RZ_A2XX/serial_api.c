@@ -627,6 +627,21 @@ int serial_writable(serial_t *obj)
     }
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+#if defined(PRINTF_NOT_USE)
+    if ((int)obj->serial.ch == NC) {
+        return 0;
+    }
+#endif
+    if((obj->serial.uart->FSR.BIT.TDFE != 0) &&  // TDFE = 1 && TEND = 1
+       (obj->serial.uart->FSR.BIT.TEND != 0)) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
 void serial_clear(serial_t *obj)
 {
 #if defined(PRINTF_NOT_USE)

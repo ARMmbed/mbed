@@ -336,6 +336,13 @@ int serial_writable(serial_t *obj)
 #endif
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    struct serial_s *objs = serial_s(obj);
+
+    return ((getreg32(objs->uart + UART_UTRSTAT_OFFSET) & UART_UTRSTAT_TX_EMPTY_MASK));
+}
+
 void serial_clear(serial_t *obj)
 {
     struct serial_s *objs = serial_s(obj);

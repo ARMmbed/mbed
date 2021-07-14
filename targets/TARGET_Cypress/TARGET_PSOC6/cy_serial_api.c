@@ -194,6 +194,12 @@ int  serial_writable(serial_t *obj)
     return cyhal_uart_writable(&(ser->hal_obj)) > 0 ? 1 : 0;
 }
 
+int  serial_tx_empty(serial_t *obj)
+{
+    struct serial_s *ser = cy_serial_get_struct(obj);
+    return cyhal_uart_is_tx_active(&(ser->hal_obj)) ? 0 : 1;
+}
+
 void serial_clear(serial_t *obj)
 {
     struct serial_s *ser = cy_serial_get_struct(obj);

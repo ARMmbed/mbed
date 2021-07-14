@@ -313,6 +313,12 @@ int serial_writable(serial_t *obj)
 }
 
 //******************************************************************************
+int serial_tx_empty(serial_t *obj)
+{
+    return (MXC_UART_FIFO_DEPTH == UART_NumWriteAvail(obj->uart)) ? 1 : 0;
+}
+
+//******************************************************************************
 void serial_clear(serial_t *obj)
 {
     // Clear the RX and TX FIFOs

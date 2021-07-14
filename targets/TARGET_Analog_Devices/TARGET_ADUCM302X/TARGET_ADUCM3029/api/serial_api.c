@@ -262,6 +262,13 @@ int serial_writable(serial_t *obj)
     return bAvailable;
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    bool bAvailable = false;
+    adi_uart_IsTxComplete(hDevice[obj->index], &bAvailable);
+    return bAvailable;
+}
+
 void serial_irq_set(serial_t *obj, SerialIrq irq, uint32_t enable)
 {
     MBED_ASSERT(obj);

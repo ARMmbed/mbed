@@ -501,6 +501,18 @@ int serial_writable(serial_t *obj)
     return (usart_flag_get(p_obj->uart, USART_FLAG_TBE) != RESET) ? 1 : 0;
 }
 
+/** Check if the serial peripheral tx buffer is empty
+ *
+ * @param obj The serial object
+ * @return Non-zero value if the tx buffer is empty, 0 otherwise.
+ */
+int serial_tx_empty(serial_t *obj)
+{
+    struct serial_s *p_obj = GET_SERIAL_S(obj);
+
+    return ((usart_flag_get(p_obj->uart, USART_FLAG_TBE) != RESET) && (usart_flag_get(p_obj->uart, USART_FLAG_TC) != RESET)) ? 1 : 0;
+}
+
 /** Clear the serial peripheral
  *
  * @param obj The serial object

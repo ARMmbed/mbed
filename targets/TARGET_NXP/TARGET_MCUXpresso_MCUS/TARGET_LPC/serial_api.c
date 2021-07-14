@@ -383,6 +383,13 @@ int serial_writable(serial_t *obj)
     return (status_flags & kUSART_TxFifoNotFullFlag);
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    uint32_t status_flags = USART_GetStatusFlags(uart_addrs[obj->index]);
+
+    return (status_flags & kUSART_TxFifoEmptyFlag);
+}
+
 void serial_clear(serial_t *obj)
 {
 }

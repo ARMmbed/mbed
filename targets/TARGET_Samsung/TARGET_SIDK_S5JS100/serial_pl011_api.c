@@ -234,6 +234,13 @@ static int pl011_serial_writable(void *obj)
     return !(p_PL011_UART->FR & (1u << 5));
 }
 
+static int pl011_serial_serial_tx_empty(void *obj)
+{
+    struct serial_s *priv = (struct serial_s *)obj;
+    S5JS100_UART_TypeDef *p_PL011_UART = UART_PTR(priv->uart);
+    return ((p_PL011_UART->FR & (1u << 7)) && (!(p_PL011_UART->FR & (1u << 3))));
+}
+
 
 static int pl011_serial_getc(void *obj)
 
@@ -306,6 +313,7 @@ void pl011_serial_init(void *obj, PinName tx, PinName rx)
     priv->ops.serial_writable =  pl011_serial_writable;
     priv->ops.serial_getc = pl011_serial_getc;
     priv->ops.serial_readable = pl011_serial_readable;
+    priv->ops.serial_tx_empty = pl011_serial_tx_empty;
 #if DEVICE_SERIAL_FC
     priv->ops.serial_set_flow_control = pl011_serial_set_flow_control;
 #endif

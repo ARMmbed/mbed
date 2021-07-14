@@ -1429,6 +1429,27 @@ int serial_writable(serial_t *obj)
             (nrf_uarte_event_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_TXDDY)));
 }
 
+/** Check if the serial peripheral tx buffer
+ *
+ * Param obj The serial object
+ * Return Non-zero value if a character can be written, 0 otherwise.
+ */
+int serial_tx_empty(serial_t *obj)
+{
+    MBED_ASSERT(obj);
+
+#if DEVICE_SERIAL_ASYNCH
+    struct serial_s *uart_object = &obj->serial;
+#else
+    struct serial_s *uart_object = obj;
+#endif
+
+    int instance = uart_object->instance;
+
+    return (!core_util_atomic_load_bool(&nordic_nrf5_uart_state[instance].tx_in_progress) &&
+            (nrf_uarte_event_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_TXDDY)));
+}
+
 const PinMap *serial_tx_pinmap()
 {
     return PinMap_UART_testing;

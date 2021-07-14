@@ -585,6 +585,18 @@ int serial_writable(serial_t *obj)
     return (__HAL_UART_GET_FLAG(huart, UART_FLAG_TXE) != RESET) ? 1 : 0;
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    struct serial_s *obj_s = SERIAL_S(obj);
+    UART_HandleTypeDef *huart = &uart_handlers[obj_s->index];
+
+    if((__HAL_UART_GET_FLAG(huart, UART_FLAG_TXE) != RESET) && 
+       (__HAL_UART_GET_FLAG(huart, UART_FLAG_TC) != RESET) ) {
+       return 1;
+    }
+    return 0;
+}
+
 void serial_pinout_tx(PinName tx)
 {
     pinmap_pinout(tx, PinMap_UART_TX);

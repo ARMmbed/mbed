@@ -204,6 +204,13 @@ int serial_writable(serial_t *obj)
     return bAvailable;
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    bool bAvailable = false;
+    adi_uart_IsTxComplete(hDevice[obj->index], &bAvailable);
+    return bAvailable;
+}
+
 void serial_putc(serial_t *obj, int c)
 {
     void *pBuff;

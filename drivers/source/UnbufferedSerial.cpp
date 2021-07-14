@@ -99,6 +99,11 @@ short UnbufferedSerial::poll(short events) const
     return revents;
 }
 
+int UnbufferedSerial::sync()
+{
+    return SerialBase::sync();
+}
+
 int UnbufferedSerial::enable_input(bool enabled)
 {
     SerialBase::enable_input(enabled);

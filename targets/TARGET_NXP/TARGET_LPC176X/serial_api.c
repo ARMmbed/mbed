@@ -377,6 +377,10 @@ int serial_writable(serial_t *obj) {
     return isWritable;
 }
 
+int serial_tx_empty(serial_t *obj) {
+    return obj->uart->LSR & 0x20;
+}
+
 void serial_clear(serial_t *obj) {
     obj->uart->FCR = 1 << 0  // FIFO Enable - 0 = Disables, 1 = Enabled
                    | 1 << 1  // rx FIFO reset

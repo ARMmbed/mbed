@@ -238,6 +238,11 @@ int serial_writable(serial_t *obj)
     return obj->ops.serial_writable(obj);
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    return obj->ops.serial_tx_empty(obj);
+}
+
 
 /* Shall it be ever used ???
 void serial_clear(serial_t *obj)

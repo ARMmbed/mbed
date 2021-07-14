@@ -175,6 +175,11 @@ int serial_writable(serial_t *obj)
     return (int)uart_pl011_is_writable(obj->uart_dev);
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    return (int)uart_pl011_is_tx_empty(obj->uart_dev);
+}
+
 int serial_getc(serial_t *obj)
 {
     uint8_t byte = 0;

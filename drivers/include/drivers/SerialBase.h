@@ -119,6 +119,14 @@ public:
      */
     void send_break();
 
+    /** Ensures all data stored in peripheral buffers is transmitted to the bus
+     *
+     *  The function shall block until all the content of peripheral buffers is transmitted.
+     *
+     *  @return         0 on success, negative error code on failure
+     */
+    int sync();
+
     /** Enable serial input
      *
      * If both serial input and serial output are disabled, the

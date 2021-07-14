@@ -68,6 +68,7 @@ void uart_configure_pin_function(PinName pin, UARTName uart, const PinMap *map);
  * * ::serial_putc is a blocking call (waits for a peripheral to be available).
  * * ::serial_readable returns non-zero value if a character can be read, 0 otherwise.
  * * ::serial_writable returns non-zero value if a character can be written, 0 otherwise.
+ * * ::serial_tx_empty returns non-zero value if tx is empty, 0 otherwise.
  * * ::serial_clear clears the ::serial_t RX/TX buffers
  * * ::serial_break_set sets the break signal.
  * * ::serial_break_clear clears the break signal.
@@ -306,6 +307,12 @@ int serial_writable(serial_t *obj)
 {
     MBED_ASSERT(obj->serial.uart_control != NULL);
     return !(UARTn(obj->serial.uart_control->inst)->FR_b.TXFF);
+}
+
+int serial_tx_empty(serial_t *obj)
+{
+    MBED_ASSERT(obj->serial.uart_control != NULL);
+    return ((UARTn(obj->serial.uart_control->inst)->FR_b.TXFE) && (!(UARTn(obj->serial.uart_control->inst)->FR_b.TXBUSY)));
 }
 
 void serial_clear(serial_t *obj)

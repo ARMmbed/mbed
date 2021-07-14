@@ -71,6 +71,7 @@ struct uart_ops_s {
     void (*serial_irq_set)(void *obj, SerialIrq irq, uint32_t enable);
     void (*serial_putc)(void *obj, int c);
     int (*serial_writable)(void *obj);
+    int (*serial_tx_empty)(void *obj);
     int (*serial_getc)(void *obj);
     int (*serial_readable)(void *obj);
 #if DEVICE_SERIAL_FC

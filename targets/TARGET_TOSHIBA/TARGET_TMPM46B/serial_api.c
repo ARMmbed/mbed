@@ -491,6 +491,31 @@ int serial_writable(serial_t *obj)
     return ret;
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    int ret = 0;
+
+    switch (obj->index) {
+        case SERIAL_0:
+        case SERIAL_1:
+        case SERIAL_2:
+        case SERIAL_3:
+            if (UART_GetBufState(obj->UARTx, UART_TX) == DONE) {
+                ret = 1;
+            }
+            break;
+        case SERIAL_4:
+        case SERIAL_5:
+            if (FUART_GetStorageStatus(obj->FUART, FUART_TX) == FUART_STORAGE_EMPTY) {
+                ret = 1;
+            }
+            break;
+        default:
+            break;
+    }
+    return ret;
+}
+
 void serial_clear(serial_t *obj)
 {
     switch (obj->index) {

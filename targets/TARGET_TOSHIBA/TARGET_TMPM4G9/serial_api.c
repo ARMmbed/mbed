@@ -538,6 +538,23 @@ int serial_writable(serial_t *obj)
     return ret;
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    int ret = 0;
+
+    if(!(obj->is_using_fuart)) {
+        if ((obj->UARTx->SR & 0x8000) == 0) {
+            ret = 1;
+        }
+    } else {
+        if(obj->FUARTx->FR & (1 << 7U)) {
+            ret = 1;
+        }
+    }
+
+    return ret;
+}
+
 void serial_clear(serial_t *obj)
 {
     uint32_t dummy;

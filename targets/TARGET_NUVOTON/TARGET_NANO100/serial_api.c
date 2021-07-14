@@ -410,6 +410,11 @@ int serial_writable(serial_t *obj)
     return ! UART_IS_TX_FULL(((UART_T *) NU_MODBASE(obj->serial.uart)));
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    return UART_IS_TX_EMPTY(((UART_T *) NU_MODBASE(obj->serial.uart)));
+}
+
 void serial_pinout_tx(PinName tx)
 {
     pinmap_pinout(tx, PinMap_UART_TX);

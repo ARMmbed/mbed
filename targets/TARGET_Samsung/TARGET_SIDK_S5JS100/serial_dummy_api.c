@@ -67,6 +67,11 @@ static int dummy_serial_writable(void *obj)
     return 1;
 }
 
+static int dummy_serial_tx_empty(void *obj)
+{
+    return 1;
+}
+
 
 static int dummy_serial_getc(void *obj)
 
@@ -111,6 +116,7 @@ void dummy_serial_init(void *obj, PinName tx, PinName rx)
     priv->ops.serial_writable =  dummy_serial_writable;
     priv->ops.serial_getc = dummy_serial_getc;
     priv->ops.serial_readable = dummy_serial_readable;
+    priv->ops.serial_tx_empty = dummy_serial_tx_empty;
 #if DEVICE_SERIAL_FC
     priv->ops.serial_set_flow_control = dummy_serial_set_flow_control;
 #endif

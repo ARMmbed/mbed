@@ -92,7 +92,7 @@ public:
      */
     virtual int close() = 0;
 
-    /** Flush any buffers associated with the file
+    /** Synchronize the contents of a file with storage device
      *
      *  @return         0 on success, negative error code on failure
      */

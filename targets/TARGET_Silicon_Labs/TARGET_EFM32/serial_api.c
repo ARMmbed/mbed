@@ -1150,6 +1150,18 @@ int serial_writable(serial_t *obj)
 }
 
 /**
+ * Check if TX buffer is empty
+ */
+int serial_tx_empty(serial_t *obj)
+{
+    if(LEUART_REF_VALID(obj->serial.periph.leuart)) {
+        return ((obj->serial.periph.leuart->STATUS & LEUART_STATUS_TXBL) && (obj->serial.periph.leuart->STATUS & LEUART_STATUS_TXIDLE));
+    } else {
+        return ((obj->serial.periph.uart->STATUS & USART_STATUS_TXBL) && (obj->serial.periph.uart->STATUS & USART_STATUS_TXIDLE));
+    }
+}
+
+/**
  * Clear UART interrupts
  */
 void serial_clear(serial_t *obj)

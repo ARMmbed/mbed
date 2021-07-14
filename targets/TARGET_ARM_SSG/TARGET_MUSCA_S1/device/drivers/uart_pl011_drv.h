@@ -498,6 +498,17 @@ enum uart_pl011_error_t uart_pl011_read(struct uart_pl011_dev_t* dev,
 bool uart_pl011_is_writable(struct uart_pl011_dev_t* dev);
 
 /**
+ * \brief Check if the UART tx buffer is empty
+ *
+ * \param[in] dev   UART device struct \ref uart_pl011_dev_t
+ *
+ * \return Returns bool, true if UART is tx buffer is empty, false otherwise
+ *
+ * \note This function doesn't check if dev is NULL.
+ */
+bool uart_pl011_is_tx_empty(struct uart_pl011_dev_t* dev);
+
+/**
  * \brief Writes a byte to UART dev.
  *
  * \param[in] dev   UART device struct \ref uart_pl011_dev_t

@@ -250,6 +250,12 @@ int serial_writable(serial_t *obj)
     return (status_flags & kLPUART_TxDataRegEmptyFlag);
 }
 
+int serial_tx_empty(serial_t *obj)
+{
+    uint32_t status_flags = LPUART_GetStatusFlags(uart_addrs[obj->index]);
+    return ((status_flags & kLPUART_TxDataRegEmptyFlag) && (status_flags & kLPUART_TransmissionCompleteFlag));
+}
+
 void serial_clear(serial_t *obj)
 {
 }

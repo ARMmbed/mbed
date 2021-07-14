@@ -283,6 +283,10 @@ int serial_writable(serial_t *obj) {
     return obj->uart->LSR & 0x20;
 }
 
+int serial_tx_empty(serial_t *obj) {
+    return obj->uart->LSR & 0x20;
+}
+
 void serial_clear(serial_t *obj) {
     obj->uart->FCR = 1 << 1  // rx FIFO reset
                    | 1 << 2  // tx FIFO reset

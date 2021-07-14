@@ -290,6 +290,11 @@ int serial_writable(serial_t *obj) {
     return (obj->uart->S1 & UARTLP_S1_TDRE_MASK);
 }
 
+int serial_tx_empty(serial_t *obj) {
+    // check transmission complete
+    return (obj->uart->S1 & UARTLP_S1_TC_MASK);
+}
+
 void serial_clear(serial_t *obj) {
 }
 

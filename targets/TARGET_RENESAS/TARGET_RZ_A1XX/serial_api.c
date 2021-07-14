@@ -614,6 +614,15 @@ int serial_writable(serial_t *obj) {
     return ((obj->serial.uart->SCFSR & 0x20) != 0);  // TDFE
 }
 
+int serial_tx_empty(serial_t *obj) {
+    if(((obj->serial.uart->SCFSR & 0x20) != 0) &&  // TDFE = 1 && TEND = 1
+       ((obj->serial.uart->SCFSR & 0x40) != 0)) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
 void serial_clear(serial_t *obj) {
     core_util_critical_section_enter();
 
