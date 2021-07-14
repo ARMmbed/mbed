@@ -17,6 +17,18 @@
             "help": "Switches string functions. 0: disable string functions, 1: enable without LF-CRLF conversion, 2: enable with LF-CRLF conversion.",
             "value": "0"
         },
+        "ff_print_lli": {
+            "help": "Support f_printf() long long argument. 0: disable, 1: enable.",
+            "value": "0"
+        },
+        "ff_print_float": {
+            "help": "Support f_printf() floating point argument. 0: disable, 1: enable with '.' as decimal separator, 2: enable with ',' as decimal separator.",
+            "value": "0"
+        },        
+        "ff_strf_encode": {
+            "help": "When FF_LFN_UNICODE >= 1 with LFN enabled, string I/O functions convert the character encoding in it. This option selects assumption of character encoding ON THE FILE to be read/written via those functions. 0: ANSI/OEM in current CP, 1: unicode in UTF-16LE, 2: unicode in UTF-16BE, 3: unicode in UTF-8.",
+            "value": "3"
+        },
         "ff_use_find": {
             "help": "Switches filtered directory read functions. 0: disable, 1: enable, 2: enable with matching altname[] too.",
             "value": "0"
@@ -68,10 +80,6 @@
         "ff_sfn_buf": {
             "help": "See ff_lfn_buf.",
             "value": "12"
-        },
-        "ff_strf_encode": {
-            "help": "When FF_LFN_UNICODE >= 1 with LFN enabled, string I/O functions convert the character encoding in it. This option selects assumption of character encoding ON THE FILE to be read/written via those functions. 0: ANSI/OEM in current CP, 1: unicode in UTF-16LE, 2: unicode in UTF-16BE, 3: unicode in UTF-8.",
-            "value": "3"
         },
         "ff_fs_rpath": {
             "help": "Configures support for relative path. 0: disable relative path and remove related functions, 1: enable relative path. f_chdir() and f_chdrive() are available, 2: f_getcwd() function is available in addition to 1.",

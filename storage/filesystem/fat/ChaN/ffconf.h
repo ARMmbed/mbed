@@ -1,8 +1,8 @@
 /*---------------------------------------------------------------------------/
-/  FatFs - Configuration file
+/  FatFs Functional Configurations
 /---------------------------------------------------------------------------*/
 
-#define FFCONF_DEF 89352	/* Revision ID */
+#define FFCONF_DEF	86631	/* Revision ID */
 
 #define FFS_DBG			MBED_CONF_FAT_CHAN_FFS_DBG
 
@@ -25,14 +25,6 @@
 /      are removed.
 /   2: f_opendir(), f_readdir() and f_closedir() are removed in addition to 1.
 /   3: f_lseek() function is removed in addition to 2. */
-
-
-#define FF_USE_STRFUNC	MBED_CONF_FAT_CHAN_FF_USE_STRFUNC
-/* This option switches string functions, f_gets(), f_putc(), f_puts() and f_printf().
-/
-/  0: Disable string functions.
-/  1: Enable without LF-CRLF conversion.
-/  2: Enable with LF-CRLF conversion. */
 
 
 #define FF_USE_FIND		MBED_CONF_FAT_CHAN_FF_USE_FIND
@@ -64,6 +56,30 @@
 
 #define FF_USE_FORWARD	MBED_CONF_FAT_CHAN_FF_USE_FORWARD
 /* This option switches f_forward() function. (0:Disable or 1:Enable) */
+
+
+#define FF_USE_STRFUNC	MBED_CONF_FAT_CHAN_FF_USE_STRFUNC
+#define FF_PRINT_LLI	MBED_CONF_FAT_CHAN_FF_PRINT_LLI
+#define FF_PRINT_FLOAT	MBED_CONF_FAT_CHAN_FF_PRINT_FLOAT
+#define FF_STRF_ENCODE	MBED_CONF_FAT_CHAN_FF_STRF_ENCODE
+/* FF_USE_STRFUNC switches string functions, f_gets(), f_putc(), f_puts() and
+/  f_printf().
+/
+/   0: Disable. FF_PRINT_LLI, FF_PRINT_FLOAT and FF_STRF_ENCODE have no effect.
+/   1: Enable without LF-CRLF conversion.
+/   2: Enable with LF-CRLF conversion.
+/
+/  FF_PRINT_LLI = 1 makes f_printf() support long long argument and FF_PRINT_FLOAT = 1/2
+   makes f_printf() support floating point argument. These features want C99 or later.
+/  When FF_LFN_UNICODE >= 1 with LFN enabled, string functions convert the character
+/  encoding in it. FF_STRF_ENCODE selects assumption of character encoding ON THE FILE
+/  to be read/written via those functions.
+/
+/   0: ANSI/OEM in current CP
+/   1: Unicode in UTF-16LE
+/   2: Unicode in UTF-16BE
+/   3: Unicode in UTF-8
+*/
 
 
 /*---------------------------------------------------------------------------/
@@ -104,7 +120,7 @@
 /* The FF_USE_LFN switches the support for LFN (long file name).
 /
 /   0: Disable LFN. FF_MAX_LFN has no effect.
-/   1: Enable LFN with static working buffer on the BSS. Always NOT thread-safe.
+/   1: Enable LFN with static  working buffer on the BSS. Always NOT thread-safe.
 /   2: Enable LFN with dynamic working buffer on the STACK.
 /   3: Enable LFN with dynamic working buffer on the HEAP.
 /
@@ -112,11 +128,11 @@
 /  requiers certain internal working buffer occupies (FF_MAX_LFN + 1) * 2 bytes and
 /  additional (FF_MAX_LFN + 44) / 15 * 32 bytes when exFAT is enabled.
 /  The FF_MAX_LFN defines size of the working buffer in UTF-16 code unit and it can
-/  be in range of 12 to 255. It is recommended to be set 255 to fully support LFN
+/  be in range of 12 to 255. It is recommended to be set it 255 to fully support LFN
 /  specification.
 /  When use stack for the working buffer, take care on stack overflow. When use heap
 /  memory for the working buffer, memory management functions, ff_memalloc() and
-/  ff_memfree() in ffsystem.c, need to be added to the project. */
+/  ff_memfree() exemplified in ffsystem.c, need to be added to the project. */
 
 
 #define FF_LFN_UNICODE	MBED_CONF_FAT_CHAN_FF_LFN_UNICODE
@@ -125,6 +141,7 @@
 /   0: ANSI/OEM in current CP (TCHAR = char)
 /   1: Unicode in UTF-16 (TCHAR = WCHAR)
 /   2: Unicode in UTF-8 (TCHAR = char)
+/   3: Unicode in UTF-32 (TCHAR = DWORD)
 /
 /  Also behavior of string I/O functions will be affected by this option.
 /  When LFN is not enabled, this option has no effect. */
@@ -136,19 +153,6 @@
 /  which is used to read out directory items. These values should be suffcient for
 /  the file names to read. The maximum possible length of the read file name depends
 /  on character encoding. When LFN is not enabled, these options have no effect. */
-
-
-#define FF_STRF_ENCODE	MBED_CONF_FAT_CHAN_FF_STRF_ENCODE
-/* When FF_LFN_UNICODE >= 1 with LFN enabled, string I/O functions, f_gets(),
-/  f_putc(), f_puts and f_printf() convert the character encoding in it.
-/  This option selects assumption of character encoding ON THE FILE to be
-/  read/written via those functions.
-/
-/   0: ANSI/OEM in current CP
-/   1: Unicode in UTF-16LE
-/   2: Unicode in UTF-16BE
-/   3: Unicode in UTF-8
-*/
 
 
 #define FF_FS_RPATH		MBED_CONF_FAT_CHAN_FF_FS_RPATH
@@ -170,11 +174,16 @@
 
 #define FF_STR_VOLUME_ID	MBED_CONF_FAT_CHAN_FF_STR_VOLUME_ID
 #define FF_VOLUME_STRS		MBED_CONF_FAT_CHAN_FF_VOLUME_STRS
-/* FF_STR_VOLUME_ID switches string support for volume ID.
-/  When FF_STR_VOLUME_ID is set to 1, also pre-defined strings can be used as drive
-/  number in the path name. FF_VOLUME_STRS defines the drive ID strings for each
-/  logical drives. Number of items must be equal to FF_VOLUMES. Valid characters for
-/  the drive ID strings are: A-Z and 0-9. */
+/* FF_STR_VOLUME_ID switches support for volume ID in arbitrary strings.
+/  When FF_STR_VOLUME_ID is set to 1 or 2, arbitrary strings can be used as drive
+/  number in the path name. FF_VOLUME_STRS defines the volume ID strings for each
+/  logical drives. Number of items must not be less than FF_VOLUMES. Valid
+/  characters for the volume ID strings are A-Z, a-z and 0-9, however, they are
+/  compared in case-insensitive. If FF_STR_VOLUME_ID >= 1 and FF_VOLUME_STRS is
+/  not defined, a user defined volume string table needs to be defined as:
+/
+/  const char* VolumeStr[FF_VOLUMES] = {"ram","flash","sd","usb",...
+*/
 
 
 #define FF_MULTI_PARTITION	MBED_CONF_FAT_CHAN_FF_MULTI_PARTITION
@@ -190,28 +199,26 @@
 #define FF_MAX_SS		MBED_CONF_FAT_CHAN_FF_MAX_SS
 /* This set of options configures the range of sector size to be supported. (512,
 /  1024, 2048 or 4096) Always set both 512 for most systems, generic memory card and
-/  harddisk. But a larger value may be required for on-board flash memory and some
+/  harddisk, but a larger value may be required for on-board flash memory and some
 /  type of optical media. When FF_MAX_SS is larger than FF_MIN_SS, FatFs is configured
 /  for variable sector size mode and disk_ioctl() function needs to implement
 /  GET_SECTOR_SIZE command. */
+
+
+#define FF_LBA64		0
+/* This option switches support for 64-bit LBA. (0:Disable or 1:Enable)
+/  To enable the 64-bit LBA, also exFAT needs to be enabled. (FF_FS_EXFAT == 1) */
+
+
+#define FF_MIN_GPT		0x10000000
+/* Minimum number of sectors to switch GPT as partitioning format in f_mkfs and
+/  f_fdisk function. 0x100000000 max. This option has no effect when FF_LBA64 == 0. */
 
 
 #define FF_USE_TRIM		MBED_CONF_FAT_CHAN_FF_USE_TRIM
 /* This option switches support for ATA-TRIM. (0:Disable or 1:Enable)
 /  To enable Trim function, also CTRL_TRIM command should be implemented to the
 /  disk_ioctl() function. */
-
-
-#define FF_FS_NOFSINFO	MBED_CONF_FAT_CHAN_FF_FS_NOFSINFO
-/* If you need to know correct free space on the FAT32 volume, set bit 0 of this
-/  option, and f_getfree() function at first time after volume mount will force
-/  a full FAT scan. Bit 1 controls the use of last allocated cluster number.
-/
-/  bit0=0: Use free cluster count in the FSINFO if available.
-/  bit0=1: Do not trust free cluster count in the FSINFO.
-/  bit1=0: Use last allocated cluster number in the FSINFO if available.
-/  bit1=1: Do not trust last allocated cluster number in the FSINFO.
-*/
 
 
 
@@ -228,7 +235,7 @@
 
 #define FF_FS_EXFAT		MBED_CONF_FAT_CHAN_FF_FS_EXFAT
 /* This option switches support for exFAT filesystem. (0:Disable or 1:Enable)
-/  When enable exFAT, also LFN needs to be enabled.
+/  To enable exFAT, also LFN needs to be enabled. (FF_USE_LFN >= 1)
 /  Note that enabling exFAT discards ANSI C (C89) compatibility. */
 
 
@@ -246,12 +253,24 @@
 #define FF_NORTC_YEAR	MBED_CONF_FAT_CHAN_FF_NORTC_YEAR
 /* The option FF_FS_NORTC switches timestamp functiton. If the system does not have
 /  any RTC function or valid timestamp is not needed, set FF_FS_NORTC = 1 to disable
-/  the timestamp function. All objects modified by FatFs will have a fixed timestamp
+/  the timestamp function. Every object modified by FatFs will have a fixed timestamp
 /  defined by FF_NORTC_MON, FF_NORTC_MDAY and FF_NORTC_YEAR in local time.
 /  To enable timestamp function (FF_FS_NORTC = 0), get_fattime() function need to be
 /  added to the project to read current time form real-time clock. FF_NORTC_MON,
 /  FF_NORTC_MDAY and FF_NORTC_YEAR have no effect.
-/  These options have no effect at read-only configuration (FF_FS_READONLY = 1). */
+/  These options have no effect in read-only configuration (FF_FS_READONLY = 1). */
+
+
+#define FF_FS_NOFSINFO	MBED_CONF_FAT_CHAN_FF_FS_NOFSINFO
+/* If you need to know correct free space on the FAT32 volume, set bit 0 of this
+/  option, and f_getfree() function at first time after volume mount will force
+/  a full FAT scan. Bit 1 controls the use of last allocated cluster number.
+/
+/  bit0=0: Use free cluster count in the FSINFO if available.
+/  bit0=1: Do not trust free cluster count in the FSINFO.
+/  bit1=0: Use last allocated cluster number in the FSINFO if available.
+/  bit1=1: Do not trust last allocated cluster number in the FSINFO.
+*/
 
 
 #define FF_FS_LOCK		MBED_CONF_FAT_CHAN_FF_FS_LOCK
