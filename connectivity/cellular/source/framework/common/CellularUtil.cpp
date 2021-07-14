@@ -208,6 +208,51 @@ void separate_ip_addresses(char *orig, char *ip, size_t ip_size, char *ip2, size
     }
 }
 
+bool is_ipv6_address(char *ip)
+{
+    char *temp = strchr(ip, ':');
+    if (temp && !strchr(ip, ' ')) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void separate_space_delimited_addresses(bool ipv6,
+                                        char *orig,
+                                        char *ip1, size_t ip1_size,
+                                        char *ip2, size_t ip2_size)
+{
+    ip1[0] = '\0';
+    ip2[0] = '\0';
+
+    if (!orig) {
+        return;
+    }
+
+    // strtok modifies the original string so let's make a copy of it so we
+    // don't modify the given string.
+    char *tmp = new char[strlen(orig) + 1];
+    strcpy(tmp, orig);
+
+    char *pch;
+    pch = strtok(tmp, " ");
+    int i = 0;
+    while (pch != NULL && i < 2) {
+        if (i == 0 && ip1_size > strlen(pch) && ((!ipv6 && !is_ipv6_address(pch)) || (ipv6 && is_ipv6_address(pch)))) {
+            strcpy(ip1, pch);
+            i++;
+        } else if (i == 1 && ip2_size > strlen(pch) && ((!ipv6 && !is_ipv6_address(pch)) || (ipv6 && is_ipv6_address(pch)))) {
+            strcpy(ip2, pch);
+            i++;
+        }
+
+        pch = strtok(NULL, " ");
+    }
+
+    delete[] tmp;
+}
+
 void prefer_ipv6(char *ip, size_t ip_size, char *ip2, size_t ip2_size)
 {
     if (!ip || !ip2) {

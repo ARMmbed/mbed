@@ -54,6 +54,30 @@ nsapi_version_t convert_ipv6(char *ip);
  */
 void separate_ip_addresses(char *orig, char *ip, size_t ip_size, char *ip2, size_t ip2_size);
 
+/** Check if given IP address is IPv6 address.
+ *
+ *  @param ip1          IP address in a string format
+ *  @return             true, if address is IPv6 address. Otherwise false.
+ *
+ */
+bool is_ipv6_address(char *ip);
+
+/** Separates IP addresses from the given 'orig' string. String must be a space-delimited list of addresses.
+ *  Only first 2 matching addresses will be returned.
+ *
+ *  @param ipv6          If true, select IPv6 addresses only, else select IPv4 addresses only
+ *  @param orig          original string that contains zero, one or two IP addressees in various formats
+ *  @param ip1           preallocated buffer that might contain IP address after return
+ *  @param ip1_size      size of preallocated buffer ip1
+ *  @param ip2           preallocated buffer that might contain IP address after return
+ *  @param ip2_size      size of preallocated buffer ip2
+ *
+ */
+void separate_space_delimited_addresses(bool ipv6,
+                                        char *orig,
+                                        char *ip1, size_t ip1_size,
+                                        char *ip2, size_t ip2_size);
+
 /** Swaps the arrays if param IP does not contain IPv6 address but param ip2 does.
  *
  *  @param ip        IP address

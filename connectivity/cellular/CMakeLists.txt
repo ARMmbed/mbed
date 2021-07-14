@@ -17,6 +17,7 @@ target_include_directories(mbed-cellular
         ./include/cellular/framework/AT
         ./include/cellular/framework/common
         ./include/cellular/framework/device
+        ./include/cellular/framework/RIL
 )
 
 target_compile_definitions(mbed-cellular

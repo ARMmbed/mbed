@@ -250,4 +250,13 @@ void CellularDevice::set_retry_timeout_array(const uint16_t timeout[], int array
     }
 }
 
+const char *CellularDevice::get_plmn() const
+{
+    if (strlen(_plmn)) {
+        return _plmn;
+    } else {
+        return NULL;
+    }
+}
+
 } // namespace mbed

@@ -214,4 +214,31 @@ void CellularContext::call_network_cb(nsapi_connection_status_t status)
     }
 }
 
+const char *CellularContext::pdp_type_to_string(pdp_type_t pdp_type)
+{
+    const char *ret;
+
+    switch (pdp_type) {
+        case IPV4_PDP_TYPE:
+            ret = "IP";
+            break;
+        case IPV6_PDP_TYPE:
+            ret = "IPV6";
+            break;
+        case IPV4V6_PDP_TYPE:
+            ret = "IPV4V6";
+            break;
+        case NON_IP_PDP_TYPE:
+            ret = get_nonip_context_type_str();
+            if (!ret) {
+                ret = "Non-IP";
+            }
+            break;
+        default:
+            ret = "";
+    }
+
+    return ret;
+}
+
 } // namespace mbed

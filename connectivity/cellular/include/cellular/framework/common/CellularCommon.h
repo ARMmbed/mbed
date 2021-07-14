@@ -68,6 +68,7 @@ typedef enum cellular_event_status {
     CellularDeviceTimeout                   = NSAPI_EVENT_CELLULAR_STATUS_BASE + 10,/* cell_callback_data_t.error contain an error or NSAPI_ERROR_OK,
                                                                                        cell_callback_data_t.status_data contains the current cellular_connection_status_t,
                                                                                        cellular_event_status.data contains new timeout value in milliseconds */
+    CellularRILATResponse                   = NSAPI_EVENT_CELLULAR_STATUS_BASE + 11, /* Only available when using RIL layer. This is a (multi-)response to RIL command RIL_REQUEST_SET_FORWARDING_AT_COMMAND. Data field contain AT response (char*) and status_data contains length. */
 } cellular_connection_status_t;
 
 #endif // CELLULAR_COMMON_

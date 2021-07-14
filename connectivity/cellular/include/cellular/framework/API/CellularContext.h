@@ -366,6 +366,13 @@ protected: // Device specific implementations might need these so protected
      */
     CellularContext::pdp_type_t string_to_pdp_type(const char *pdp_type);
 
+    /** Converts the given pdp type to string format
+     *
+     *  @param pdp_type     pdp type
+     *  @return             pdp type string
+     */
+    const char *pdp_type_to_string(pdp_type_t pdp_type);
+
 protected:
     // member variables needed in target override methods
     NetworkStack *_stack; // must be pointer because of PPP
