@@ -57,6 +57,10 @@
          "msgqueue-data-size": {
             "help": "The total memory available for all CMSIS-RTOSv2 object-pool message queues combined",
             "value": 0
+         },
+         "enable-all-rtx-events": {
+            "help": "Enables all of the RTX events which are disabled by default for optimization",
+            "value": false
          }
     },
     "macros": ["_RTE_"],
