@@ -211,7 +211,7 @@ retry_send:
         return NSAPI_ERROR_PARAMETER;
     }
 
-    _at.write_hex_string((char *)data, size);
+    _at.write_hex_string((char *)data, size, false);
     _at.cmd_stop();
     _at.resp_start();
     // skip socket id

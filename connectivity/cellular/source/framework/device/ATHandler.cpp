@@ -1551,21 +1551,25 @@ void ATHandler::set_send_delay(uint16_t send_delay)
     _at_send_delay = std::chrono::duration<uint16_t, std::milli>(send_delay);
 }
 
-void ATHandler::write_hex_string(const char *str, size_t size)
+void ATHandler::write_hex_string(const char *str, size_t size, bool quote_string)
 {
     // do common checks before sending subparameter
     if (check_cmd_send() == false) {
         return;
     }
 
-    (void) write("\"", 1);
+    if (quote_string) {
+        (void) write("\"", 1);
+    }
     char hexbuf[2];
     for (size_t i = 0; i < size; i++) {
         hexbuf[0] = hex_values[((str[i]) >> 4) & 0x0F];
         hexbuf[1] = hex_values[(str[i]) & 0x0F];
         write(hexbuf, 2);
     }
-    (void) write("\"", 1);
+    if (quote_string) {
+        (void) write("\"", 1);
+    }
 }
 
 void ATHandler::set_baud(int baud_rate)

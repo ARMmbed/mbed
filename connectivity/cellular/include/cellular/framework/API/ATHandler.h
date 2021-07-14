@@ -352,8 +352,9 @@ public:
      *
      *  @param str input buffer to be converted to hex ascii
      *  @param size of the input param str
+     *  @param quote_string if true it will add the double-quote character at beginning and end of string
      */
-    void write_hex_string(const char *str, size_t size);
+    void write_hex_string(const char *str, size_t size, bool quote_string = true);
 
     /** Reads as string and converts result to integer. Supports only non-negative integers.
      *
