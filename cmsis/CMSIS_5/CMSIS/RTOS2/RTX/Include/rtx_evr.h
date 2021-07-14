@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Arm Limited. All rights reserved.
+ * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -26,8 +26,6 @@
 #ifndef RTX_EVR_H_
 #define RTX_EVR_H_
 
-#include "cmsis_os2.h"                  // CMSIS RTOS API
-#include "RTX_Config.h"                 // RTX Configuration
 #include "rtx_os.h"                     // RTX OS definitions
 
 // Initial Thread configuration covered also Thread Flags and Generic Wait
@@ -391,6 +389,17 @@ extern void EvrRtxKernelGetSysTimerCount (uint32_t count);
 extern void EvrRtxKernelGetSysTimerFreq (uint32_t freq);
 #else
 #define EvrRtxKernelGetSysTimerFreq(freq)
+#endif
+
+/**
+  \brief  Event on RTOS kernel system error (Error)
+  \param[in]  code          error code.
+  \param[in]  object_id     object that caused the error.
+*/
+#if (!defined(EVR_RTX_DISABLE) && (OS_EVR_KERNEL != 0) && !defined(EVR_RTX_KERNEL_ERROR_NOTIFY_DISABLE))
+extern void EvrRtxKernelErrorNotify (uint32_t code, void *object_id);
+#else
+#define EvrRtxKernelErrorNotify(code, object_id)
 #endif
 
 

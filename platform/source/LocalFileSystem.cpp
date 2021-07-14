@@ -14,6 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#if defined(__ARMCC_VERSION)
+#include <arm_compat.h>
+#endif
+
 #include "platform/LocalFileSystem.h"
 
 #if DEVICE_LOCALFILESYSTEM

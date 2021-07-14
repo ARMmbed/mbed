@@ -1,11 +1,11 @@
 /**************************************************************************//**
  * @file     os_tick.h
  * @brief    CMSIS OS Tick header file
- * @version  V1.0.1
- * @date     24. November 2017
+ * @version  V1.0.2
+ * @date     19. March 2021
  ******************************************************************************/
 /*
- * Copyright (c) 2017-2017 ARM Limited. All rights reserved.
+ * Copyright (c) 2017-2021 ARM Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -26,6 +26,11 @@
 #define OS_TICK_H
 
 #include <stdint.h>
+
+#ifdef  __cplusplus
+extern "C"
+{
+#endif
 
 /// IRQ Handler.
 #ifndef IRQHANDLER_T
@@ -67,5 +72,9 @@ uint32_t OS_Tick_GetCount (void);
 /// Get OS Tick timer overflow status
 /// \return OS Tick overflow status (1 - overflow, 0 - no overflow).
 uint32_t OS_Tick_GetOverflow (void);
+
+#ifdef  __cplusplus
+}
+#endif
 
 #endif  /* OS_TICK_H */

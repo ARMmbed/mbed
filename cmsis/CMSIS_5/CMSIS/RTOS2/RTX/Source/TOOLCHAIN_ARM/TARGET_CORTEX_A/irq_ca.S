@@ -1,5 +1,5 @@
 ;/*
-; * Copyright (c) 2013-2018 Arm Limited. All rights reserved.
+; * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
 ; *
 ; * SPDX-License-Identifier: Apache-2.0
 ; *
@@ -18,7 +18,7 @@
 ; * -----------------------------------------------------------------------------
 ; *
 ; * Project:     CMSIS-RTOS RTX
-; * Title:       Cortex-A Exception handlers
+; * Title:       ARMv7-A Exception handlers
 ; *
 ; * -----------------------------------------------------------------------------
 ; */
@@ -367,16 +367,16 @@ osRtxContextSave
                 STMDB   R1!, {R2,R12}               ; Push FPSCR, maintain 8-byte alignment
 
                 VSTMDB  R1!, {D0-D15}               ; Save D0-D15
-                IF {TARGET_FEATURE_EXTENSION_REGISTER_COUNT} == 32
+              IF {TARGET_FEATURE_EXTENSION_REGISTER_COUNT} == 32
                 VSTMDB  R1!, {D16-D31}              ; Save D16-D31
-                ENDIF
+              ENDIF
 
                 LDRB    R2, [LR, #TCB_SP_FRAME]     ; Load osRtxInfo.thread.run.curr frame info
-                IF {TARGET_FEATURE_EXTENSION_REGISTER_COUNT} == 32
+              IF {TARGET_FEATURE_EXTENSION_REGISTER_COUNT} == 32
                 ORR     R2, R2, #4                  ; NEON state
-                ELSE
+              ELSE
                 ORR     R2, R2, #2                  ; VFP state
-                ENDIF
+              ENDIF
                 STRB    R2, [LR, #TCB_SP_FRAME]     ; Store VFP/NEON state
 
 osRtxContextSave1
@@ -428,9 +428,9 @@ osRtxContextRestore
                 MCR     p15, 0, R2, c1, c0, 2       ; Write CPACR
                 BEQ     osRtxContextRestore1        ; No VFP
                 ISB                                 ; Sync if VFP was enabled
-                IF {TARGET_FEATURE_EXTENSION_REGISTER_COUNT} == 32
+              IF {TARGET_FEATURE_EXTENSION_REGISTER_COUNT} == 32
                 VLDMIA  LR!, {D16-D31}              ; Restore D16-D31
-                ENDIF
+              ENDIF
                 VLDMIA  LR!, {D0-D15}               ; Restore D0-D15
                 LDR     R2, [LR]
                 VMSR    FPSCR, R2                   ; Restore FPSCR

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Arm Limited. All rights reserved.
+ * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -27,7 +27,7 @@
 
 
 //  OS Runtime Object Memory Usage
-#if ((defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0)))
+#ifdef RTX_OBJ_MEM_USAGE
 osRtxObjectMemUsage_t osRtxTimerMemUsage \
 __attribute__((section(".data.os.timer.obj"))) =
 { 0U, 0U, 0U };
@@ -93,8 +93,9 @@ static void TimerUnlink (const os_timer_t *timer) {
 
 /// Timer Tick (called each SysTick).
 static void osRtxTimerTick (void) {
-  os_timer_t *timer;
-  osStatus_t  status;
+  os_thread_t *thread_running;
+  os_timer_t  *timer;
+  osStatus_t   status;
 
   timer = osRtxInfo.timer.list;
   if (timer == NULL) {
@@ -102,12 +103,21 @@ static void osRtxTimerTick (void) {
     return;
   }
 
+  thread_running = osRtxThreadGetRunning();
+
   timer->tick--;
   while ((timer != NULL) && (timer->tick == 0U)) {
     TimerUnlink(timer);
     status = osMessageQueuePut(osRtxInfo.timer.mq, &timer->finfo, 0U, 0U);
     if (status != osOK) {
-      (void)osRtxErrorNotify(osRtxErrorTimerQueueOverflow, timer);
+      const os_thread_t *thread = osRtxThreadGetRunning();
+      osRtxThreadSetRunning(osRtxInfo.thread.run.next);
+      (void)osRtxKernelErrorNotify(osRtxErrorTimerQueueOverflow, timer);
+      if (osRtxThreadGetRunning() == NULL) {
+        if (thread_running == thread) {
+          thread_running = NULL;
+        }
+      }
     }
     if (timer->type == osRtxTimerPeriodic) {
       TimerInsert(timer, timer->load);
@@ -116,22 +126,37 @@ static void osRtxTimerTick (void) {
     }
     timer = osRtxInfo.timer.list;
   }
+
+  osRtxThreadSetRunning(thread_running);
+}
+
+/// Setup Timer Thread objects.
+//lint -esym(714,osRtxTimerSetup) "Referenced from library configuration"
+//lint -esym(759,osRtxTimerSetup) "Prototype in header"
+//lint -esym(765,osRtxTimerSetup) "Global scope"
+int32_t osRtxTimerSetup (void) {
+  int32_t ret = -1;
+
+  if (osRtxMessageQueueTimerSetup() == 0) {
+    osRtxInfo.timer.tick = osRtxTimerTick;
+    ret = 0;
+  }
+
+  return ret;
 }
 
 /// Timer Thread
-__WEAK __NO_RETURN void osRtxTimerThread (void *argument) {
-  os_timer_finfo_t finfo;
-  osStatus_t       status;
-  (void)           argument;
-
-  osRtxInfo.timer.mq = osRtxMessageQueueId(
-    osMessageQueueNew(osRtxConfig.timer_mq_mcnt, sizeof(os_timer_finfo_t), osRtxConfig.timer_mq_attr)
-  );
-  osRtxInfo.timer.tick = osRtxTimerTick;
+//lint -esym(714,osRtxTimerThread) "Referenced from library configuration"
+//lint -esym(759,osRtxTimerThread) "Prototype in header"
+//lint -esym(765,osRtxTimerThread) "Global scope"
+__NO_RETURN void osRtxTimerThread (void *argument) {
+  os_timer_finfo_t   finfo;
+  osStatus_t         status;
+  osMessageQueueId_t mq = (osMessageQueueId_t)argument;
 
   for (;;) {
     //lint -e{934} "Taking address of near auto variable"
-    status = osMessageQueueGet(osRtxInfo.timer.mq, &finfo, NULL, osWaitForever);
+    status = osMessageQueueGet(mq, &finfo, NULL, osWaitForever);
     if (status == osOK) {
       EvrRtxTimerCallback(finfo.func, finfo.arg);
       (finfo.func)(finfo.arg);
@@ -188,7 +213,7 @@ static osTimerId_t svcRtxTimerNew (osTimerFunc_t func, osTimerType_t type, void 
       //lint -e{9079} "conversion from pointer to void to pointer to other type" [MISRA Note 5]
       timer = osRtxMemoryAlloc(osRtxInfo.mem.common, sizeof(os_timer_t), 1U);
     }
-#if (defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0))
+#ifdef RTX_OBJ_MEM_USAGE
     if (timer != NULL) {
       uint32_t used;
       osRtxTimerMemUsage.cnt_alloc++;
@@ -353,7 +378,7 @@ static osStatus_t svcRtxTimerDelete (osTimerId_t timer_id) {
     } else {
       (void)osRtxMemoryFree(osRtxInfo.mem.common, timer);
     }
-#if (defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0))
+#ifdef RTX_OBJ_MEM_USAGE
     osRtxTimerMemUsage.cnt_free++;
 #endif
   }
@@ -381,7 +406,7 @@ osTimerId_t osTimerNew (osTimerFunc_t func, osTimerType_t type, void *argument, 
   osTimerId_t timer_id;
 
   EvrRtxTimerNew(func, type, argument, attr);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxTimerError(NULL, (int32_t)osErrorISR);
     timer_id = NULL;
   } else {
@@ -394,7 +419,7 @@ osTimerId_t osTimerNew (osTimerFunc_t func, osTimerType_t type, void *argument, 
 const char *osTimerGetName (osTimerId_t timer_id) {
   const char *name;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxTimerGetName(timer_id, NULL);
     name = NULL;
   } else {
@@ -408,7 +433,7 @@ osStatus_t osTimerStart (osTimerId_t timer_id, uint32_t ticks) {
   osStatus_t status;
 
   EvrRtxTimerStart(timer_id, ticks);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxTimerError(timer_id, (int32_t)osErrorISR);
     status = osErrorISR;
   } else {
@@ -422,7 +447,7 @@ osStatus_t osTimerStop (osTimerId_t timer_id) {
   osStatus_t status;
 
   EvrRtxTimerStop(timer_id);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxTimerError(timer_id, (int32_t)osErrorISR);
     status = osErrorISR;
   } else {
@@ -435,7 +460,7 @@ osStatus_t osTimerStop (osTimerId_t timer_id) {
 uint32_t osTimerIsRunning (osTimerId_t timer_id) {
   uint32_t is_running;
 
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxTimerIsRunning(timer_id, 0U);
     is_running = 0U;
   } else {
@@ -449,7 +474,7 @@ osStatus_t osTimerDelete (osTimerId_t timer_id) {
   osStatus_t status;
 
   EvrRtxTimerDelete(timer_id);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxTimerError(timer_id, (int32_t)osErrorISR);
     status = osErrorISR;
   } else {

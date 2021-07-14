@@ -5,7 +5,7 @@
  * @date     10. January 2018
  ******************************************************************************/
 /*
- * Copyright (c) 2016-2020 Arm Limited. All rights reserved.
+ * Copyright (c) 2016-2018 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -21,8 +21,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#if !FEATURE_TFM
 
 #if defined (__ARM_FEATURE_CMSE) &&  (__ARM_FEATURE_CMSE == 3U)
 
@@ -203,5 +201,3 @@ uint32_t TZ_StoreContext_S (TZ_MemoryId_t id) {
   return 1U;    // Success
 }
 #endif
-
-#endif // !FEATURE_TFM

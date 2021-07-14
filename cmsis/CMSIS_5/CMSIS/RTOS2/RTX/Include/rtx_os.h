@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Arm Limited. All rights reserved.
+ * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "cmsis_os2.h"
+#include "rtx_def.h"
  
 #ifdef  __cplusplus
 extern "C"
@@ -38,8 +39,8 @@ extern "C"
  
 /// Kernel Information
 #define osRtxVersionAPI      20010003   ///< API version (2.1.3)
-#define osRtxVersionKernel   50050002   ///< Kernel version (5.5.2)
-#define osRtxKernelId     "RTX V5.5.2"  ///< Kernel identification string
+#define osRtxVersionKernel   50050003   ///< Kernel version (5.5.3)
+#define osRtxKernelId     "RTX V5.5.3"  ///< Kernel identification string
  
  
 //  ==== Common definitions ====
@@ -110,7 +111,7 @@ typedef struct osRtxThread_s {
   struct osRtxThread_s    *delay_next;  ///< Link pointer to next Thread in Delay list
   struct osRtxThread_s    *delay_prev;  ///< Link pointer to previous Thread in Delay list
   struct osRtxThread_s   *thread_join;  ///< Thread waiting to Join
-  uint32_t                      delay;  ///< Delay Time
+  uint32_t                      delay;  ///< Delay Time/Round Robin Time Tick
   int8_t                     priority;  ///< Thread Priority
   int8_t                priority_base;  ///< Base Priority
   uint8_t                 stack_frame;  ///< Stack Frame (EXC_RETURN[7..0])
@@ -296,9 +297,9 @@ typedef struct {
     osRtxThread_t         *delay_list;  ///< Delay List
     osRtxThread_t          *wait_list;  ///< Wait List (no Timeout)
     osRtxThread_t     *terminate_list;  ///< Terminate Thread List
+    uint32_t                 reserved;
     struct {                            ///< Thread Round Robin Info
       osRtxThread_t           *thread;  ///< Round Robin Thread
-      uint32_t                   tick;  ///< Round Robin Time Tick
       uint32_t                timeout;  ///< Round Robin Timeout
     } robin;
   } thread;
@@ -392,7 +393,8 @@ extern osRtxObjectMemUsage_t osRtxMessageQueueMemUsage;
 //  ==== OS External Functions ====
  
 // OS Error Codes
-#define osRtxErrorStackUnderflow        1U  ///< Stack overflow, i.e. stack pointer below its lower memory limit for descending stacks.
+#define osRtxErrorStackUnderflow        1U  ///< \deprecated Superseded by \ref osRtxErrorStackOverflow.
+#define osRtxErrorStackOverflow         1U  ///< Stack overflow, i.e. stack pointer below its lower memory limit for descending stacks.
 #define osRtxErrorISRQueueOverflow      2U  ///< ISR Queue overflow detected when inserting object.
 #define osRtxErrorTimerQueueOverflow    3U  ///< User Timer Callback Queue overflow detected for timer.
 #define osRtxErrorClibSpace             4U  ///< Standard C/C++ library libspace not available: increase \c OS_THREAD_LIBSPACE_NUM.
@@ -400,6 +402,7 @@ extern osRtxObjectMemUsage_t osRtxMessageQueueMemUsage;
  
 /// OS Error Callback function
 extern uint32_t osRtxErrorNotify (uint32_t code, void *object_id);
+extern uint32_t osRtxKernelErrorNotify (uint32_t code, void *object_id);
  
 /// OS Idle Thread
 extern void osRtxIdleThread (void *argument);
@@ -453,10 +456,12 @@ typedef struct {
     osRtxMpInfo_t             *message_queue;   ///< Message Queue Control Blocks
   } mpi;
   uint32_t                 thread_stack_size;   ///< Default Thread Stack Size
-  const 
+  const
   osThreadAttr_t           *idle_thread_attr;   ///< Idle Thread Attributes
   const
   osThreadAttr_t          *timer_thread_attr;   ///< Timer Thread Attributes
+  void               (*timer_thread)(void *);   ///< Timer Thread Function
+  int32_t               (*timer_setup)(void);   ///< Timer Setup Function
   const
   osMessageQueueAttr_t        *timer_mq_attr;   ///< Timer Message Queue Attributes
   uint32_t                     timer_mq_mcnt;   ///< Timer Message Queue maximum Messages

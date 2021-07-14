@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
+ * Copyright (c) 2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -18,34 +18,29 @@
  * -----------------------------------------------------------------------------
  *
  * Project:     CMSIS-RTOS RTX
- * Title:       Cortex Core definitions
+ * Title:       RTX derived definitions
  *
  * -----------------------------------------------------------------------------
  */
 
-#ifndef RTX_CORE_C_H_
-#define RTX_CORE_C_H_
+#ifndef RTX_DEF_H_
+#define RTX_DEF_H_
 
-//lint -emacro((923,9078),SCB) "cast from unsigned long to pointer" [MISRA Note 9]
-#ifndef RTE_COMPONENTS_H
+#ifdef   _RTE_
 #include "RTE_Components.h"
 #endif
-#include CMSIS_device_header
+#include "RTX_Config.h"
 
-#if ((!defined(__ARM_ARCH_6M__))        && \
-     (!defined(__ARM_ARCH_7A__))        && \
-     (!defined(__ARM_ARCH_7M__))        && \
-     (!defined(__ARM_ARCH_7EM__))       && \
-     (!defined(__ARM_ARCH_8M_BASE__))   && \
-     (!defined(__ARM_ARCH_8M_MAIN__))   && \
-     (!defined(__ARM_ARCH_8_1M_MAIN__)))
-#error "Unknown Arm Architecture!"
+#if (defined(OS_OBJ_MEM_USAGE) && (OS_OBJ_MEM_USAGE != 0))
+  #define RTX_OBJ_MEM_USAGE
 #endif
 
-#if   (defined(__ARM_ARCH_7A__) && (__ARM_ARCH_7A__ != 0))
-#include "rtx_core_ca.h"
-#else
-#include "rtx_core_cm.h"
+#if (defined(OS_STACK_CHECK) && (OS_STACK_CHECK != 0))
+  #define RTX_STACK_CHECK
 #endif
 
-#endif  // RTX_CORE_C_H_
+#ifdef  RTE_CMSIS_RTOS2_RTX5_ARMV8M_NS
+  #define DOMAIN_NS             1
+#endif
+
+#endif  // RTX_DEF_H_

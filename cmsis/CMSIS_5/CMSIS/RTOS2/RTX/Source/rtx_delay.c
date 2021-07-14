@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Arm Limited. All rights reserved.
+ * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -31,21 +31,29 @@
 /// Wait for Timeout (Time Delay).
 /// \note API identical to osDelay
 static osStatus_t svcRtxDelay (uint32_t ticks) {
+  osStatus_t status;
 
-  if (ticks != 0U) {
-    if (osRtxThreadWaitEnter(osRtxThreadWaitingDelay, ticks)) {
-      EvrRtxDelayStarted(ticks);
-    } else {
-      EvrRtxDelayCompleted(osRtxThreadGetRunning());
-    }
+  if (ticks == 0U) {
+    EvrRtxDelayError((int32_t)osErrorParameter);
+    //lint -e{904} "Return statement before end of function" [MISRA Note 1]
+    return osErrorParameter;
   }
 
-  return osOK;
+  if (osRtxThreadWaitEnter(osRtxThreadWaitingDelay, ticks)) {
+    EvrRtxDelayStarted(ticks);
+    status = osOK;
+  } else {
+    EvrRtxDelayError((int32_t)osError);
+    status = osError;
+  }
+
+  return status;
 }
 
 /// Wait until specified time.
 /// \note API identical to osDelayUntil
 static osStatus_t svcRtxDelayUntil (uint32_t ticks) {
+  osStatus_t status;
 
   ticks -= osRtxInfo.kernel.tick;
   if ((ticks == 0U) || (ticks > 0x7FFFFFFFU)) {
@@ -56,11 +64,13 @@ static osStatus_t svcRtxDelayUntil (uint32_t ticks) {
 
   if (osRtxThreadWaitEnter(osRtxThreadWaitingDelay, ticks)) {
     EvrRtxDelayUntilStarted(ticks);
+    status = osOK;
   } else {
-    EvrRtxDelayCompleted(osRtxThreadGetRunning());
+    EvrRtxDelayError((int32_t)osError);
+    status = osError;
   }
 
-  return osOK;
+  return status;
 }
 
 //  Service Calls definitions
@@ -77,7 +87,7 @@ osStatus_t osDelay (uint32_t ticks) {
   osStatus_t status;
 
   EvrRtxDelay(ticks);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxDelayError((int32_t)osErrorISR);
     status = osErrorISR;
   } else {
@@ -91,7 +101,7 @@ osStatus_t osDelayUntil (uint32_t ticks) {
   osStatus_t status;
 
   EvrRtxDelayUntil(ticks);
-  if (IsIrqMode() || IsIrqMasked()) {
+  if (IsException() || IsIrqMasked()) {
     EvrRtxDelayError((int32_t)osErrorISR);
     status = osErrorISR;
   } else {

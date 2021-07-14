@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2020 Arm Limited. All rights reserved.
+ * Copyright (c) 2013-2021 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,7 +17,7 @@
  *
  * -----------------------------------------------------------------------------
  *
- * $Revision:   V5.5.1
+ * $Revision:   V5.5.2
  *
  * Project:     CMSIS-RTOS RTX
  * Title:       RTX Configuration definitions
@@ -69,7 +69,7 @@
  
 //   </e>
  
-//   <o>ISR FIFO Queue 
+//   <o>ISR FIFO Queue
 //      <4=>  4 entries    <8=>   8 entries   <12=>  12 entries   <16=>  16 entries
 //     <24=> 24 entries   <32=>  32 entries   <48=>  48 entries   <64=>  64 entries
 //     <96=> 96 entries  <128=> 128 entries  <196=> 196 entries  <256=> 256 entries
@@ -143,10 +143,10 @@
 #endif
  
 //   <q>Stack overrun checking
-//   <i> Enables stack overrun check at thread switch.
+//   <i> Enables stack overrun check at thread switch (requires RTX source variant).
 //   <i> Enabling this option increases slightly the execution time of a thread switch.
 #ifndef OS_STACK_CHECK
-#define OS_STACK_CHECK              1
+#define OS_STACK_CHECK              0
 #endif
  
 //   <q>Stack usage watermark
@@ -156,8 +156,8 @@
 #define OS_STACK_WATERMARK          0
 #endif
  
-//   <o>Processor mode for Thread execution 
-//     <0=> Unprivileged mode 
+//   <o>Processor mode for Thread execution
+//     <0=> Unprivileged mode
 //     <1=> Privileged mode
 //   <i> Default: Privileged mode
 #ifndef OS_PRIVILEGE_MODE
@@ -367,125 +367,125 @@
 //     <i> Recording levels for RTX components.
 //     <i> Only applicable if events for the respective component are generated.
  
-//       <h>Memory Management
+//       <e.7>Memory Management
 //       <i> Recording level for Memory Management events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_MEMORY_LEVEL 
-#define OS_EVR_MEMORY_LEVEL         0x01U
+//       </e>
+#ifndef OS_EVR_MEMORY_LEVEL
+#define OS_EVR_MEMORY_LEVEL         0x81U
 #endif
  
-//       <h>Kernel
+//       <e.7>Kernel
 //       <i> Recording level for Kernel events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_KERNEL_LEVEL 
-#define OS_EVR_KERNEL_LEVEL         0x01U
+//       </e>
+#ifndef OS_EVR_KERNEL_LEVEL
+#define OS_EVR_KERNEL_LEVEL         0x81U
 #endif
  
-//       <h>Thread
+//       <e.7>Thread
 //       <i> Recording level for Thread events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_THREAD_LEVEL 
-#define OS_EVR_THREAD_LEVEL         0x05U
+//       </e>
+#ifndef OS_EVR_THREAD_LEVEL
+#define OS_EVR_THREAD_LEVEL         0x85U
 #endif
  
-//       <h>Generic Wait
+//       <e.7>Generic Wait
 //       <i> Recording level for Generic Wait events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_WAIT_LEVEL 
-#define OS_EVR_WAIT_LEVEL           0x01U
+//       </e>
+#ifndef OS_EVR_WAIT_LEVEL
+#define OS_EVR_WAIT_LEVEL           0x81U
 #endif
  
-//       <h>Thread Flags
+//       <e.7>Thread Flags
 //       <i> Recording level for Thread Flags events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_THFLAGS_LEVEL 
-#define OS_EVR_THFLAGS_LEVEL        0x01U
+//       </e>
+#ifndef OS_EVR_THFLAGS_LEVEL
+#define OS_EVR_THFLAGS_LEVEL        0x81U
 #endif
  
-//       <h>Event Flags
+//       <e.7>Event Flags
 //       <i> Recording level for Event Flags events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_EVFLAGS_LEVEL 
-#define OS_EVR_EVFLAGS_LEVEL        0x01U
+//       </e>
+#ifndef OS_EVR_EVFLAGS_LEVEL
+#define OS_EVR_EVFLAGS_LEVEL        0x81U
 #endif
  
-//       <h>Timer
+//       <e.7>Timer
 //       <i> Recording level for Timer events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_TIMER_LEVEL 
-#define OS_EVR_TIMER_LEVEL          0x01U
+//       </e>
+#ifndef OS_EVR_TIMER_LEVEL
+#define OS_EVR_TIMER_LEVEL          0x81U
 #endif
  
-//       <h>Mutex
+//       <e.7>Mutex
 //       <i> Recording level for Mutex events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_MUTEX_LEVEL 
-#define OS_EVR_MUTEX_LEVEL          0x01U
+//       </e>
+#ifndef OS_EVR_MUTEX_LEVEL
+#define OS_EVR_MUTEX_LEVEL          0x81U
 #endif
  
-//       <h>Semaphore
+//       <e.7>Semaphore
 //       <i> Recording level for Semaphore events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_SEMAPHORE_LEVEL 
-#define OS_EVR_SEMAPHORE_LEVEL      0x01U
+//       </e>
+#ifndef OS_EVR_SEMAPHORE_LEVEL
+#define OS_EVR_SEMAPHORE_LEVEL      0x81U
 #endif
  
-//       <h>Memory Pool
+//       <e.7>Memory Pool
 //       <i> Recording level for Memory Pool events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_MEMPOOL_LEVEL 
-#define OS_EVR_MEMPOOL_LEVEL        0x01U
+//       </e>
+#ifndef OS_EVR_MEMPOOL_LEVEL
+#define OS_EVR_MEMPOOL_LEVEL        0x81U
 #endif
  
-//       <h>Message Queue
+//       <e.7>Message Queue
 //       <i> Recording level for Message Queue events.
 //         <o.0>Error events
 //         <o.1>API function call events
 //         <o.2>Operation events
 //         <o.3>Detailed operation events
-//       </h>
-#ifndef OS_EVR_MSGQUEUE_LEVEL 
-#define OS_EVR_MSGQUEUE_LEVEL       0x01U
+//       </e>
+#ifndef OS_EVR_MSGQUEUE_LEVEL
+#define OS_EVR_MSGQUEUE_LEVEL       0x81U
 #endif
  
 //     </h>
