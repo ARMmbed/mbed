@@ -27,9 +27,6 @@
 
 namespace mbed {
 
-I2C *I2C::_owner = NULL;
-SingletonPtr<PlatformMutex> I2C::_mutex;
-
 I2C::I2C(PinName sda, PinName scl) :
 #if DEVICE_I2C_ASYNCH
     _irq(this), _usage(DMA_USAGE_NEVER), _deep_sleep_locked(false),
@@ -42,8 +39,6 @@ I2C::I2C(PinName sda, PinName scl) :
     _scl = scl;
     recover(sda, scl);
     i2c_init(&_i2c, _sda, _scl);
-    // Used to avoid unnecessary frequency updates
-    _owner = this;
     unlock();
 }
 
@@ -59,8 +54,6 @@ I2C::I2C(const i2c_pinmap_t &static_pinmap) :
     _scl = static_pinmap.scl_pin;
     recover(static_pinmap.sda_pin, static_pinmap.scl_pin);
     i2c_init_direct(&_i2c, &static_pinmap);
-    // Used to avoid unnecessary frequency updates
-    _owner = this;
     unlock();
 }
 
@@ -72,18 +65,6 @@ void I2C::frequency(int hz)
     // We want to update the frequency even if we are already the bus owners
     i2c_frequency(&_i2c, _hz);
 
-    // Updating the frequency of the bus we become the owners of it
-    _owner = this;
-    unlock();
-}
-
-void I2C::aquire()
-{
-    lock();
-    if (_owner != this) {
-        i2c_frequency(&_i2c, _hz);
-        _owner = this;
-    }
     unlock();
 }
 
@@ -91,7 +72,6 @@ void I2C::aquire()
 int I2C::write(int address, const char *data, int length, bool repeated)
 {
     lock();
-    aquire();
 
     int stop = (repeated) ? 0 : 1;
     int written = i2c_write(&_i2c, address, data, length, stop);
@@ -112,7 +92,6 @@ int I2C::write(int data)
 int I2C::read(int address, char *data, int length, bool repeated)
 {
     lock();
-    aquire();
 
     int stop = (repeated) ? 0 : 1;
     int read = i2c_read(&_i2c, address, data, length, stop);
@@ -137,7 +116,6 @@ int I2C::read(int ack)
 void I2C::start(void)
 {
     lock();
-    aquire();
     i2c_start(&_i2c);
     unlock();
 }
@@ -215,7 +193,6 @@ int I2C::transfer(int address, const char *tx_buffer, int tx_length, char *rx_bu
         return -1; // transaction ongoing
     }
     lock_deep_sleep();
-    aquire();
 
     _callback = callback;
     int stop = (repeated) ? 0 : 1;

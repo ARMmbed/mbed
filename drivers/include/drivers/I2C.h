@@ -231,12 +231,10 @@ protected:
 
 #if !defined(DOXYGEN_ONLY)
 protected:
-    void aquire();
 
     i2c_t _i2c;
-    static I2C  *_owner;
     int    _hz;
-    static SingletonPtr<PlatformMutex> _mutex;
+    SingletonPtr<PlatformMutex> _mutex;
     PinName _sda;
     PinName _scl;
 
