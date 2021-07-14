@@ -53,6 +53,10 @@
 #include "FlashIAPBlockDevice.h"
 #endif
 
+#if COMPONENT_SPINAND
+#include "SPINANDBlockDevice.h"
+#endif
+
 // Debug available
 #ifndef MODE_DEBUG
 #define MODE_DEBUG      0
@@ -92,6 +96,7 @@ enum bd_type {
     sd,
     flashiap,
     ospif,
+    spinand,
     default_bd
 };
 
@@ -163,6 +168,23 @@ static BlockDevice *get_bd_instance(uint8_t bd_type)
 #endif
             break;
         }
+        case spinand: {
+#if COMPONENT_SPINAND
+            static SPINANDBlockDevice default_bd(
+                MBED_CONF_SPINAND_SPINAND_IO0,
+                MBED_CONF_SPINAND_SPINAND_IO1,
+                MBED_CONF_SPINAND_SPINAND_IO2,
+                MBED_CONF_SPINAND_SPINAND_IO3,
+                MBED_CONF_SPINAND_SPINAND_SCK,
+                MBED_CONF_SPINAND_SPINAND_CSN,
+                MBED_CONF_SPINAND_SPINAND_POLARITY_MODE,
+                MBED_CONF_SPINAND_SPINAND_FREQ
+            );
+            return &default_bd;
+#endif
+            break;
+        }
+
         case dataflash: {
 #if COMPONENT_DATAFLASH
             static DataFlashBlockDevice default_bd(
@@ -298,7 +320,11 @@ void test_init_bd()
         if (curr_sector_size > max_sector_size) {
             max_sector_size = curr_sector_size;
         }
+#if COMPONENT_SPINAND
+        start_address += 0x40000;
+#else
         start_address += curr_sector_size;
+#endif
     }
     num_of_sectors = i;
 }
@@ -433,89 +459,6 @@ void test_multi_threads()
 }
 #endif
 
-#if defined(MX_FLASH_SUPPORT_RWW)
-void test_rww_rwe()
-{
-    utest_printf("\nTest rww and rwe Starts..\n");
-
-    TEST_SKIP_UNLESS_MESSAGE(block_device != NULL, "no block device found.");
-
-    utest_printf("\ntest read bank1 data when write bank0\n");
-
-    // Determine start_address in bank 0
-    bd_addr_t start_address_B0 = sectors_addr[rand() % num_of_sectors];
-    utest_printf("start_address_B0=0x%016" PRIx64 "\n", start_address_B0);
-
-    // Determine start_address in bank 1
-    bd_addr_t start_address_B1 = start_address_B0 | 0x1000000;
-    utest_printf("start_address_B1=0x%016" PRIx64 "\n", start_address_B1);
-
-    // Determine data_buf_size
-    bd_size_t erase_size = block_device->get_erase_size(start_address_B0);
-    TEST_ASSERT(erase_size > 0);
-    bd_size_t data_buf_size = block_device->get_program_size();;
-
-    // Allocate buffer for write test data
-    uint8_t *data_buf = new (std::nothrow) uint8_t[data_buf_size];
-    TEST_SKIP_UNLESS_MESSAGE(data_buf != NULL, "Not enough memory for test");
-
-    // Allocate buffer for read test data
-    uint8_t *out_data_buf = new (std::nothrow) uint8_t[data_buf_size];
-    TEST_SKIP_UNLESS_MESSAGE(out_data_buf != NULL, "Not enough memory for test");
-
-    // First must Erase given memory region
-    utest_printf("erasing given memory region in bank0\n");
-    int err = block_device->erase(start_address_B0, erase_size);
-    TEST_ASSERT_EQUAL(0, err);
-    utest_printf("erasing given memory region in bank1\n");
-    err = block_device->erase(start_address_B1, erase_size);
-    TEST_ASSERT_EQUAL(0, err);
-
-    // Write random data to selected region to make sure data is not accidentally set to "erased" value.
-    // With this pre-write, the test case will fail even if block_device->erase() is broken.
-    for (bd_size_t i = 0; i < data_buf_size; i++) {
-        data_buf[i] = (uint8_t) rand();
-    }
-
-    utest_printf("writing given memory region in bank1\n");
-    err = block_device->program((const void *)data_buf, start_address_B1, data_buf_size);
-    TEST_ASSERT_EQUAL(0, err);
-
-    memset(out_data_buf, 0, data_buf_size);
-
-    utest_printf("writing given memory region in bank0\n");
-    err = block_device->program((const void *)data_buf, start_address_B0, data_buf_size);
-    TEST_ASSERT_EQUAL(0, err);
-
-    // Read written memory region in bank1 to verify it contains information
-//    utest_printf("reading written memory region in bank1 when write bank0\n");
-    err = block_device->read((void *)out_data_buf, start_address_B1, data_buf_size);
-    TEST_ASSERT_EQUAL(0, err);
-
-    // Verify erased memory region
-    utest_printf("verifying written memory region\n");
-    for (bd_size_t i = 0; i < data_buf_size; i++) {
-        TEST_ASSERT_EQUAL(out_data_buf[i], data_buf[i]);
-    }
-
-    utest_printf("\ntest read bank1 data when erase bank0\n");
-
-    utest_printf("erasing given memory region in bank0\n");
-    memset(out_data_buf, 0, data_buf_size);
-    err = block_device->erase(start_address_B0, erase_size);
-    TEST_ASSERT_EQUAL(0, err);
-
-    // Read written memory region in bank1 to verify it contains information
-
-    utest_printf("reading written memory region in bank1 when erase bank0\n");
-    err = block_device->read((void *)out_data_buf, start_address_B1, data_buf_size);
-    TEST_ASSERT_EQUAL(0, err);
-
-    delete[] out_data_buf;
-    delete[] data_buf;
-}
-#endif
-
 void test_erase_functionality()
 {
     utest_printf("\nTest BlockDevice::get_erase_value()..\n");
@@ -638,11 +581,19 @@ void test_contiguous_erase_write_read()
     // helping to avoid test timeouts. Try 256-byte chunks if contiguous_erase_size
     // (which should be a power of 2) is greater than that. If it's less than
     // that, the test finishes quickly anyway...
+#if COMPONENT_SPINAND
+    if ((program_size < 2048) && (2048 % program_size == 0)
+            && (contiguous_erase_size >= 2048) && (contiguous_erase_size % 2048 == 0)) {
+        utest_printf("using 2048-byte write/read buffer\n");
+        write_read_buf_size = 2048;
+    }
+#else
     if ((program_size < 256) && (256 % program_size == 0)
             && (contiguous_erase_size >= 256) && (contiguous_erase_size % 256 == 0)) {
         utest_printf("using 256-byte write/read buffer\n");
         write_read_buf_size = 256;
     }
+#endif
 
     // Allocate write/read buffer
     uint8_t *write_read_buf = new (std::nothrow) uint8_t[write_read_buf_size];
@@ -655,7 +606,11 @@ void test_contiguous_erase_write_read()
 
     // Pre-fill the to-be-erased region. By pre-filling the region,
     // we can be sure the test will not pass if the erase doesn't work.
+#if COMPONENT_SPINAND
+    for (bd_size_t offset = 0; start_address + offset < stop_address; offset += 0x40000) {
+#else
     for (bd_size_t offset = 0; start_address + offset < stop_address; offset += write_read_buf_size) {
+#endif
         for (size_t i = 0; i < write_read_buf_size; i++) {
             write_read_buf[i] = (uint8_t)rand();
         }
@@ -672,8 +627,11 @@ void test_contiguous_erase_write_read()
 
     // Loop through all write/read regions
     int region = 0;
+#if COMPONENT_SPINAND
+    for (; start_address < stop_address; start_address += 0x40000) {
+#else
     for (; start_address < stop_address; start_address += write_read_buf_size) {
-
+#endif
         // Generate test data
         unsigned int seed = rand();
         srand(seed);
@@ -873,6 +831,8 @@ void test_get_type_functionality()
     TEST_ASSERT_EQUAL(0, strcmp(bd_type, "SD"));
 #elif COMPONENT_FLASHIAP
     TEST_ASSERT_EQUAL(0, strcmp(bd_type, "FLASHIAP"));
+#elif COMPONENT_SPINAND
+    TEST_ASSERT_EQUAL(0, strcmp(bd_type, "SPINAND"));
 #endif
 }
 
@@ -899,9 +859,6 @@ template_case_t template_cases[] = {
     {"Testing BlockDevice erase functionality", test_erase_functionality, greentea_failure_handler},
     {"Testing program read small data sizes", test_program_read_small_data_sizes, greentea_failure_handler},
     {"Testing unaligned erase blocks", test_unaligned_erase_blocks, greentea_failure_handler},
-#if defined(MX_FLASH_SUPPORT_RWW)
-    {"Testing read while write and read while erase", test_rww_rwe, greentea_failure_handler},
-#endif
     {"Testing Deinit block device", test_deinit_bd, greentea_failure_handler},
 };
 
@@ -934,11 +891,14 @@ int get_bd_count()
 #if COMPONENT_OSPIF
     bd_arr[count++] = ospif;          //5
 #endif
+#if COMPONENT_SPINAND
+    bd_arr[count++] = spinand;        //6
+#endif
 
     return count;
 }
 
-static const char *prefix[] = {"SPIF ", "QSPIF ", "DATAFLASH ", "SD ", "FLASHIAP ", "OSPIF ", "DEFAULT "};
+static const char *prefix[] = {"SPIF ", "QSPIF ", "DATAFLASH ", "SD ", "FLASHIAP ", "OSPIF ", "SPINAND ", "DEFAULT "};
 
 int main()
 {
