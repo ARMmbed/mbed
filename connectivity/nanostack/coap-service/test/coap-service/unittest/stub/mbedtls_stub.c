@@ -300,6 +300,12 @@ int mbedtls_x509_crt_parse(mbedtls_x509_crt *a, const unsigned char *b, size_t c
     return mbedtls_stub.expected_int;
 }
 
+int mbedtls_x509_crt_parse_path(mbedtls_x509_crt *a, const char *b)
+{
+    // means 5 valid certificates found
+    return 5;
+}
+
 int mbedtls_x509_crt_info(char *buf, size_t size, const char *prefix,
                           const mbedtls_x509_crt *crt)
 {

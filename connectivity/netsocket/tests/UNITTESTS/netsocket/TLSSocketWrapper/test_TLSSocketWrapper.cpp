@@ -399,6 +399,12 @@ TEST_F(TestTLSSocketWrapper, set_root_ca_cert_invalid)
     EXPECT_EQ(wrapper->set_root_ca_cert(cert, strlen(cert)), NSAPI_ERROR_PARAMETER);
 }
 
+TEST_F(TestTLSSocketWrapper, set_root_ca_cert_path)
+{
+    EXPECT_EQ(transport->open(&stack), NSAPI_ERROR_OK);
+    EXPECT_EQ(wrapper->set_root_ca_cert_path("/"), NSAPI_ERROR_OK);
+}
+
 TEST_F(TestTLSSocketWrapper, set_client_cert_key)
 {
     EXPECT_EQ(wrapper->get_own_cert(), static_cast<mbedtls_x509_crt *>(NULL));

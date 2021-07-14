@@ -136,6 +136,35 @@ nsapi_error_t TLSSocketWrapper::set_root_ca_cert(const char *root_ca_pem)
     return set_root_ca_cert(root_ca_pem, strlen(root_ca_pem) + 1);
 }
 
+nsapi_error_t TLSSocketWrapper::set_root_ca_cert_path(const char *root_ca)
+{
+#if !defined(MBEDTLS_X509_CRT_PARSE_C) || !defined(MBEDTLS_FS_IO)
+    return NSAPI_ERROR_UNSUPPORTED;
+#else
+    mbedtls_x509_crt *crt;
+
+    crt = new (std::nothrow) mbedtls_x509_crt;
+    if (!crt) {
+        return NSAPI_ERROR_NO_MEMORY;
+    }
+
+    mbedtls_x509_crt_init(crt);
+
+    /* Parse CA certification */
+    int ret = mbedtls_x509_crt_parse_path(crt, root_ca);
+    if (ret < 0) {
+        print_mbedtls_error("mbedtls_x509_crt_parse", ret);
+        mbedtls_x509_crt_free(crt);
+        delete crt;
+        return NSAPI_ERROR_PARAMETER;
+    }
+    set_ca_chain(crt);
+    _cacert_allocated = true;
+    return NSAPI_ERROR_OK;
+#endif
+}
+
+
 nsapi_error_t TLSSocketWrapper::set_client_cert_key(const char *client_cert_pem, const char *client_private_key_pem)
 {
     return set_client_cert_key(client_cert_pem, strlen(client_cert_pem) + 1, client_private_key_pem, strlen(client_private_key_pem) + 1);

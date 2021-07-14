@@ -116,6 +116,18 @@ public:
      */
     nsapi_error_t set_root_ca_cert(const char *root_ca_pem);
 
+    /** Sets the certification of Root CA.
+     *
+     * @note Must be called before calling connect()
+     *
+     * @param root_ca Path containing Root CA Certificate files in any Mbed TLS-supported format.
+     * @retval NSAPI_ERROR_OK on success.
+     * @retval NSAPI_ERROR_NO_MEMORY in case there is not enough memory to allocate certificate.
+     * @retval NSAPI_ERROR_PARAMETER in case the provided root_ca parameter failed parsing.
+     *
+     */
+    nsapi_error_t set_root_ca_cert_path(const char *root_ca);
+
     /** Sets client certificate, and client private key.
      *
      * @param client_cert Client certification in PEM or DER format.

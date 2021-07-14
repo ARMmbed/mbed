@@ -233,6 +233,9 @@ Case cases[] = {
     Case("TLSSOCKET_SEND_REPEAT", TLSSOCKET_SEND_REPEAT),
     Case("TLSSOCKET_SEND_TIMEOUT", TLSSOCKET_SEND_TIMEOUT),
     Case("TLSSOCKET_NO_CERT", TLSSOCKET_NO_CERT),
+#if defined(MBEDTLS_SSL_CLI_C) && defined(MBEDTLS_FS_IO)
+    Case("TLSSOCKET_CERT_IN_FILESYSTEM", TLSSOCKET_CERT_IN_FILESYSTEM),
+#endif
 //    Temporarily removing this test, as TLS library consumes too much memory
 //    and we see frequent memory allocation failures on architectures with less
 //    RAM such as DISCO_L475VG_IOT1A and NUCLEO_F207ZG (both have 128 kB RAM)
