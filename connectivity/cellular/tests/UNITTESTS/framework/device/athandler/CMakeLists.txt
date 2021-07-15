@@ -24,12 +24,18 @@ target_sources(${TEST_NAME}
 
 target_link_libraries(${TEST_NAME}
     PRIVATE
-        mbed-headers
+        mbed-headers-base
+        mbed-headers-platform
+        mbed-headers-events
+        mbed-headers-rtos
+        mbed-headers-drivers
+        mbed-headers-hal
         mbed-headers-netsocket
         mbed-headers-cellular
-        mbed-stubs
         mbed-stubs-cellular
-        mbed-stubs-headers
+        mbed-stubs-platform
+        mbed-stubs-events
+        mbed-stubs-drivers
         gmock_main
 )
 
