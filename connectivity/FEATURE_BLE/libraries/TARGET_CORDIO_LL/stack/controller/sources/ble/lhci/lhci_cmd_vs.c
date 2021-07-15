@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -50,13 +50,20 @@
 #define LHCI_LEN_GET_POOL_STATS_EVT(n)  (3 + (sizeof(WsfBufPoolStat_t) * (n)))
 
 /*! \brief      Get System Statistics command complete event length. */
-/* stackWatermark(uint16_t) +  palSysAssertCount(uint16_t) +
- * freeMem (uint32_t) + usedMem(uint32_t) + schDelayLoadTotalCount(uint32_t) +
- * connMax(uint16_t) +  connCtxSize(uint16_t) + csWatermarkUsec(uint16_t) + llHandlerWatermarkUsec(uint16_t) + schHandlerWatermarkUsec(uint16_t) + lhciHandlerWatermarkUsec(uint16_t) + schDelayLoadWatermarkCount(uint16_t) +
- * advSetMax(uint16_t) + advSetCtxSize(uint16_t) +
- * extScanMax(uint16_t) + extScanCtxSize(uint16_t) + extInitMax(uint16_t) + extInitCtxSize(uint16_t) + perScanMax(uint16_t) + perScanCtxSize(uint16_t) + cigMax(uint16_t) + cigCtxSize(uint16_t) + cisMax(uint16_t) + cisCtxSize(uint16_t) */
+#define LHCI_LEN_GET_SYS_STATS_EVT      (2 * sizeof(uint16_t) + 3 * sizeof(uint32_t) + 7 * sizeof(uint16_t) + 2 * sizeof(uint16_t))
 
-#define LHCI_LEN_GET_SYS_STATS_EVT      (2 * sizeof(uint16_t) + 3 * sizeof(uint32_t) + 7 * sizeof(uint16_t) + 2 * sizeof(uint16_t) + 10 * sizeof(uint16_t))
+/*! \brief      Get context size command complete event length. */
+#define LHCI_LEN_GET_CONTEXT_SIZES_EVT  (2 * 14 * sizeof(uint16_t))
+
+/**************************************************************************************************
+  Global Variables
+**************************************************************************************************/
+
+/* Reset flag. */
+bool_t lhciResetPending = FALSE;
+
+/* Bootloader flag. */
+bool_t lhciEnterBootloaderPending = FALSE;
 
 /**************************************************************************************************
   Functions
@@ -153,6 +160,9 @@ bool_t lhciCommonVsStdDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
     case LHCI_OPCODE_VS_GET_SYS_STATS:
       evtParamLen += LHCI_LEN_GET_SYS_STATS_EVT;
       break;
+    case LHCI_OPCODE_VS_GET_CONTEXT_SIZES:
+      evtParamLen += LHCI_LEN_GET_CONTEXT_SIZES_EVT;
+      break;
     case LHCI_OPCODE_VS_GET_TEST_STATS:
       evtParamLen += sizeof(BbBleDataPktStats_t);
       break;
@@ -167,7 +177,18 @@ bool_t lhciCommonVsStdDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
       evtParamLen += sizeof(BbBlePduFiltStats_t);
       break;
 
+    /* --- reset --- */
+
+    case LHCI_OPCODE_VS_SYSTEM_RESET:
+      lhciResetPending = TRUE;
+      break;
+
+    case LHCI_OPCODE_VS_ENTER_BOOTLOADER:
+      lhciEnterBootloaderPending = TRUE;
+      break;
+
     /* --- default --- */
+
     default:
       return FALSE;       /* exit dispatcher routine */
   }
@@ -228,6 +249,10 @@ bool_t lhciCommonVsStdDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
         UINT16_TO_BSTREAM(pBuf, schHandlerWatermarkUsec);
         UINT16_TO_BSTREAM(pBuf, lhciHandlerWatermarkUsec);
 
+        break;
+      }
+      case LHCI_OPCODE_VS_GET_CONTEXT_SIZES:
+      {
         uint16_t advSetMax = 0;
         uint16_t advSetCtxSize;
         LlGetAdvSetContextSize((uint8_t *)&advSetMax, &advSetCtxSize);
@@ -252,17 +277,25 @@ bool_t lhciCommonVsStdDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
         UINT16_TO_BSTREAM(pBuf, perScanMax);
         UINT16_TO_BSTREAM(pBuf, perScanCtxSize);
 
-        uint16_t cigMax = 0;
+        uint8_t cigMax = 0;
         uint16_t cigCtxSize;
-        LlGetCigContextSize((uint8_t *)&cigMax, &cigCtxSize);
+        uint8_t cisMax = 0;
+        uint16_t cisCtxSize;
+        LlGetCisContextSize(&cigMax, &cigCtxSize, &cisMax, &cisCtxSize);
         UINT16_TO_BSTREAM(pBuf, cigMax);
         UINT16_TO_BSTREAM(pBuf, cigCtxSize);
-
-        uint16_t cisMax = 0;
-        uint16_t cisCtxSize;
-        LlGetCisContextSize((uint8_t *)&cisMax, &cisCtxSize);
         UINT16_TO_BSTREAM(pBuf, cisMax);
         UINT16_TO_BSTREAM(pBuf, cisCtxSize);
+
+        uint8_t bigMax = 0;
+        uint16_t bigCtxSize;
+        uint8_t bisMax = 0;
+        uint16_t bisCtxSize;
+        LlGetBisContextSize(&bigMax, &bigCtxSize, &bisMax, &bisCtxSize);
+        UINT16_TO_BSTREAM(pBuf, bigMax);
+        UINT16_TO_BSTREAM(pBuf, bigCtxSize);
+        UINT16_TO_BSTREAM(pBuf, bisMax);
+        UINT16_TO_BSTREAM(pBuf, bisCtxSize);
 
         break;
       }

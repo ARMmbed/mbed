@@ -141,27 +141,28 @@ MBED_WEAK void PalExitCs(void)
 }
 
 /* ISO channels */
-
-MBED_WEAK void PalCodecReadLocalSupportedCodecs(uint8_t *pNumStd, AudioStdCodecInfo_t stdCodecs[],
-                                                uint8_t *pNumVs, AudioVsCodecInfo_t vsCodecs[])
+MBED_WEAK void PalCodecReadLocalSupportedCodecs(uint8_t *pNumStd, PalCodecStdInfo_t stdCodecs[],
+                                                uint8_t *pNumVs, PalCodecVsInfo_t vsCodecs[])
 {
     MBED_ERROR(function_not_implemented, "Provide implementation of PalCodecReadLocalSupportedCodecs");
 }
 
 MBED_WEAK bool_t PalCodecReadLocalSupportedCodecCapabilities(
-    uint8_t codingFmt, uint16_t compId, uint16_t vsCodecId, PalAudioDir_t dir)
+    uint8_t codingFmt, uint16_t compId, uint16_t vsCodecId, PalCodecDir_t dir, uint8_t transType,
+                                                   uint8_t *pCapLen, uint8_t *pCap)
 {
     MBED_ERROR(function_not_implemented, "Provide implementation of PalCodecReadLocalSupportedCodecCapabilities");
     return 0;
 }
 
 MBED_WEAK bool_t PalCodecReadLocalSupportedControllerDelay(
-    uint8_t codingFmt, uint16_t compId, uint16_t vsCodecId, PalAudioDir_t dir, uint32_t *pMinDly, uint32_t *pMaxDly)
+    uint8_t codingFmt, uint16_t compId, uint16_t vsCodecId, PalCodecDir_t dir, uint8_t transType,
+    uint32_t *pMinDly, uint32_t *pMaxDly)
 {
     MBED_ERROR(function_not_implemented, "Provide implementation of PalCodecReadLocalSupportedControllerDelay");
     return 0;
 }
-MBED_WEAK bool_t PalCodecConfigureDataPath(PalAudioDir_t dir, uint8_t dataPathId)
+MBED_WEAK bool_t PalCodecConfigureDataPath(PalCodecDir_t dir, uint8_t vsCfgLen, const uint8_t *pVsCfg)
 {
     MBED_ERROR(function_not_implemented, "Provide implementation of PalCodecConfigureDataPath");
     return 0;
@@ -172,24 +173,23 @@ MBED_WEAK void PalCodecDataInit(void)
     MBED_ERROR(function_not_implemented, "Provide implementation of PalCodecDataInit");
 }
 
-MBED_WEAK bool_t PalCodecDataStartStream(uint16_t id, PalCodecSreamParam_t *pParam)
+MBED_WEAK bool_t PalCodecDataStartStream(uint16_t id, PalCodecStreamParam_t *pParam)
 {
     MBED_ERROR(function_not_implemented, "Provide implementation of PalCodecDataStartStream");
     return 0;
 }
 
-MBED_WEAK void PalCodecDataStopStream(uint16_t id)
+MBED_WEAK void PalCodecDataStopStream(uint16_t id, PalCodecDir_t dir)
 {
     MBED_ERROR(function_not_implemented, "Provide implementation of PalCodecDataStopStream");
 }
 
-MBED_WEAK uint16_t PalCodecDataStreamIn(uint16_t id, uint8_t *pBuf, uint16_t len, uint32_t *pPktCtr)
+MBED_WEAK void PalCodecDataStreamIn(uint16_t id, uint8_t *pBuf, uint16_t len)
 {
     MBED_ERROR(function_not_implemented, "Provide implementation of PalCodecDataStreamIn");
-    return 0;
 }
 
-MBED_WEAK void PalCodecDataStreamOut(uint16_t id, const uint8_t *pBuf, uint16_t len, uint32_t pktCtr)
+MBED_WEAK void PalCodecDataStreamOut(uint16_t id, const uint8_t *pBuf, uint16_t len, uint32_t sduRef)
 {
     MBED_ERROR(function_not_implemented, "Provide implementation of PalCodecDataStreamOut");
 }

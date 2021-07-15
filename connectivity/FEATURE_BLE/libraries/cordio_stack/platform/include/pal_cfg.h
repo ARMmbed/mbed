@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2018-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,15 +42,17 @@ extern "C" {
 typedef enum
 {
   PAL_CFG_ID_BD_ADDR,                       /*!< BD address. */
-  PAL_CFG_ID_BLE_PHY,                       /*!< Ble PHY. */
+  PAL_CFG_ID_BLE_PHY,                       /*!< BLE PHY. */
   PAL_CFG_ID_LL_PARAM,                      /*!< LL parameters. */
   PAL_CFG_ID_MAC_ADDR,                      /*!< MAC address. */
   PAL_CFG_ID_UUID,                          /*!< UUID. */
+  PAL_CFG_ID_BOOTSTRAP                      /*!< Bootstrap. */
 } PalCfgId_t;
 
 /**************************************************************************************************
   Function Declarations
 **************************************************************************************************/
+
 void PalCfgLoadData(uint8_t cfgId, void *pBuf, uint32_t len);
 void PalCfgSetDeviceUuid(uint8_t *pBuf);
 

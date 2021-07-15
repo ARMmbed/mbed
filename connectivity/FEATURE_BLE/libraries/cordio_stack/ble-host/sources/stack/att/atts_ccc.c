@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2011-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -440,6 +440,34 @@ uint16_t AttsCccEnabled(dmConnId_t connId, uint8_t idx)
 
   /* get value */
   return AttsCccGet(connId, idx);
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Check if a client characteristic configuration descriptor is enabled and if
+ *          the characteristic's security level has been met.
+ *
+ *  \param  connId      DM connection ID.
+ *  \param  handle      Attribute handle of CCC descriptor.
+ *
+ *  \return Value of the descriptor if security level is met, otherwise zero.
+ */
+/*************************************************************************************************/
+uint16_t AttsCccEnabledByHandle(dmConnId_t connId, uint16_t handle)
+{
+  attsCccSet_t  *pSet;
+  uint8_t       i;
+
+  /* find handle in handle array */
+  for (pSet = attsCccCb.pSet, i = 0; i < attsCccCb.setLen; i++, pSet++)
+  {
+    if (pSet->handle == handle)
+    {
+      return AttsCccEnabled(connId, i);
+    }
+  }
+
+  return 0;
 }
 
 /*************************************************************************************************/

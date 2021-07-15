@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -437,6 +437,7 @@ uint8_t lctrMstExtDiscoverBuildOp(lctrExtScanCtx_t *pExtScanCtx)
   pOp->endCback = lctrMstExtDiscoverEndOp;
   pOp->abortCback = lctrMstExtDiscoverAbortOp;
   pOp->pCtx = pExtScanCtx;
+  pOp->recoverable = TRUE;
 
   /*** BLE General Setup ***/
 
@@ -486,6 +487,9 @@ uint8_t lctrMstExtDiscoverBuildOp(lctrExtScanCtx_t *pExtScanCtx)
 
   pScan->rxAdvCback = lctrMstDiscoverRxExtAdvPktHandler;
   pScan->rxAdvPostCback = lctrMstDiscoverRxExtAdvPktPostProcessHandler;
+  pScan->auxScanCheckCback = lctrMstLinkAuxOffsetScanSetup;
+  pScan->auxScanTxCompCback = BbMstAuxScanTxCompHandler;
+  pScan->auxScanRxCompCback = BbMstAuxScanRxCompHandler;
 
   if ((pScan->pRxAdvBuf = WsfMsgAlloc(LL_ADV_HDR_LEN + LL_EXT_ADV_HDR_MAX_LEN)) == NULL)
   {
@@ -607,6 +611,10 @@ uint8_t lctrMstExtDiscoverBuildOp(lctrExtScanCtx_t *pExtScanCtx)
 
   lctrActiveExtScan.scanMask |= (1 << scanPhyIndex);
 
+  LL_TRACE_INFO1("    >>> ExtDiscover started, handle=%u <<<", LCTR_GET_EXT_SCAN_HANDLE(pExtScanCtx));
+  LL_TRACE_INFO1("                             dueUsec=%u, 0=deferred", pOp->dueUsec);
+  LL_TRACE_INFO1("                             pBod=0x%08x", pOp);
+
   return LL_SUCCESS;
 }
 
@@ -673,6 +681,7 @@ uint8_t lctrMstAuxDiscoverBuildOp(lctrExtScanCtx_t *pExtScanCtx)
 
   pAuxScan->isInit = FALSE;
   pAuxScan->rxAuxAdvCback = lctrMstDiscoverRxAuxAdvPktHandler;
+  pAuxScan->rxAuxAdvPostCback = lctrMstDiscoverRxAuxAdvPktPostProcessHandler;
 
   /*** BLE Scan Setup: Tx scan request packet ***/
 
@@ -731,7 +740,7 @@ uint8_t lctrMstAuxDiscoverBuildOp(lctrExtScanCtx_t *pExtScanCtx)
 
   /*** Commit operation ***/
 
-  /* pOp->minDurUsec = 0; */  /* Defer assignment until AuxPtr is received. */
+  /* pOp->minDurUsec = 0; */  /* Defer assignment until AuxPtr is received, lctrMstAuxDiscoverOpCommit(). */
   /* pOp->maxDurUsec = 0; */  /* Not used for aux scan. */
 
   pExtScanCtx->selfTerm = FALSE;
@@ -739,6 +748,8 @@ uint8_t lctrMstAuxDiscoverBuildOp(lctrExtScanCtx_t *pExtScanCtx)
   pExtScanCtx->auxOpPending = FALSE;
 
   /* Defer scheduling until AuxPtr is received. */
+
+  LL_TRACE_INFO1("    >>> AuxDiscover ready, pBod=0x%08x <<<", pOp);
 
   return LL_SUCCESS;
 }
@@ -783,7 +794,12 @@ void lctrMstAuxDiscoverOpCommit(lctrExtScanCtx_t *pExtScanCtx, lctrAuxPtr_t *pAu
   pOp->dueUsec = startTs + auxOffsetUsec;
   SchBleCalcAdvOpDuration(pOp, 0);
 
-  if (SchInsertAtDueTime(pOp, NULL))
+  if (auxOffsetUsec < BbGetSchSetupDelayUs())
+  {
+    /* Signal the lower layer to start Aux Scan ASAP, since the auxOffset is too small to run the scheduler. */
+    pExtScanCtx->scheduleAuxAsap = TRUE;
+  }
+  else if (SchInsertAtDueTime(pOp, NULL))
   {
     pExtScanCtx->auxOpPending = TRUE;
   }
@@ -879,7 +895,7 @@ void LctrMstExtScanDefaults(void)
 uint16_t LctrInitExtScanMem(uint8_t *pFreeMem, uint32_t freeMemSize)
 {
   /* Extended Scanning requires receiving at least 251 bytes. */
-  WSF_ASSERT(pLctrRtCfg->maxExtScanDataLen >= LL_EXT_ADVBU_MAX_LEN);
+  WSF_ASSERT(pLctrRtCfg->maxExtScanDataLen >= WSF_MIN(LL_EXT_ADVBU_MAX_LEN, BB_ADV_PLD_MAX_LEN));
 
   uint8_t *pAvailMem = pFreeMem;
 
@@ -1307,7 +1323,7 @@ void lctrMstPerScanOpCommit(lctrExtScanCtx_t *pExtScanCtx, lctrAuxPtr_t *pAuxPtr
   pOp->dueUsec = startTs + syncOffsetUsec;
 
   /* Ensure minimum packet is scheduled; allow PerAdv to schedule tight operations. */
-  pPerScanCtx->minDurUsec = pOp->minDurUsec = SchBleCalcAdvPktDurationUsec(pBle->chan.rxPhy, BB_PHY_OPTIONS_DEFAULT, LL_ADVB_MIN_LEN);
+  pPerScanCtx->minDurUsec = pOp->minDurUsec = SchBleCalcAdvPktDurationUsec(pBle->chan.rxPhy, BB_PHY_OPTIONS_DEFAULT, LL_EXT_ADV_HDR_MIN_LEN);
   uint16_t numUnsyncIntervals = 0;
 
   while (TRUE)
@@ -1315,7 +1331,6 @@ void lctrMstPerScanOpCommit(lctrExtScanCtx_t *pExtScanCtx, lctrAuxPtr_t *pAuxPtr
     if (SchInsertAtDueTime(pOp, lctrPerScanResolveConflict))
     {
       LL_TRACE_INFO1("    >>> Periodic scan started, handle=%u <<<", LCTR_GET_PER_SCAN_HANDLE(pPerScanCtx));
-      LL_TRACE_INFO1("                               pOp=%08x", pOp);
       LL_TRACE_INFO1("                               dueUsec=%u", pOp->dueUsec);
       LL_TRACE_INFO1("                               eventCounter=%u", pPerScanCtx->eventCounter);
       LL_TRACE_INFO1("                               chanIdx=%u", pBle->chan.chanIdx);
@@ -1360,7 +1375,7 @@ void lctrMstPerScanTransferOpCommit(uint16_t connHandle)
   uint32_t refTime;
   uint16_t peC;       /* paEventCounter for the AUX_SYNC_IND PDU that we are attempting to receive. */
   uint32_t startTs;   /* Anchor point of the connection event. */
-  uint16_t numInterval;
+  uint32_t numInterval;
 
   /* Pre-resolve common structures for efficient access. */
   lctrPerScanCtx_t *pPerScanCtx = lctrPerTransferSync.pPerScanCtx;
@@ -1371,6 +1386,12 @@ void lctrMstPerScanTransferOpCommit(uint16_t connHandle)
   if (pConnCtx->syncMode == LL_SYNC_TRSF_MODE_REP_DISABLED)
   {
     pPerScanCtx->repDisabled = TRUE;
+  }
+
+  if (pConnCtx->syncMode == LL_SYNC_TRSF_MODE_DUP_FILTERED)
+  {
+    pPerScanCtx->dupFilterEnable = TRUE;
+    pPerScanCtx->lastDid = LL_DID_NOT_PRESENT;
   }
 
   pPerScanCtx->syncTimeOutMs = LCTR_PER_SYNC_TIMEOUT_TO_MS(pConnCtx->syncTimeout);
@@ -1409,16 +1430,16 @@ void lctrMstPerScanTransferOpCommit(uint16_t connHandle)
   startTs = lctrConnGetAnchorPoint(pConnCtx, pConnCtx->eventCounter);
   peC = trsfSyncInfo.eventCounter;
 
-  if (BbGetTargetTimeDelta(refTime, startTs + pConnOp->minDurUsec) > 0)
+  if ((uint16_t)(lctrPerTransferSync.ceRef - pConnCtx->eventCounter) < (uint16_t)LCTR_MAX_INSTANT) /* ceCounter is in the future. */
   {
-    numInterval = BbGetTargetTimeDelta(refTime, startTs + pConnOp->minDurUsec) / pPerScanCtx->perInterUsec;
+    numInterval = ((uint16_t)(lctrPerTransferSync.ceRef - pConnCtx->eventCounter) * LCTR_CONN_IND_US(pConnCtx->connInterval) + pConnOp->minDurUsec) / pPerScanCtx->perInterUsec;
     refTime -= numInterval * pPerScanCtx->perInterUsec;
     peC -= numInterval;
     offsetUsec = BbGetTargetTimeDelta(refTime , startTs);
   }
   else  /* refTime is in the past. */
   {
-    numInterval = 1 + BbGetTargetTimeDelta(startTs + pConnOp->minDurUsec, refTime)/ pPerScanCtx->perInterUsec;
+    numInterval = 1 + ((uint16_t)(pConnCtx->eventCounter - lctrPerTransferSync.ceRef) * LCTR_CONN_IND_US(pConnCtx->connInterval) + pConnOp->minDurUsec) / pPerScanCtx->perInterUsec;
     refTime += numInterval * pPerScanCtx->perInterUsec;
     peC += numInterval;
     offsetUsec = BbGetTargetTimeDelta(refTime , startTs);
@@ -1463,7 +1484,6 @@ void lctrMstPerScanTransferOpCommit(uint16_t connHandle)
     if (SchInsertAtDueTime(pOp, lctrPerScanResolveConflict))
     {
       LL_TRACE_INFO1("    >>> Periodic scan from transfer started, handle=%u <<<", LCTR_GET_PER_SCAN_HANDLE(pPerScanCtx));
-      LL_TRACE_INFO1("                                             pOp=%08x", pOp);
       LL_TRACE_INFO1("                                             dueUsec=%u", pOp->dueUsec);
       LL_TRACE_INFO1("                                             eventCounter=%u", pPerScanCtx->eventCounter);
       LL_TRACE_INFO1("                                             pBle->chan.chanIdx=%u", pBle->chan.chanIdx);
@@ -1568,6 +1588,9 @@ lctrPerScanCtx_t *lctrAllocPerScanCtx(void)
       /* Default PHY. */
       pCtx->rxPhys = lmgrConnCb.rxPhys;
 
+      /* ADI filtering. */
+      pCtx->lastDid = LL_DID_NOT_PRESENT;
+
       return pCtx;
     }
   }
@@ -1602,8 +1625,6 @@ BbOpDesc_t *lctrPerScanResolveConflict(BbOpDesc_t *pNewOp, BbOpDesc_t *pExistOp)
   }
 
   /* Supervision timeout is imminent (2 PI). */
-  LL_TRACE_WARN2("Exit timeout=%u, interval=%u", pExistCtx->tmrSupTimeout.ticks * WSF_MS_PER_TICK * 1000, (uint32_t)(pExistCtx->perInterUsec << 1));
-  LL_TRACE_WARN2("New timeout=%u, interval=%u", pNewCtx->tmrSupTimeout.ticks * WSF_MS_PER_TICK * 1000, (uint32_t)(pExistCtx->perInterUsec << 1));
   if ((pExistCtx->tmrSupTimeout.ticks * WSF_MS_PER_TICK * 1000) < (uint32_t)(pExistCtx->perInterUsec << 1))
   {
     LL_TRACE_WARN2("!!! Scheduling conflict, imminent SVT: existing handle=%u prioritized over incoming handle=%u", LCTR_GET_PER_SCAN_HANDLE(pExistCtx), LCTR_GET_PER_SCAN_HANDLE(pNewCtx));
@@ -1617,7 +1638,6 @@ BbOpDesc_t *lctrPerScanResolveConflict(BbOpDesc_t *pNewOp, BbOpDesc_t *pExistOp)
   }
 
   /* Less frequent perInterval (4x). */
-
   if ((LCTR_PER_INTER_TO_MS(pExistCtx->perInterUsec) >> 2) > LCTR_PER_INTER_TO_MS(pNewCtx->perInterUsec))
   {
     LL_TRACE_WARN2("!!! Scheduling conflict, PI frequency: existing handle=%u prioritized over incoming handle=%u", LCTR_GET_PER_SCAN_HANDLE(pExistCtx), LCTR_GET_PER_SCAN_HANDLE(pNewCtx));
@@ -1698,13 +1718,17 @@ void LctrSendPerSyncTrsfRcvdEvt(uint8_t status, lctrPerScanCtx_t *pPerScanCtx)
  *  \brief      Enable or disable reports for the periodic advertising sync.
  *
  *  \param      syncHandle    Periodic sync handle.
- *  \param      enable        Enable or disable reporting.
+ *  \param      enable        Enable options.
  */
 /*************************************************************************************************/
-void LctrMstPerSetRcvEnable(uint16_t syncHandle, bool_t enable)
+void LctrMstPerSetRcvEnable(uint16_t syncHandle, uint8_t enable)
 {
   WSF_ASSERT(syncHandle < LL_MAX_PER_SCAN);
   lctrPerScanCtx_t *pPerScanCtx = LCTR_GET_PER_SCAN_CTX(syncHandle);
 
-  pPerScanCtx->repDisabled = !enable;
+  pPerScanCtx->repDisabled = !((bool_t) ((enable >> LCTR_PER_RECV_ENABLE_REPORT_BIT_POS) & 1));
+  if (!pPerScanCtx->repDisabled)
+  {
+    pPerScanCtx->dupFilterEnable = (bool_t) ((enable >> LCTR_PER_RECV_ENABLE_FILTERING_BIT_POS) & 1);
+  }
 }

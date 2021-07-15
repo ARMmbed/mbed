@@ -4,7 +4,7 @@
  *
  *  \brief  Link layer controller connection power control state machine action routines.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,6 +36,27 @@
 #include "util/bstream.h"
 #include <string.h>
 #include "lctr_int_pc.h"
+
+/**************************************************************************************************
+  Constants
+**************************************************************************************************/
+
+#ifndef PC_ENABLE_DEBUG
+/*! \brief  Enable power control debug statements. */
+#define PC_ENABLE_DEBUG     FALSE
+#endif
+
+#if PC_ENABLE_DEBUG
+#define LCTR_PC_DBG_TRACE_INFO0(m)              LL_TRACE_INFO0(m)
+#define LCTR_PC_DBG_TRACE_INFO1(m, v1)          LL_TRACE_INFO1(m, v1)
+#define LCTR_PC_DBG_TRACE_INFO2(m, v1, v2)      LL_TRACE_INFO2(m, v1, v2)
+#define LCTR_PC_DBG_TRACE_INFO3(m, v1, v2, v3)  LL_TRACE_INFO3(m, v1, v2, v3)
+#else
+#define LCTR_PC_DBG_TRACE_INFO0(m)
+#define LCTR_PC_DBG_TRACE_INFO1(m, v1)
+#define LCTR_PC_DBG_TRACE_INFO2(m, v1, v2)
+#define LCTR_PC_DBG_TRACE_INFO3(m, v1, v2, v3)
+#endif
 
 /*************************************************************************************************/
 /*!
@@ -83,7 +104,7 @@ int8_t lctrAttemptTxPowerChange(lctrConnCtx_t *pCtx, uint8_t phy, int8_t delta)
   int8_t reqTxPower, curTxPower, newTxPower;
   if (LCTR_GET_TXPOWER(pCtx, phy, option) == LL_PWR_CTRL_TXPOWER_UNAVAILABLE)
   {
-    /* The current controller does not support this phy. */
+    /* The current controller does not support this PHY. */
     return 0;
   }
   else if (LCTR_GET_TXPOWER(pCtx, phy, option) == LL_PWR_CTRL_TXPOWER_UNMANAGED)
@@ -107,7 +128,7 @@ int8_t lctrAttemptTxPowerChange(lctrConnCtx_t *pCtx, uint8_t phy, int8_t delta)
   newTxPower = PalRadioIncreasePower(reqTxPower, delta);
 
   /* Update txPower. */
-  LL_TRACE_INFO3("lctrAttemptTxPowerChange: Power change -> handle=%d phy=%d txPow=%d", LCTR_GET_CONN_HANDLE(pCtx), phy + (option == BB_PHY_OPTIONS_BLE_S2) ? 1 : 0, newTxPower);
+  LCTR_PC_DBG_TRACE_INFO3("lctrAttemptTxPowerChange: Power change -> handle=%d phy=%d txPow=%d", LCTR_GET_CONN_HANDLE(pCtx), phy + (option == BB_PHY_OPTIONS_BLE_S2) ? 1 : 0, newTxPower);
   LCTR_SET_TXPOWER(pCtx, phy + (((phy == LL_PHY_LE_CODED) && (option == BB_PHY_OPTIONS_BLE_S2)) ? 1 : 0), newTxPower);
 
   /* Update current txPower if necessary. */
@@ -204,7 +225,7 @@ void lctrStorePowerControlAction(lctrConnCtx_t *pCtx)
   pCtx->delta = pLctrConnMsg->pwrCtrlReq.delta;
   pCtx->reqPhy = pLctrConnMsg->pwrCtrlReq.phy;
 
-  LL_TRACE_INFO2("lctrStorePowerControlAction, PHY=%u delta=%u", pCtx->reqPhy, pCtx->delta);
+  LCTR_PC_DBG_TRACE_INFO2("lctrStorePowerControlAction, phy=%u delta=%u", pCtx->reqPhy, pCtx->delta);
 
   /* If the power wasn't managed before, start managing it now. */
   if (LCTR_GET_TXPOWER(pCtx, pCtx->reqPhy, BB_PHY_OPTIONS_BLE_S2) == LL_PWR_CTRL_TXPOWER_UNMANAGED)
@@ -268,7 +289,7 @@ void lctrStorePeerPowerControlReq(lctrConnCtx_t *pCtx)
       (pCtx->bleData.chan.rxPhy == phyIdx) &&
       (pCtx->peerTxPower != pld.txPower))
   {
-    lctrNotifyPowerReportInd(pCtx, LL_POWER_REPORT_REASON_REMOTE, phyIdx, pld.txPower,
+    lctrNotifyPowerReportInd(pCtx, LL_SUCCESS, LL_POWER_REPORT_REASON_REMOTE, phyIdx, pld.txPower,
                               lctrGetPowerLimits(pld.txPower),
                               pld.txPower - pCtx->peerTxPower);
   }
@@ -281,11 +302,11 @@ void lctrStorePeerPowerControlReq(lctrConnCtx_t *pCtx)
     if ((pCtx->peerTxPower == LL_PWR_CTRL_TXPOWER_UNAVAILABLE) ||
          (pCtx->peerTxPower == LL_PWR_CTRL_TXPOWER_UNMANAGED))
     {
-      LL_TRACE_INFO1("lctrStorePeerPowerControlReq: txPower unmanaged or unavailable. Phy=%d", pld.phy);
+      LCTR_PC_DBG_TRACE_INFO1("lctrStorePeerPowerControlReq: txPower unmanaged or unavailable, phy=%d", pld.phy);
     }
     else
     {
-      LL_TRACE_INFO1("lctrStorePeerPowerControlReq: txPower=%d", pCtx->peerTxPower);
+      LCTR_PC_DBG_TRACE_INFO1("lctrStorePeerPowerControlReq: txPower=%d", pCtx->peerTxPower);
     }
   }
 
@@ -315,7 +336,7 @@ void lctrStorePeerPowerControlReq(lctrConnCtx_t *pCtx)
     }
 
     int8_t newTxPower = LCTR_GET_TXPOWER(pCtx, phy, option);
-    lctrNotifyPowerReportInd(pCtx, LL_POWER_REPORT_REASON_LOCAL, phyIdx, newTxPower,
+    lctrNotifyPowerReportInd(pCtx, LL_SUCCESS, LL_POWER_REPORT_REASON_LOCAL, phyIdx, newTxPower,
                               lctrGetPowerLimits(newTxPower),
                               pCtx->delta);
   }
@@ -338,7 +359,7 @@ void lctrSendPeerPowerControlRsp(lctrConnCtx_t *pCtx)
   }
   else
   {
-    LL_TRACE_WARN0("lctrSendPeerPowerControlRsp: Peer sent invalid parameters for power control request.");
+    LL_TRACE_WARN0("lctrSendPeerPowerControlRsp: peer sent invalid parameters for power control request");
     lctrSendRejectInd(pCtx, pCtx->reqErrCode, TRUE);
     pCtx->reqErrCode = LL_SUCCESS;
   }
@@ -359,7 +380,7 @@ void lctrStorePeerPowerControlRsp(lctrConnCtx_t *pCtx)
   if ((pCtx->powerRptRemote) &&
       (pCtx->peerTxPower != pld.txPower))
   {
-    lctrNotifyPowerReportInd(pCtx, LL_POWER_REPORT_REASON_REMOTE, pCtx->reqPhy, pld.txPower,
+    lctrNotifyPowerReportInd(pCtx, LL_SUCCESS, LL_POWER_REPORT_REASON_REMOTE, pCtx->reqPhy, pld.txPower,
                               pld.limits,
                               pld.txPower - pCtx->peerTxPower);
   }
@@ -374,18 +395,18 @@ void lctrStorePeerPowerControlRsp(lctrConnCtx_t *pCtx)
     if ((pCtx->peerTxPower == LL_PWR_CTRL_TXPOWER_UNAVAILABLE) ||
          (pCtx->peerTxPower == LL_PWR_CTRL_TXPOWER_UNMANAGED))
     {
-      LL_TRACE_INFO1("lctrStorePeerPowerControlReq: txPower unmanaged or unavailable. Phy=%d", pCtx->reqPhy);
+      LCTR_PC_DBG_TRACE_INFO1("lctrStorePeerPowerControlReq: txPower unmanaged or unavailable, phy=%d", pCtx->reqPhy);
     }
     else
     {
-      LL_TRACE_INFO1("lctrStorePeerPowerControlReq: txPower=%d", pCtx->peerTxPower);
+      LCTR_PC_DBG_TRACE_INFO1("lctrStorePeerPowerControlReq: txPower=%d", pCtx->peerTxPower);
 
       if (pCtx->controllerInitRead)
       {
         pCtx->controllerInitRead = FALSE;
       }
 
-      if (pCtx->monitoringState == LCTR_PC_MONITOR_PATH_LOSS)
+      if (pCtx->powerMonitorScheme == LCTR_PC_MONITOR_PATH_LOSS)
       {
         if (pCtx->pclMonitorParam.pathLoss.initialPathLossRead)
         {
@@ -400,7 +421,7 @@ void lctrStorePeerPowerControlRsp(lctrConnCtx_t *pCtx)
   /* Store delta for reporting. */
   pCtx->delta = pld.delta;
 
-  LL_TRACE_INFO3("lctrStorePeerPowerControlRsp: peerTxPower=%d, peerPwrLimits=%d, peerApr=%d", pld.txPower, pld.limits, pld.apr);
+  LCTR_PC_DBG_TRACE_INFO3("lctrStorePeerPowerControlRsp: peerTxPower=%d, peerPwrLimits=%d, peerApr=%d", pld.txPower, pld.limits, pld.apr);
 }
 
 /*************************************************************************************************/
@@ -408,6 +429,7 @@ void lctrStorePeerPowerControlRsp(lctrConnCtx_t *pCtx)
  *  \brief      Notify host of power report indication.
  *
  *  \param      pCtx    Connection context.
+ *  \param      status  Status code.
  *  \param      reason  Reason this indication was sent.
  *  \param      phy     PHY.
  *  \param      txPower Current txPower.
@@ -415,7 +437,7 @@ void lctrStorePeerPowerControlRsp(lctrConnCtx_t *pCtx)
  *  \param      delta   Delta from last txPower.
  */
 /*************************************************************************************************/
-void lctrNotifyPowerReportInd(lctrConnCtx_t *pCtx, uint8_t reason, uint8_t phy, int8_t txPower, uint8_t limits, int8_t delta)
+void lctrNotifyPowerReportInd(lctrConnCtx_t *pCtx, uint8_t status, uint8_t reason, uint8_t phy, int8_t txPower, uint8_t limits, int8_t delta)
 {
   const uint16_t handle = LCTR_GET_CONN_HANDLE(pCtx);
 
@@ -425,7 +447,7 @@ void lctrNotifyPowerReportInd(lctrConnCtx_t *pCtx, uint8_t reason, uint8_t phy, 
     {
       .param        = handle,
       .event        = LL_TX_POWER_REPORTING_IND,
-      .status       = LL_SUCCESS
+      .status       = status
     },
 
     .status         = LL_SUCCESS,
@@ -437,7 +459,15 @@ void lctrNotifyPowerReportInd(lctrConnCtx_t *pCtx, uint8_t reason, uint8_t phy, 
     .delta          = delta
   };
 
-  LL_TRACE_INFO2("### LlEvent ### lctrNotifyPowerReportInd , handle=%u, reason=%d, status=LL_SUCCESS", handle, reason);
+  if (status == LL_SUCCESS)
+  {
+    LL_TRACE_INFO2("### LlEvent ### lctrNotifyPowerReportInd, handle=%u, reason=%d, status=LL_SUCCESS", handle, reason);
+  }
+  else
+  {
+    LL_TRACE_INFO1("### LlEvent ### lctrNotifyPowerReportInd, Power procedure rejected, status=%d", status);
+  }
+
 
   LmgrSendEvent((LlEvt_t *)&evt);
 }
@@ -463,7 +493,7 @@ static void lctrSendPowerChangePdu(lctrConnCtx_t *pCtx, uint8_t opcode, uint8_t 
 
   uint8_t *pPdu;
 
-  if ((pPdu = lctrTxCtrlPduAlloc(LL_PWR_CHNG_IND_LEN)) != NULL)
+  if ((pPdu = lctrTxCtrlPduAlloc(LL_PWR_CHANGE_IND_LEN)) != NULL)
   {
     bool_t seperateIndNeeded = FALSE;
     uint8_t *pBuf = pPdu;
@@ -521,7 +551,7 @@ static void lctrSendPowerChangePdu(lctrConnCtx_t *pCtx, uint8_t opcode, uint8_t 
 /*************************************************************************************************/
 void lctrSendPowerChangeInd(lctrConnCtx_t *pCtx, uint8_t phy, int8_t delta, int8_t txPower, bool_t phyChange)
 {
-  lctrSendPowerChangePdu(pCtx, LL_PDU_PWR_CHNG_IND, phy, delta, txPower, phyChange);
+  lctrSendPowerChangePdu(pCtx, LL_PDU_PWR_CHANGE_IND, phy, delta, txPower, phyChange);
 }
 
 /*************************************************************************************************/
@@ -534,16 +564,15 @@ void lctrSendPowerChangeInd(lctrConnCtx_t *pCtx, uint8_t phy, int8_t delta, int8
 void lctrStorePeerPowerInd(lctrConnCtx_t *pCtx)
 {
   lctrPwrChngInd_t * pPdu = &lctrDataPdu.pld.pwrChngInd;
-  LL_TRACE_INFO3("lctrStorePeerPowerInd: Phy=%d Delta=%d txPower=%d", pPdu->phy, pPdu->delta, pPdu->txPower);
+  LCTR_PC_DBG_TRACE_INFO3("lctrStorePeerPowerInd: phy=%d delta=%d txPower=%d", pPdu->phy, pPdu->delta, pPdu->txPower);
 
   if (pPdu->phy & (1 << (pCtx->bleData.chan.rxPhy - 1)))
   {
-    if ((pCtx->peerTxPower != pPdu->txPower) &&
-         (pCtx->powerRptRemote))
+    if (pCtx->powerRptRemote)
     {
-      lctrNotifyPowerReportInd(pCtx, LL_POWER_REPORT_REASON_REMOTE, pCtx->bleData.chan.rxPhy, pPdu->txPower,
-                                pPdu->limits,
-                                pPdu->txPower - pCtx->peerTxPower);
+      lctrNotifyPowerReportInd(pCtx, LL_SUCCESS,  LL_POWER_REPORT_REASON_REMOTE,
+                               pCtx->bleData.chan.rxPhy, pPdu->txPower, pPdu->limits,
+                               pPdu->txPower - pCtx->peerTxPower);
     }
 
     if (pPdu->phy == pCtx->bleData.chan.rxPhy)
@@ -553,11 +582,11 @@ void lctrStorePeerPowerInd(lctrConnCtx_t *pCtx)
       if ((pCtx->peerTxPower == LL_PWR_CTRL_TXPOWER_UNAVAILABLE) ||
            (pCtx->peerTxPower == LL_PWR_CTRL_TXPOWER_UNMANAGED))
       {
-        LL_TRACE_INFO1("lctrStorePeerPowerInd: txPower unmanaged or unavailable. Phy=%d", pPdu->phy);
+        LCTR_PC_DBG_TRACE_INFO1("lctrStorePeerPowerInd: txPower unmanaged or unavailable, phy=%d", pPdu->phy);
       }
       else
       {
-        LL_TRACE_INFO1("lctrStorePeerPowerInd: txPower=%d", pCtx->peerTxPower);
+        LCTR_PC_DBG_TRACE_INFO1("lctrStorePeerPowerInd: txPower=%d", pCtx->peerTxPower);
       }
     }
   }
@@ -578,62 +607,53 @@ void lctrSendPeerPowerRsp(lctrConnCtx_t *pCtx)
 
 /*************************************************************************************************/
 /*!
- *  \brief      Power monitoring action function
+ *  \brief      Service connection power monitor.
  *
  *  \param      pCtx    Connection context.
  */
 /*************************************************************************************************/
-void lctrAutoPowerMonitorAct(lctrConnCtx_t *pCtx)
+void lctrConnServicePowerMonitor(lctrConnCtx_t *pCtx)
 {
-  if (!(pCtx->usedFeatSet & LL_FEAT_POWER_CONTROL_REQUEST))
+  if (!(pCtx->usedFeatSet & LL_FEAT_POWER_CONTROL_REQUEST) ||
+      lmgrGetOpFlag(LL_OP_MODE_FLAG_DIS_POWER_MONITOR))
   {
     pCtx->monitoringState = LCTR_PC_MONITOR_DISABLED;
     return;
   }
 
-  if (lmgrCb.opModeFlags & LL_OP_MODE_DISABLE_POWER_MONITOR)
-  {
-    return;
-  }
-
   int8_t sendReqDelta = 0;
 
-  if ((pCtx->rssi < pCtx->pclMonitorParam.autoMonitor.lowThreshold) ||
-      (pCtx->lastRxStatus != BB_STATUS_SUCCESS))
-  {
-    pCtx->pclMonitorParam.autoMonitor.curTimeSpent++;
+  /* Restore the sign after finding the absolute value average RSSI. */
+  lctrRssiAddAveragePoint(&pCtx->pclMonitorParam.autoMonitor.rssiRunAvg,
+                          -((int8_t) (pCtx->pclMonitorParam.autoMonitor.accumulatedRssi / pCtx->pclMonitorParam.autoMonitor.totalAccumulatedRssi)));
+  pCtx->pclMonitorParam.autoMonitor.accumulatedRssi = 0;
+  pCtx->pclMonitorParam.autoMonitor.totalAccumulatedRssi = 0;
 
-    if (pCtx->pclMonitorParam.autoMonitor.curTimeSpent >= pCtx->pclMonitorParam.autoMonitor.minTimeSpent)
-    {
-      if (!(pCtx->peerPwrLimits & LL_PWR_CONTROL_LIMIT_MAX_BIT))
-      {
-        LL_TRACE_INFO1("RSSI too low, requesting increase in power. phy=%u", pCtx->bleData.chan.rxPhy);
-        sendReqDelta = pCtx->pclMonitorParam.autoMonitor.requestVal;
-      }
-      pCtx->pclMonitorParam.autoMonitor.curTimeSpent = 0;
-    }
-  }
-  else if (pCtx->rssi > pCtx->pclMonitorParam.autoMonitor.highThreshold)
+  if (pCtx->pclMonitorParam.autoMonitor.rssiRunAvg.avgCount >= LL_PC_TBL_LEN)
   {
-    pCtx->pclMonitorParam.autoMonitor.curTimeSpent++;
+    int8_t averageRunning = lctrRssiGetAverage(&pCtx->pclMonitorParam.autoMonitor.rssiRunAvg);
 
-    if (pCtx->pclMonitorParam.autoMonitor.curTimeSpent >= pCtx->pclMonitorParam.autoMonitor.minTimeSpent)
+    if ((averageRunning > pCtx->pclMonitorParam.autoMonitor.highThreshold) &&
+        (!(pCtx->peerPwrLimits & LL_PWR_CONTROL_LIMIT_MIN_BIT)))
     {
-      if (!(pCtx->peerPwrLimits & LL_PWR_CONTROL_LIMIT_MIN_BIT))
-      {
-        LL_TRACE_INFO1("RSSI too high, requesting decrease in power. phy=%u", pCtx->bleData.chan.rxPhy);
-        sendReqDelta = -(pCtx->pclMonitorParam.autoMonitor.requestVal);
-      }
-      pCtx->pclMonitorParam.autoMonitor.curTimeSpent = 0;
+      sendReqDelta = -(pCtx->pclMonitorParam.autoMonitor.requestVal);
     }
-  }
-  else
-  {
-    pCtx->pclMonitorParam.autoMonitor.curTimeSpent = 0;
+    else if ((averageRunning < pCtx->pclMonitorParam.autoMonitor.lowThreshold) &&
+             !(pCtx->peerPwrLimits & LL_PWR_CONTROL_LIMIT_MAX_BIT))
+    {
+      sendReqDelta = pCtx->pclMonitorParam.autoMonitor.requestVal;
+    }
   }
 
   if (sendReqDelta != 0)
   {
+    if ((pCtx->llcpActiveProc == LCTR_PROC_PWR_CTRL) ||
+        (pCtx->llcpPendMask & (1 << LCTR_PROC_PWR_CTRL)))
+    {
+      LL_TRACE_WARN0("Power control LLCP already pending -- try increasing service interval");
+      return;
+    }
+
     uint8_t reqPhy = pCtx->bleData.chan.rxPhy + (((pCtx->bleData.chan.rxPhy == BB_PHY_BLE_CODED) && (pCtx->bleData.chan.initTxPhyOptions == BB_PHY_OPTIONS_BLE_S2)) ? 1 : 0);
 
     lctrMsgPwrCtrlReq_t *pMsg;
@@ -646,5 +666,7 @@ void lctrAutoPowerMonitorAct(lctrConnCtx_t *pCtx)
       pMsg->phy        = reqPhy;
       WsfMsgSend(lmgrPersistCb.handlerId, pMsg);
     }
+
+    pCtx->pclMonitorParam.autoMonitor.rssiRunAvg.avgCount = 0;
   }
 }

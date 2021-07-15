@@ -17,6 +17,7 @@ target_sources(mbed-ble-cordio
         stack/sources/pal_bb_ble_rf.c
         stack/sources/pal_cfg.c
         stack/sources/pal_crypto.c
+        stack/sources/pal_frc.c
         stack/sources/pal_timer.c
 )
 

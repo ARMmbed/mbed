@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 ARM Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -49,19 +49,16 @@ void SchInit(void);
 void SchHandlerInit(wsfHandlerId_t handlerId);
 void SchReset(void);
 uint16_t SchStatsGetHandlerWatermarkUsec(void);
-uint16_t SchStatsGetDelayLoadWatermarkCount(void);
-uint32_t SchStatsGetDelayLoadTotalCount(void);
 
 /* Control */
 void SchHandler(wsfEventMask_t event, wsfMsgHdr_t *pMsg);
-void SchLoadHandler(void);
 
 /* List maintenance */
 void SchInsertNextAvailable(BbOpDesc_t *pBod);
 bool_t SchInsertAtDueTime(BbOpDesc_t *pBod, BbConflictAct_t conflictCback);
 bool_t SchInsertEarlyAsPossible(BbOpDesc_t *pBod, uint32_t min, uint32_t max);
 bool_t SchInsertLateAsPossible(BbOpDesc_t *pBod, uint32_t min, uint32_t max);
-bool_t SchRemove(BbOpDesc_t *pBod);
+void SchRemove(BbOpDesc_t *pBod);
 void SchReload(BbOpDesc_t *pBod);
 bool_t SchIsBodCancellable(BbOpDesc_t *pBod);
 

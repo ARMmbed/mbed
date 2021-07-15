@@ -4,7 +4,7 @@
  *
  *  \brief  HCI Connected Isochronous Stream (CIS) command module.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@
 #include "hci_cmd.h"
 #include "hci_api.h"
 #include "hci_main.h"
+#include "hci_core_iso.h"
+#include "hci_defs.h"
 
 /*************************************************************************************************/
 /*!
@@ -94,10 +96,10 @@ void HciLeCreateCisCmd(uint8_t numCis, HciCisCreateCisParams_t *pCreateCisParam)
     p = pBuf + HCI_CMD_HDR_LEN;
     UINT8_TO_BSTREAM(p, numCis);
 
-    for (; numCis > 0; numCis--, pCreateCisParam++)
+    for (uint8_t i = 0; i < numCis; i++)
     {
-      UINT16_TO_BSTREAM(p, *pCreateCisParam->pCisHandle);
-      UINT16_TO_BSTREAM(p, *pCreateCisParam->pAclHandle);
+      UINT16_TO_BSTREAM(p, pCreateCisParam->pCisHandle[i]);
+      UINT16_TO_BSTREAM(p, pCreateCisParam->pAclHandle[i]);
     }
 
     hciCmdSend(pBuf);

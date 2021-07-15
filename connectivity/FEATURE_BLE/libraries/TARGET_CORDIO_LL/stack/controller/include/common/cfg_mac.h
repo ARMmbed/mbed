@@ -39,12 +39,6 @@ extern "C" {
 #define CHCI_BUF_TAILROOM       4       /*!< Extra byte allocation required for buffer (e.g., for MIC). */
 #endif
 
-/*** Scheduler ***/
-
-#ifndef SCH_TIMER_REQUIRED
-#define SCH_TIMER_REQUIRED      TRUE    /*!< If hardware timer is required for radio access scheduler.*/
-#endif
-
 #ifdef __cplusplus
 };
 #endif

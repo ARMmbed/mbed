@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -68,7 +68,6 @@ static void lctrAssembleCisDataPdu(lctrIsoHdr_t *pIsoHdr, uint8_t *pBuf, uint8_t
 
   lctrCisPackDataPduHdr(pBuf, &dataHdr);
 }
-
 
 /*************************************************************************************************/
 /*!
@@ -181,7 +180,8 @@ void lctrCisTxDataPduQueue(lctrCisCtx_t *pCisCtx, lctrIsoHdr_t *pIsoHdr, uint8_t
   {
     LL_TRACE_ERR1("Failed to allocate transmit buffer descriptor: cisHandle=%u", pIsoHdr->handle);
     WsfMsgFree(pIsoBuf);
-    if (pCisCtx->txTestEnabled == FALSE)
+    if (lmgrPersistCb.sendIsoCompCback &&
+        (pCisCtx->txTestEnabled == FALSE))
     {
       uint16_t handle = pIsoHdr->handle;
       uint16_t numSdu = 1;
@@ -411,15 +411,15 @@ uint8_t lctrCisTxQueueClear(lctrCisCtx_t *pCisCtx)
  *  \return Pointer to the start of the PDU data buffer.
  */
 /*************************************************************************************************/
-uint8_t *lctrCisRxPduAlloc(uint16_t maxRxLen)
+uint8_t *lctrCisRxPduAlloc()
 {
   /* LCTR_DATA_PDU_MAX_LEN includes LL_DATA_MIC_LEN if required. */
-  const uint16_t allocLen = WSF_MAX(BB_FIXED_DATA_PKT_LEN, LCTR_CIS_DATA_PDU_LEN(maxRxLen)) + LCTR_CIS_DATA_PDU_START_OFFSET;
+  const uint16_t allocLen = LCTR_CIS_DATA_PDU_START_OFFSET + HCI_ISO_DL_MAX_LEN + pLctrRtCfg->maxIsoSduLen + BB_DATA_PDU_TAILROOM;
 
   uint8_t *pBuf;
 
   /* Include ISO header. */
-  if ((pBuf = WsfMsgAlloc(HCI_ISO_DL_MAX_LEN + allocLen)) != NULL)
+  if ((pBuf = WsfMsgAlloc(allocLen)) != NULL)
   {
     /* Return start of data PDU. */
     pBuf += LCTR_CIS_DATA_PDU_START_OFFSET + HCI_ISO_DL_MAX_LEN;
@@ -454,12 +454,16 @@ void lctrCisRxPduFree(uint8_t *pBuf)
 /*************************************************************************************************/
 void lctrCisRxEnq(uint8_t *pBuf, uint16_t eventCounter, uint16_t cisHandle)
 {
-  /* Stamp packet with event counter. */
-  pBuf -= LCTR_CIS_DATA_PDU_START_OFFSET;
-  UINT16_TO_BUF(pBuf, eventCounter);
+  if (pBuf != NULL)
+  {
+    /* Stamp packet with event counter. */
+    pBuf -= LCTR_CIS_DATA_PDU_START_OFFSET;
+    UINT16_TO_BUF(pBuf, eventCounter);
 
-  /* Queue LE Data PDU. */
-  WsfMsgEnq(&lmgrIsoCb.rxDataQ, cisHandle, pBuf);
+    /* Queue LE Data PDU. */
+    WsfMsgEnq(&lmgrIsoCb.rxDataQ, cisHandle, pBuf);
+  }
+
   WsfSetEvent(lmgrPersistCb.handlerId, (1 << LCTR_EVENT_CIS_RX_PENDING));
 }
 
@@ -497,12 +501,15 @@ uint8_t *lctrCisRxDeq(uint16_t *pCisHandle)
  *  \param  pBuf              SDU buffer.
  *
  *  \return TRUE if buffer successfully handled and will be used.
- *          FALSE if buffer was not handled and needs to be disposed.
+ *          FALSE needs to be disposed.
  *
  */
 /*************************************************************************************************/
-bool_t lctrIsoRxConnEnq(lctrOutDataPathCtx_t *pOutDataPathCtx, uint16_t handle, uint8_t *pBuf)
+bool_t lctrIsoRxConnEnq(lctrOutDataPathCtx_t *pOutDataPathCtx, uint16_t handle, uint32_t pktCtr, uint8_t *pBuf)
 {
+  lctrIsoHdr_t isoHdr;
+  lctrIsoUnpackHdr(&isoHdr, pBuf);
+
   switch (pOutDataPathCtx->id)
   {
     case LL_ISO_DATA_PATH_HCI:
@@ -513,6 +520,10 @@ bool_t lctrIsoRxConnEnq(lctrOutDataPathCtx_t *pOutDataPathCtx, uint16_t handle, 
       return TRUE;
 
     case LL_ISO_DATA_PATH_VS:
+      WSF_ASSERT(lctrCodecHdlr.out);
+      lctrCodecHdlr.out(pOutDataPathCtx->cfg.codec.streamId, isoHdr.pSdu, isoHdr.sduLen, isoHdr.ts);
+      return FALSE;
+
     default:
       return FALSE;
   }
@@ -533,34 +544,84 @@ uint8_t *lctrIsoRxConnDeq(lctrOutDataPathCtx_t *pOutCtx)
 {
   wsfHandlerId_t handle;
 
-  if (pOutCtx->id != LL_ISO_DATA_PATH_HCI)
-  {
-    return NULL;
-  }
-
   return WsfMsgDeq(&pOutCtx->cfg.hci.rxDataQ, &handle);
 }
 
 /*************************************************************************************************/
 /*!
- *  \brief  Setup a datapath context.
+ *  \brief  Setup an input data path context.
  *
- *  \param  pOutCtx         Output datapath context.
+ *  \param  pDpParam         Data path parameters.
+ *  \param  pSetupDataPath   Data path setup parameters.
+ *
+ *  \return Status error code.
  */
 /*************************************************************************************************/
-void lctrIsoOutDataPathSetup(lctrOutDataPathCtx_t *pOutCtx)
+uint8_t lctrIsoInDataPathSetup(lctrDpParams_t *pDpParam, LlIsoSetupDataPath_t *pSetupDataPath)
 {
-  switch (pOutCtx->id)
+  lctrInDataPathCtx_t *pInCtx = &pDpParam->pDataPathCtx->in;
+
+  switch (pInCtx->id)
   {
-    case LL_ISO_DATA_PATH_HCI:
-      pOutCtx->cfg.hci.numRxPend = 0;
-      WSF_QUEUE_INIT(&pOutCtx->cfg.hci.rxDataQ);
-      break;
-
     case LL_ISO_DATA_PATH_VS:
-      /* No action. */
+      pInCtx->cfg.codec.streamId = pDpParam->handle;
+
+      if (lctrCodecHdlr.start)
+      {
+        PalCodecStreamParam_t param =
+        {
+          .dir          = PAL_CODEC_DIR_INPUT,
+          .pktCtr       = pDpParam->pktCtr,
+          .codecId      = pSetupDataPath->codecId,
+          .inCback      = lctrIsoSendCodecSdu
+        };
+
+        if (!lctrCodecHdlr.start(pInCtx->cfg.codec.streamId, &param))
+        {
+          LL_TRACE_WARN1("Failed to start the codec, dpId=%u", pInCtx->id);
+          pInCtx->id = LL_ISO_DATA_PATH_DISABLED;
+          return LL_ERROR_CODE_CONN_REJ_LIMITED_RESOURCES;
+        }
+      }
+      else
+      {
+        LL_TRACE_WARN1("Codec not found, dpId=%u", pInCtx->id);
+        return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
+      }
       break;
 
+    case LL_ISO_DATA_PATH_DISABLED:
+    case LL_ISO_DATA_PATH_HCI:
+      /* No action required. */
+      break;
+
+    default:
+      LL_TRACE_WARN1("Unknown Data Path, dpId=%u", pInCtx->id);
+      return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
+  }
+
+  return LL_SUCCESS;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Clear an input data path context.
+ *
+ *  \param  pOutCtx         Output data path context.
+ */
+/*************************************************************************************************/
+void lctrIsoInDataPathClear(lctrDpParams_t *pDpParam)
+{
+  lctrInDataPathCtx_t *pInCtx = &pDpParam->pDataPathCtx->in;
+
+  switch (pInCtx->id)
+  {
+    case LL_ISO_DATA_PATH_VS:
+      WSF_ASSERT(lctrCodecHdlr.stop);
+      lctrCodecHdlr.stop(pInCtx->cfg.codec.streamId, PAL_CODEC_DIR_INPUT);
+      break;
+
+    case LL_ISO_DATA_PATH_HCI:
     default:
       /* No action. */
       break;
@@ -569,19 +630,81 @@ void lctrIsoOutDataPathSetup(lctrOutDataPathCtx_t *pOutCtx)
 
 /*************************************************************************************************/
 /*!
- *  \brief  Clear a datapath context.
+ *  \brief  Setup a data path context.
  *
- *  \param  pOutCtx         Output datapath context.
+ *  \param  pDpParam         Data path parameters.
+ *  \param  pSetupDataPath   Data path setup parameters.
+ *
+ *  \return Status error code.
  */
 /*************************************************************************************************/
-void lctrIsoOutDataPathClear(lctrOutDataPathCtx_t *pOutCtx)
+uint8_t lctrIsoOutDataPathSetup(lctrDpParams_t *pDpParam, LlIsoSetupDataPath_t *pSetupDataPath)
 {
+  lctrOutDataPathCtx_t *pOutCtx = &pDpParam->pDataPathCtx->out;
+
+  switch (pOutCtx->id)
+  {
+    case LL_ISO_DATA_PATH_VS:
+      pOutCtx->cfg.codec.streamId = pDpParam->handle;
+
+      if (lctrCodecHdlr.start)
+      {
+        PalCodecStreamParam_t param =
+        {
+          .dir          = PAL_CODEC_DIR_OUTPUT,
+          .pktCtr       = pDpParam->pktCtr,
+          .codecId      = pSetupDataPath->codecId
+        };
+
+        if (!lctrCodecHdlr.start(pOutCtx->cfg.codec.streamId, &param))
+        {
+          LL_TRACE_WARN1("Failed to start the codec, dpId=%u", pOutCtx->id);
+          pOutCtx->id = LL_ISO_DATA_PATH_DISABLED;
+          return LL_ERROR_CODE_CONN_REJ_LIMITED_RESOURCES;
+        }
+      }
+      else
+      {
+        LL_TRACE_WARN1("Codec not found, dpId=%u", pOutCtx->id);
+        return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
+      }
+      break;
+
+    case LL_ISO_DATA_PATH_HCI:
+      pOutCtx->cfg.hci.numRxPend = 0;
+      WSF_QUEUE_INIT(&pOutCtx->cfg.hci.rxDataQ);
+      break;
+
+    case LL_ISO_DATA_PATH_DISABLED:
+      /* No action required. */
+      break;
+
+    default:
+      LL_TRACE_WARN1("Unknown Data Path, dpId=%u", pOutCtx->id);
+      return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
+  }
+
+  return LL_SUCCESS;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Clear a data path context.
+ *
+ *  \param  pOutCtx         Output data path context.
+ */
+/*************************************************************************************************/
+void lctrIsoOutDataPathClear(lctrDpParams_t *pDpParam)
+{
+  lctrOutDataPathCtx_t *pOutCtx = &pDpParam->pDataPathCtx->out;
+
   switch (pOutCtx->id)
   {
     case LL_ISO_DATA_PATH_HCI:
     {
       uint8_t *pBuf;
       wsfHandlerId_t handlerId;
+
       while ((pBuf = WsfMsgDeq(&pOutCtx->cfg.hci.rxDataQ, &handlerId)) != NULL)
       {
         WsfMsgFree(pBuf);
@@ -591,8 +714,20 @@ void lctrIsoOutDataPathClear(lctrOutDataPathCtx_t *pOutCtx)
     }
 
     case LL_ISO_DATA_PATH_VS:
-      /* No action. */
+    {
+      WSF_ASSERT(lctrCodecHdlr.stop);
+      lctrCodecHdlr.stop(pOutCtx->cfg.codec.streamId, PAL_CODEC_DIR_OUTPUT);
+
+      uint8_t *pBuf;
+      wsfHandlerId_t handlerId;
+
+      while ((pBuf = WsfMsgDeq(&pOutCtx->cfg.codec.rxDataQ, &handlerId)) != NULL)
+      {
+        WsfMsgFree(pBuf);
+        lctrIsoDataRxIncAvailBuf(1);
+      }
       break;
+    }
 
     default:
       /* No action. */
@@ -678,11 +813,9 @@ uint8_t *lctrGenerateIsoTestData(uint16_t handle, LlIsoPldType_t pldType, uint16
       break;
 
     default:
-    {
       LL_TRACE_ERR1("Invalid value pldType=%u", pldType);
       len = 0;
       break;
-    }
   }
 
   /* Pack ISO header. */
@@ -810,7 +943,7 @@ uint8_t *lctrTxIsoDataPduAlloc(void)
   /* Use LL_ISO_PDU_MAX_LEN to ensure use of data buffers located in the large pool. */
   if ((pPdu = (uint8_t*)WsfMsgAlloc(allocLen)) == NULL)
   {
-    LL_TRACE_WARN1("lctrTxIsoDataPduAlloc: Unable to allocate framed Tx buffer, allocSize=%u", allocLen);
+    LL_TRACE_WARN1("lctrTxIsoDataPduAlloc: Unable to allocate Tx buffer, allocSize=%u", allocLen);
   }
 
   return pPdu;
@@ -841,13 +974,12 @@ uint8_t lctrAssembleTxFramedPdu(lctrIsoalTxCtx_t *pIsoalTxCtx, uint8_t *pPduBuf,
   /* Set offset of pPduBuf */
   pPduBuf += HCI_ISO_HDR_LEN + HCI_ISO_DL_MIN_LEN;
 
-  /*** Loop through and pack SDUs. ***/
-
+  /* Loop through and pack SDUs. */
   while (remLen)
   {
     uint8_t *pSduBuf = WsfMsgPeek(pSduQ, &handlerId);
 
-    /* The buffer is empty, process the completed PDU */
+    /* The buffer is empty, process the completed PDU. */
     if (pSduBuf == NULL)
     {
       break;
@@ -855,7 +987,7 @@ uint8_t lctrAssembleTxFramedPdu(lctrIsoalTxCtx_t *pIsoalTxCtx, uint8_t *pPduBuf,
 
     lctrIsoHdr_t isoHdr;
 
-    /*** Disassemble ISO packet. ***/
+    /*** Disassemble ISO packet ***/
 
     lctrIsoUnpackHdr(&isoHdr, pSduBuf);
 
@@ -878,7 +1010,7 @@ uint8_t lctrAssembleTxFramedPdu(lctrIsoalTxCtx_t *pIsoalTxCtx, uint8_t *pPduBuf,
       segHdrLen += LL_ISO_SEG_TO_LEN;
     }
 
-    /*** Compute segment parameters. ***/
+    /*** Compute segment parameters ***/
 
     /* There is enough room for the entire SDU. */
     if (remLen >= (isoHdr.sduLen + segHdrLen))
@@ -951,7 +1083,7 @@ uint8_t lctrAssembleTxFramedPdu(lctrIsoalTxCtx_t *pIsoalTxCtx, uint8_t *pPduBuf,
  *  \return Pointer to the start of the ISO Data PDU buffer, NULL if allocation failed.
  */
 /*************************************************************************************************/
-static uint8_t *lctrRxSduAlloc(void)
+uint8_t *lctrRxSduAlloc(void)
 {
   uint8_t *pSdu;
 
@@ -971,59 +1103,102 @@ static uint8_t *lctrRxSduAlloc(void)
  *  \brief  Queue the received SDU into the pending queue.
  *
  *  \param  pRxCtx     ISOAL receive context.
- *  \param  pSdu       SDU buffer.
+ *  \param  pSdu       SDU fragment.
  *  \param  handle     CIS connection handle.
- *  \param  dataLen    Data length.
- *  \param  llid       Rx LLID.
  *
  *  \return TRUE if pending queue ready to be sent to host.
  */
 /*************************************************************************************************/
-bool_t lctrIsoUnframedRxSduPendQueue(lctrIsoalRxCtx_t *pRxCtx, uint8_t *pSdu, uint16_t handle,
-                                     uint16_t dataLen, uint8_t llid)
+bool_t lctrRecombineRxUnframedSdu(lctrIsoalRxCtx_t *pRxCtx, uint8_t *pSduFrag)
 {
-  /* Save data for head packet. */
-  /* pRxCtx->data.unframed.pendSduIsoHdr.ps = 0; */   /* Should be done in calling function. */
-  pRxCtx->data.unframed.curLen += dataLen;
+  bool_t result = FALSE;
 
-  WsfMsgEnq(&pRxCtx->data.unframed.pendSduQ, handle, pSdu);
+  uint8_t handlerId;
+  uint8_t *pSdu = WsfMsgPeek(&pRxCtx->data.unframed.pendSduQ, &handlerId);
 
-  /* If we received the last PDU, pack the head packet with the packet status and sdu length. */
-  if (llid == LL_LLID_ISO_UNF_END_PDU)
+  if (pSduFrag)
   {
-    uint8_t *pHeadPkt;
-    uint8_t handlerId;
-    lctrIsoHdr_t isoHdr = {0};
+    lctrIsoHdr_t fragHdr;
+    lctrIsoUnpackHdr(&fragHdr, pSduFrag);
 
-    pHeadPkt = WsfMsgPeek(&pRxCtx->data.unframed.pendSduQ, &handlerId);
-    WSF_ASSERT(pHeadPkt);
+    switch (fragHdr.pb)
+    {
+      case LCTR_PB_COMP:
+        result = TRUE;
+        /* Fallthrough */
+      case LCTR_PB_FIRST:
+        if (pSdu)
+        {
+          LL_TRACE_ERR1("Previous SDU was not flushed, dropping SDU, handle=%u", fragHdr.handle);
 
-    lctrIsoUnpackHdr(&isoHdr, pHeadPkt);
-    isoHdr.pktSn = pRxCtx->packetSequence++;
+          pSdu = WsfMsgDeq(&pRxCtx->data.unframed.pendSduQ, &handlerId);
+          WsfMsgFree(pSdu);
+
+          pSdu = NULL;
+        }
+
+        /* Store first fragment. */
+        pRxCtx->data.unframed.curLen = fragHdr.sduLen;
+        WsfMsgEnq(&pRxCtx->data.unframed.pendSduQ, fragHdr.handle, pSduFrag);
+        break;
+
+      case LCTR_PB_LAST:
+        result = TRUE;
+        /* Fallthrough */
+      case LCTR_PB_CONT:
+        if (pSdu == NULL)
+        {
+          /* Store first fragment. */
+          pRxCtx->data.unframed.curLen = fragHdr.len;
+          WsfMsgEnq(&pRxCtx->data.unframed.pendSduQ, fragHdr.handle, pSduFrag);
+
+          /* Missing first fragment. */
+          pRxCtx->data.unframed.ps = LCTR_PS_INVALID;
+        }
+        else
+        {
+          lctrIsoHdr_t isoHdr;
+          lctrIsoUnpackHdr(&isoHdr, pSdu);
+
+          /* Append continuation fragment (recombine). */
+          memcpy(isoHdr.pSdu + pRxCtx->data.unframed.curLen, fragHdr.pSdu, fragHdr.len);
+          WsfMsgFree(pSduFrag);
+          pRxCtx->data.unframed.curLen += fragHdr.len;
+        }
+        break;
+
+      default:
+        break;
+    }
+  }
+  else
+  {
+    /* NULL fragment indicates unexpected flush. */
+    if (pSdu)
+    {
+      /* Complete pending SDU fragment. */
+      pRxCtx->data.unframed.ps = LCTR_PS_INVALID;
+      result = TRUE;
+    }
+  }
+
+  if (result && pSdu)
+  {
+    /* Update ISO header. */
+    lctrIsoHdr_t isoHdr;
+    lctrIsoUnpackHdr(&isoHdr, pSdu);
+    isoHdr.pb = LCTR_PB_COMP;
+    isoHdr.len = pRxCtx->data.unframed.curLen;
     isoHdr.sduLen = pRxCtx->data.unframed.curLen;
     isoHdr.ps = pRxCtx->data.unframed.ps;
-    isoHdr.len -= + HCI_ISO_DL_MAX_LEN;
-
-    /* Reset the packet boundary in case a missed packet leaves it undefined. */
-    uint8_t rfu; /* Used to peek into msg queue. */
-    if (WsfMsgNPeek(&pRxCtx->data.unframed.pendSduQ, 1, &rfu))
-    {
-      isoHdr.pb = LCTR_PB_FIRST;
-    }
-    else
-    {
-      isoHdr.pb = LCTR_PB_COMP;
-    }
-
-    lctrIsoPackHdr(pHeadPkt, &isoHdr);
+    lctrIsoPackHdr(pSdu, &isoHdr);
 
     /* Clean up context */
     pRxCtx->data.unframed.curLen = 0;
-    pRxCtx->data.unframed.ps = 0;
-    return TRUE;
+    pRxCtx->data.unframed.ps = LCTR_PS_VALID;
   }
 
-  return FALSE;
+  return result;
 }
 
 /*************************************************************************************************/
@@ -1044,17 +1219,19 @@ uint8_t lctrAssembleRxFramedSdu(lctrIsoalRxCtx_t *pIsoalRxCtx, wsfQueue_t *pRxQu
 {
   uint8_t totalSduQueued = 0;
 
-  /* Last PDU was flushed. SDU data is lost and will be flushed. */
+  /* Last PDU was flushed. */
   if (pIsoalRxCtx->pduFlushed)
   {
+    pIsoalRxCtx->pduFlushed = FALSE;
+
+    /* There was a lost SDU due to a fragment being flushed. */
     if (pIsoalRxCtx->pPendSduBuf)
     {
       /* Flush SDU. */
       WsfMsgFree(pIsoalRxCtx->pPendSduBuf);
       pIsoalRxCtx->pPendSduBuf = NULL;
+      return 0;
     }
-    pIsoalRxCtx->pduFlushed = FALSE;
-    return 0;
   }
 
   uint8_t *pDataBuf = pIsoBuf + LL_DATA_HDR_LEN;
@@ -1160,6 +1337,7 @@ uint8_t lctrAssembleRxFramedSdu(lctrIsoalRxCtx_t *pIsoalRxCtx, wsfQueue_t *pRxQu
       uint8_t *pIsoHdrBuf = (pIsoalRxCtx->pPendSduBuf);
       lctrIsoPackHdr(pIsoHdrBuf, &isoHdr);
 
+      /* TODO: when adding codec data path, change this to enque or consume based on data path. */
       /* Queue SDU. */
       WsfMsgEnq(pRxQueue, handle, pIsoalRxCtx->pPendSduBuf);
       /* lctrIsoDataRxDecAvailBuf(); */ /* Handled in lctrRxSduAlloc. */

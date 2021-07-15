@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@
   Macros
 **************************************************************************************************/
 
-/*! \brief      Valid feature bits applicable between controllers */
+/*! \brief      Valid feature bits applicable between controllers. */
 #define LCTR_FEAT_PEER_MASK     (LL_FEAT_ENCRYPTION | \
                                  LL_FEAT_CONN_PARAM_REQ_PROC | \
                                  LL_FEAT_EXT_REJECT_IND | \
@@ -68,12 +68,15 @@
                                  LL_FEAT_ISO_HOST_SUPPORT | \
                                  LL_FEAT_POWER_CONTROL_REQUEST | \
                                  LL_FEAT_POWER_CHANGE_IND | \
-                                 LL_FEAT_PATH_LOSS_MONITOR)
+                                 LL_FEAT_PATH_LOSS_MONITOR | \
+                                 LL_FEAT_CONN_SUBRATE | \
+                                 LL_FEAT_CONN_SUBRATE_HOST_SUPPORT | \
+                                 LL_FEAT_CHANNEL_CLASSIFICATION)
 
 /*! \brief      Used feature bitmask. */
 #define LCTR_USED_FEAT_SET_MASK     0x000000FFFF
 
-/*! \brief      Features bits mask over the air */
+/*! \brief      Features bits mask over the air. */
 #define LCTR_OTA_FEAT_MASK      (~LL_FEAT_REMOTE_PUB_KEY_VALIDATION & LCTR_FEAT_PEER_MASK)
 
 /*************************************************************************************************/
@@ -99,7 +102,6 @@ static bool_t lctrValidateConnParam(const lctrConnParam_t *pConnParam)
   return TRUE;
 }
 
-
 /*************************************************************************************************/
 /*!
  *  \brief  Compute the sleep clock accuracy index in connection context.
@@ -124,6 +126,39 @@ static uint8_t lctrComputeConnSca(lctrConnCtx_t *pCtx)
   else                    sca = 0;
 
   return (uint8_t) (sca + pCtx->scaMod);
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Queue channel reporting indication to be sent out.
+ *
+ *  \param  pCtx    Connection context.
+ *  \param  enable  Enable/disable.
+ */
+/*************************************************************************************************/
+static void lctrQueueChannelReportingInd(lctrConnCtx_t *pCtx, bool_t enable)
+{
+
+  lctrMsgChRptInd_t *pMsg;
+  if ((pMsg = (lctrMsgChRptInd_t *)WsfMsgAlloc(sizeof(*pMsg))) != NULL)
+  {
+    pMsg->hdr.handle = LCTR_GET_CONN_HANDLE(pCtx);
+    pMsg->hdr.dispId = LCTR_DISP_CONN;
+    pMsg->hdr.event  = LCTR_CONN_LLCP_CHANNEL_REPORTING;
+
+    /* Use default if the run-time configuration is not within spec range. */
+    uint8_t spacing = pLctrRtCfg->chClassIntSpacing;
+    if ((spacing > LL_CH_RPT_SPACING_MAX) ||
+        (spacing < LL_CH_RPT_SPACING_MIN))
+    {
+      spacing = LL_CH_RPT_SPACING_DEFAULT;
+    }
+    pMsg->enable = enable;
+    pMsg->maxDelay = spacing;
+    pMsg->minSpacing = spacing;
+
+    WsfMsgSend(lmgrPersistCb.handlerId, pMsg);
+  }
 }
 
 /*************************************************************************************************/
@@ -306,8 +341,9 @@ void lctrSendChanMapUpdateInd(lctrConnCtx_t *pCtx)
 #endif
     {
       pCtx->chanMapUpd.instant = pCtx->eventCounter +
-                                 LL_MIN_INSTANT + 1 +     /* +1 for next CE */
-                                 pCtx->maxLatency;        /* ensure slave will listen to this packet */
+                                 ((LL_MIN_INSTANT + 1 +     /* +1 for next CE */
+                                   pCtx->maxLatency) *      /* ensure slave will listen to this packet */
+                                  pCtx->ecu.srFactor);      /* include subrating factor */
     }
 
     /*** Assemble control PDU. ***/
@@ -407,6 +443,9 @@ void lctrSendFeatureRsp(lctrConnCtx_t *pCtx)
 /*************************************************************************************************/
 void lctrStoreUsedFeatures(lctrConnCtx_t *pCtx)
 {
+  pCtx->peerFeatures = lctrDataPdu.pld.featReqRsp.featSet & LCTR_FEAT_PEER_MASK;
+
+  /* TODO: make usedFeatSet calculated when needed based on peerFeatures. Use function LctrGetUsedFeatures. */
   pCtx->usedFeatSet = lmgrCb.features & lctrDataPdu.pld.featReqRsp.featSet & LCTR_FEAT_PEER_MASK;
   pCtx->featExchFlag = TRUE;
 
@@ -415,6 +454,27 @@ void lctrStoreUsedFeatures(lctrConnCtx_t *pCtx)
     (lctrDataPdu.pld.featReqRsp.featSet & LL_FEAT_STABLE_MOD_IDX_TRANSMITTER) ? TRUE : FALSE;
   pCtx->bleData.chan.peerRxStableModIdx =
     (lctrDataPdu.pld.featReqRsp.featSet & LL_FEAT_STABLE_MOD_IDX_RECEIVER) ? TRUE : FALSE;
+
+  /* If channel classification is supported and enabled, turn on channel classification. */
+  if ((pCtx->role == LL_ROLE_MASTER) && (!pCtx->chanStatRptEnable) &&
+      (pCtx->usedFeatSet & LL_FEAT_CHANNEL_CLASSIFICATION) &&
+      (lctrGetConnOpFlag(pCtx, LL_OP_MODE_FLAG_ENA_CH_RPT_LLCP_AFTER_FEAT)))
+  {
+    lctrQueueChannelReportingInd(pCtx, TRUE);
+  }
+
+  /* Start timer for power monitor if the feature is supported. */
+  if ((pCtx->usedFeatSet & LL_FEAT_POWER_CONTROL_REQUEST) &&
+      (pCtx->monitoringState == LCTR_PC_MONITOR_ENABLED) &&
+      (pCtx->powerMonitorScheme == LCTR_PC_MONITOR_AUTO) &&
+      !lmgrGetOpFlag(LL_OP_MODE_FLAG_DIS_POWER_MONITOR))
+  {
+    WsfTimerStartMs(&pCtx->tmrPowerCtrl, LL_PC_SERVICE_MS);
+  }
+  else
+  {
+    WsfTimerStop(&pCtx->tmrPowerCtrl);
+  }
 }
 
 /*************************************************************************************************/
@@ -937,7 +997,6 @@ static void lctrSendDataLengthPdu(lctrConnCtx_t *pCtx, uint8_t opcode)
   {
     uint8_t *pBuf = pPdu;
 
-
     /*** Assemble control PDU. ***/
 
     UINT8_TO_BSTREAM (pBuf, opcode);
@@ -945,7 +1004,7 @@ static void lctrSendDataLengthPdu(lctrConnCtx_t *pCtx, uint8_t opcode)
     uint16_t maxRxTime = pCtx->localDataPdu.maxRxTime;
     uint16_t maxTxTime = pCtx->localDataPdu.maxTxTime;
 
-    /* If LL_FEAT_LE_CODED_PHY is not supported, maxRxTime and maxTxTime can not be more than 2128.*/
+    /* If LL_FEAT_LE_CODED_PHY is not supported, maxRxTime and maxTxTime can not be more than 2120 (2128 if CTEs are supported).*/
     if (!pCtx->featExchFlag ||
         !(pCtx->usedFeatSet & LL_FEAT_LE_CODED_PHY))
     {
@@ -1023,7 +1082,7 @@ void lctrStoreRemoteDataLength(lctrConnCtx_t *pCtx)
   uint16_t maxRxTime = pCtx->localDataPdu.maxRxTime;
   uint16_t maxTxTime = pCtx->localDataPdu.maxTxTime;
 
-  /* If LL_FEAT_LE_CODED_PHY is not supported, maxRxTime and maxTxTime can not be more than 2128. */
+  /* If LL_FEAT_LE_CODED_PHY is not supported, maxRxTime and maxTxTime can not be more than 2120 (2128 if CTEs are supported). */
   if (!pCtx->featExchFlag ||
       !(pCtx->usedFeatSet & LL_FEAT_LE_CODED_PHY))
   {
@@ -1183,6 +1242,209 @@ static void lctrSendPeerScaReqPdu(lctrConnCtx_t *pCtx, uint8_t opcode)
     /*** Queue for transmit. ***/
     lctrTxCtrlPduQueue(pCtx, pPdu);
   }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Send channel reporting indication PDU.
+ *
+ *  \param      pCtx    Connection context.
+ *  \param      opcode  PDU opcode.
+ */
+/*************************************************************************************************/
+static void lctrSendChannelReportingIndPdu(lctrConnCtx_t *pCtx)
+{
+  uint8_t *pPdu;
+
+  if ((pPdu = lctrTxCtrlPduAlloc(LL_CH_REPORTING_LEN)) != NULL)
+  {
+    uint8_t *pBuf = pPdu;
+
+    /*** Assemble control PDU. ***/
+    UINT8_TO_BSTREAM (pBuf, LL_PDU_CH_REPORTING_IND);
+    UINT8_TO_BSTREAM (pBuf, pLctrConnMsg->chanRptInd.enable);
+    UINT8_TO_BSTREAM (pBuf, pLctrConnMsg->chanRptInd.minSpacing);
+    UINT8_TO_BSTREAM (pBuf, pLctrConnMsg->chanRptInd.maxDelay);
+
+    /*** Queue for transmit. ***/
+
+    lctrTxCtrlPduQueue(pCtx, pPdu);
+  }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Send channel status indication PDU.
+ *
+ *  \param      pCtx    Connection context.
+ *  \param      opcode  PDU opcode.
+ */
+/*************************************************************************************************/
+static void lctrSendChannelStatusIndPdu(lctrConnCtx_t *pCtx)
+{
+  static uint8_t CHAN_STATUS_BIT_LENGTH = 2;
+  uint8_t *pPdu;
+
+  if ((pPdu = lctrTxCtrlPduAlloc(LL_CH_STATUS_LEN)) != NULL)
+  {
+    uint8_t *pBuf = pPdu;
+    uint8_t i, packedChanByte;
+    uint8_t curCh = 0;
+
+    /*** Assemble control PDU. ***/
+
+    UINT8_TO_BSTREAM (pBuf, LL_PDU_CH_STATUS_IND);
+
+    /* Pack all but final byte */
+    for (i = 0; i < (LL_CH_STATUS_LEN - 2); i++)
+    {
+      packedChanByte =
+          (pLctrConnMsg->chanStatusInd.chanStatus[curCh]) |
+          (pLctrConnMsg->chanStatusInd.chanStatus[curCh + 1] << (CHAN_STATUS_BIT_LENGTH * 1)) |
+          (pLctrConnMsg->chanStatusInd.chanStatus[curCh + 2] << (CHAN_STATUS_BIT_LENGTH * 2)) |
+          (pLctrConnMsg->chanStatusInd.chanStatus[curCh + 3] << (CHAN_STATUS_BIT_LENGTH * 3));
+
+      UINT8_TO_BSTREAM (pBuf, packedChanByte);
+      curCh += 4;
+    }
+
+    /* Pack final byte here (outside loop because it is not fully packed). */
+    packedChanByte = pLctrConnMsg->chanStatusInd.chanStatus[curCh];
+    UINT8_TO_BSTREAM (pBuf, packedChanByte);
+
+    /*** Queue for transmit. ***/
+
+    lctrTxCtrlPduQueue(pCtx, pPdu);
+  }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Send channel status indication.
+ *
+ *  \param      pCtx    Connection context.
+ */
+/*************************************************************************************************/
+void lctrSendChannelStatusInd(lctrConnCtx_t *pCtx)
+{
+  lctrSendChannelStatusIndPdu(pCtx);
+
+  /* The procedure completes after sending out the indication. */
+  pCtx->llcpNotifyMask &= ~(1 << LCTR_PROC_CMN_CH_STATUS_REPORT);
+  lctrSendConnMsg(pCtx, LCTR_CONN_LLCP_PROC_CMPL);
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Store received channel status indication.
+ *
+ *  \param      pCtx    Connection context.
+ */
+/*************************************************************************************************/
+void lctrStoreChannelStatusInd(lctrConnCtx_t *pCtx)
+{
+  if (pCtx->role != LL_ROLE_MASTER)
+  {
+    LL_TRACE_WARN1("Received CHANNEL_STATUS_IND on peripheral connection handle=%u", LCTR_GET_CONN_HANDLE(pCtx));
+
+    /* The procedure completes after receiving the indication. */
+    lctrSendConnMsg(pCtx, LCTR_CONN_LLCP_PROC_CMPL);
+    return;
+  }
+
+  uint32_t receivedTime = PalBbGetCurrentTime();
+  if (BbGetTargetTimeDelta(receivedTime, pCtx->data.mst.recvdChanStatTs) >= pCtx->data.mst.chanStatMinIntUs)
+  {
+    uint8_t i;
+    for (i = 0; i < LL_CH_STATUS_LEN - 2; i ++)
+    {
+      pCtx->data.mst.peerChannelStatus[i * 4]       = lctrDataPdu.pld.chanStatusInd.chanStatusMap[i] & (0x03 << 0);
+      pCtx->data.mst.peerChannelStatus[(i * 4) + 1] = lctrDataPdu.pld.chanStatusInd.chanStatusMap[i] & (0x03 << 2);
+      pCtx->data.mst.peerChannelStatus[(i * 4) + 2] = lctrDataPdu.pld.chanStatusInd.chanStatusMap[i] & (0x03 << 4);
+      pCtx->data.mst.peerChannelStatus[(i * 4) + 3] = lctrDataPdu.pld.chanStatusInd.chanStatusMap[i] & (0x03 << 6);
+    }
+
+    /* Final byte has less than 4 channels. */
+    pCtx->data.mst.peerChannelStatus[i * 4] = lctrDataPdu.pld.chanStatusInd.chanStatusMap[i] & (0x03 << 0);
+  }
+  else
+  {
+    LL_TRACE_WARN1("Received channel status from peripheral too early. Handle=%u", LCTR_GET_CONN_HANDLE(pCtx));
+  }
+
+  /* The procedure completes after receiving the indication. */
+  lctrSendConnMsg(pCtx, LCTR_CONN_LLCP_PROC_CMPL);
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Send channel reporting indication.
+ *
+ *  \param      pCtx    Connection context.
+ */
+/*************************************************************************************************/
+void lctrSendChannelReportingInd(lctrConnCtx_t *pCtx)
+{
+  if (pCtx->role != LL_ROLE_MASTER)
+  {
+    LL_TRACE_WARN0("lctrSendChannelReportingInd: Shall not be called as a peripheral.");
+    pCtx->llcpNotifyMask &= ~(1 << LCTR_PROC_CMN_CH_CLASS_REPORTING);
+    lctrSendConnMsg(pCtx, LCTR_CONN_LLCP_PROC_CMPL);
+    return;
+  }
+
+  lctrSendChannelReportingIndPdu(pCtx);
+  pCtx->chanStatRptEnable = pLctrConnMsg->chanRptInd.enable;
+  pCtx->data.mst.chanStatMinIntUs = LCTR_CH_RPT_IND_US(pLctrConnMsg->chanRptInd.minSpacing);
+
+  /* Minus minimum spacing to allow a controller to send LL_CHANNEL_STATUS_IND right away if desired. */
+  pCtx->data.mst.recvdChanStatTs = PalBbGetCurrentTime() - pCtx->data.mst.chanStatMinIntUs;
+
+  /* The procedure completes after sending out the indication. */
+  pCtx->llcpNotifyMask &= ~(1 << LCTR_PROC_CMN_CH_CLASS_REPORTING);
+  lctrSendConnMsg(pCtx, LCTR_CONN_LLCP_PROC_CMPL);
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Store received channel reporting indication.
+ *
+ *  \param      pCtx    Connection context.
+ */
+/*************************************************************************************************/
+void lctrStoreChannelReportingInd(lctrConnCtx_t *pCtx)
+{
+  if (pCtx->role != LL_ROLE_SLAVE)
+  {
+    LL_TRACE_WARN1("lctrStoreChannelReportingInd: Received LL_CH_RPT_IND as a central. Handle=%d", LCTR_GET_CONN_HANDLE(pCtx));
+    pCtx->llcpNotifyMask &= ~(1 << LCTR_PROC_CMN_CH_CLASS_REPORTING);
+    lctrSendConnMsg(pCtx, LCTR_CONN_LLCP_PROC_CMPL);
+    return;
+  }
+
+  if ((lctrDataPdu.pld.chanRptInd.enable > TRUE) ||
+      (lctrDataPdu.pld.chanRptInd.minSpacing < LL_CH_RPT_SPACING_MIN) ||
+      (lctrDataPdu.pld.chanRptInd.maxDelay < LL_CH_RPT_SPACING_MIN)   ||
+      (lctrDataPdu.pld.chanRptInd.minSpacing > LL_CH_RPT_SPACING_MAX) ||
+      (lctrDataPdu.pld.chanRptInd.maxDelay > LL_CH_RPT_SPACING_MAX)   ||
+      (lctrDataPdu.pld.chanRptInd.maxDelay < lctrDataPdu.pld.chanRptInd.minSpacing))
+  {
+    lctrSendRejectInd(pCtx, LL_ERROR_CODE_INVALID_LMP_PARAMS, TRUE);
+  }
+  else
+  {
+    pCtx->chanStatRptEnable = lctrDataPdu.pld.chanRptInd.enable;
+    pCtx->data.slv.chanStatMinIntUs = LCTR_CH_RPT_IND_US(lctrDataPdu.pld.chanRptInd.minSpacing);
+    pCtx->data.slv.chanStatMaxDelay = LCTR_CH_RPT_IND_US(lctrDataPdu.pld.chanRptInd.maxDelay);
+    if (pCtx->chanStatRptEnable)
+    {
+      pCtx->data.slv.queuedChanStatusTs = PalBbGetCurrentTime();
+    }
+    pCtx->data.slv.lastStatusSentTs = PalBbGetCurrentTime();
+  }
+
+  /* The procedure completes after receiving the indication. */
+  lctrSendConnMsg(pCtx, LCTR_CONN_LLCP_PROC_CMPL);
 }
 
 /*************************************************************************************************/

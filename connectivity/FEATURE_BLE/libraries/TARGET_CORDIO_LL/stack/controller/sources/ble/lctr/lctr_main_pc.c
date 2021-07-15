@@ -4,7 +4,7 @@
  *
  *  \brief  Link layer controller power control implementation file.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,11 +42,10 @@ void LctrPowerControlInit(void)
 {
   /* Initialize power control. */
   lmgrPersistCb.featuresDefault |=  (LL_FEAT_POWER_CHANGE_IND | LL_FEAT_POWER_CONTROL_REQUEST);
-  lctrPcActTbl[LCTR_PC_MONITOR_AUTO] = lctrAutoPowerMonitorAct;
 
   /* Initialize path loss. */
   lmgrPersistCb.featuresDefault |= (LL_FEAT_PATH_LOSS_MONITOR);
-  lctrPcActTbl[LCTR_PC_MONITOR_PATH_LOSS] = lctrPathLossMonitorAct;
+  lctrPathLossMonitorActFn = lctrPathLossMonitorAct;
 
   /* Initialize state machines. */
   lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PC] = lctrLlcpExecutePclSm;
@@ -209,7 +208,6 @@ uint8_t lctrSetPathLossReportingEnable(uint16_t handle, uint8_t enable)
     return LL_ERROR_CODE_CMD_DISALLOWED;
   }
 
-
   /* If peer Tx power is unavailable, read the peer tx power. */
   if (pCtx->peerTxPower == LL_PWR_CTRL_TXPOWER_UNAVAILABLE)
   {
@@ -255,7 +253,7 @@ void lctrNotifyHostPathLossRpt(lctrConnCtx_t *pCtx)
   const uint16_t handle = LCTR_GET_CONN_HANDLE(pCtx);
   uint8_t curPathLoss = lctrCalcPathLoss(pCtx);
 
-  LlPathLossThresholdEvt_t evt =
+  LlPathLossThresholdInd_t evt =
   {
     .hdr =
     {
@@ -311,7 +309,7 @@ void lctrPathLossMonitorAct(lctrConnCtx_t *pCtx)
   if (pCtx->pclMonitorParam.pathLoss.curTimeSpent >=
       pCtx->pclMonitorParam.pathLoss.minTimeSpent)
   {
-    LL_TRACE_INFO2("lctrPathLossMonitorAct, New zone entered. newZone=%u, pathLoss=%u", newZone, lctrCalcPathLoss(pCtx));
+    LL_TRACE_INFO2("lctrPathLossMonitorAct: new zone entered. newZone=%u, pathLoss=%u", newZone, lctrCalcPathLoss(pCtx));
     pCtx->pclMonitorParam.pathLoss.curTimeSpent = 0;
     pCtx->pclMonitorParam.pathLoss.curZone = newZone;
 

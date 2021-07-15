@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,9 +30,17 @@
 #include "wsf_assert.h"
 #include "ll_math.h"
 #include "wsf_trace.h"
-#include "uECC_ll.h"
 #include "pal_bb_ble.h"
 #include <string.h>
+
+#if ENABLE_UECC
+  #include "uECC_ll.h"
+#endif
+
+#if ENABLE_UECC_TINYCRYPT
+  #include "tinycrypt/ecc.h"
+  #include "tinycrypt/ecc_dh.h"
+#endif
 
 /*************************************************************************************************/
 /*!
@@ -119,6 +127,34 @@ static void lctrReverse(uint8_t *p, uint16_t len)
 
 /*************************************************************************************************/
 /*!
+ *  \brief      Notify host of key generation.
+ *
+ *  \param      pDhKey    Diffie-Hellman key.
+ */
+/*************************************************************************************************/
+static void lctrNotifyGenerateDhKeyInd(const uint8_t *pDhKey)
+{
+  LlGenerateDhKeyInd_t evt =
+  {
+    .hdr =
+    {
+      .param  = 0,
+      .event  = LL_GENERATE_DHKEY_CMPL_IND,
+      .status = LL_SUCCESS
+    }
+  };
+
+  evt.status = lmgrScCb.pubKeyValid ? LL_SUCCESS : LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
+  memcpy(evt.dhKey, pDhKey, sizeof(evt.dhKey));
+
+  LL_TRACE_INFO0("### LlEvent ###  LL_GENERATE_DHKEY_CMPL_IND, status=LL_SUCCESS");
+
+  LmgrSendEvent((LlEvt_t *)&evt);
+}
+
+#if ENABLE_UECC
+/*************************************************************************************************/
+/*!
  *  \brief  Start generating P-256 key pair.
  */
 /*************************************************************************************************/
@@ -193,6 +229,7 @@ void lctrGenerateP256KeyPairComplete(uint8_t *pPubKey, uint8_t *pPrivKey)
   lctrReverse(pPubKey + LL_ECC_KEY_LEN, LL_ECC_KEY_LEN);
   lctrReverse(pPrivKey, LL_ECC_KEY_LEN);
 }
+#endif
 
 /*************************************************************************************************/
 /*!
@@ -213,12 +250,30 @@ void lctrGenerateDhKeyStart(const uint8_t *pPubKey, const uint8_t *pPrivKey)
   lctrReverseCopy(privKey, pPrivKey, LL_ECC_KEY_LEN);
 
   /* Start shared secret generation. */
+#if ENABLE_UECC
   uECC_set_rng_ll(lctrRng);
   uECC_shared_secret_start(pubKey, privKey);
 
   lctrScBbDrvEcc(LL_MATH_ECC_OP_GENERATE_DH_KEY);
+#endif
+
+#if ENABLE_UECC_TINYCRYPT
+  uint8_t dhKey[LL_ECC_KEY_LEN];
+  uECC_set_rng(lctrRng);
+  const struct uECC_Curve_t* pCurve = uECC_secp256r1();
+  uECC_shared_secret(pPubKey, pPrivKey, dhKey, pCurve);
+
+  /* Reverse shared secret (to little endian). */
+  lctrReverse(dhKey, LL_ECC_KEY_LEN);
+
+  /* Notify host that the key was generated. */
+  lctrNotifyGenerateDhKeyInd(dhKey);
+
+  lmgrScCb.eccOpActive = FALSE;
+#endif
 }
 
+#if ENABLE_UECC
 /*************************************************************************************************/
 /*!
  *  \brief  Continue generating Diffie-Hellman key.
@@ -252,6 +307,7 @@ void lctrGenerateDhKeyComplete(uint8_t *pDhKey)
   /* Reverse shared secret (to little endian). */
   lctrReverse(pDhKey, LL_ECC_KEY_LEN);
 }
+#endif
 
 /*************************************************************************************************/
 /*!
@@ -272,7 +328,14 @@ bool_t lctrValidatePublicKey(const uint8_t *pPubKey, bool_t generateKey)
   lctrReverseCopy(pubKey, pPubKey, LL_ECC_KEY_LEN);
   lctrReverseCopy(pubKey + LL_ECC_KEY_LEN, pPubKey + LL_ECC_KEY_LEN, LL_ECC_KEY_LEN);
 
+#if ENABLE_UECC
   pubKeyValid = (bool_t)uECC_valid_public_key_ll(pubKey);
+#endif
+
+#if ENABLE_UECC_TINYCRYPT
+  const struct uECC_Curve_t* pCurve = uECC_secp256r1();
+  pubKeyValid = (bool_t)uECC_valid_public_key(pubKey, pCurve);
+#endif
 
   if (!pubKeyValid && generateKey)
   {
@@ -310,33 +373,7 @@ static void lctrNotifyReadLocalP256PubKeyInd(const uint8_t *pPubKey)
   LmgrSendEvent((LlEvt_t *)&evt);
 }
 
-/*************************************************************************************************/
-/*!
- *  \brief      Notify host of key generation.
- *
- *  \param      pDhKey    Diffie-Hellman key.
- */
-/*************************************************************************************************/
-static void lctrNotifyGenerateDhKeyInd(const uint8_t *pDhKey)
-{
-  LlGenerateDhKeyInd_t evt =
-  {
-    .hdr =
-    {
-      .param  = 0,
-      .event  = LL_GENERATE_DHKEY_CMPL_IND,
-      .status = LL_SUCCESS
-    }
-  };
-
-  evt.status = lmgrScCb.pubKeyValid ? LL_SUCCESS : LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
-  memcpy(evt.dhKey, pDhKey, sizeof(evt.dhKey));
-
-  LL_TRACE_INFO0("### LlEvent ###  LL_GENERATE_DHKEY_CMPL_IND, status=LL_SUCCESS");
-
-  LmgrSendEvent((LlEvt_t *)&evt);
-}
-
+#if ENABLE_UECC
 /*************************************************************************************************/
 /*!
  *  \brief      P-256 key pair generation.
@@ -388,6 +425,7 @@ static void lctrScGenerateDhKeyContinue(void)
     lmgrScCb.eccOpActive = FALSE;
   }
 }
+#endif
 
 /*************************************************************************************************/
 /*!
@@ -409,6 +447,8 @@ uint8_t LctrGenerateP256KeyPair(void)
 
   /* Start operation. */
   lmgrScCb.eccOpActive = TRUE;
+
+#if ENABLE_UECC
   if (lmgrScCb.privKeySet)
   {
     lctrGenerateP256PublicKeyStart(lmgrScCb.privKey);
@@ -417,6 +457,37 @@ uint8_t LctrGenerateP256KeyPair(void)
   {
     lctrGenerateP256KeyPairStart();
   }
+#endif
+
+#if ENABLE_UECC_TINYCRYPT
+  uint8_t pubKey[LL_ECC_KEY_LEN * 2];
+  uint8_t privKey[LL_ECC_KEY_LEN];
+
+  if (lmgrScCb.privKeySet)
+  {
+    /* Reverse private key (to big endian). */
+    lctrReverseCopy(privKey, lmgrScCb.privKey, LL_ECC_KEY_LEN);
+  }
+  else
+  {
+    /* Generate private key. */
+    lctrRng(privKey, sizeof(privKey));
+  }
+
+  uECC_set_rng(lctrRng);
+  const struct uECC_Curve_t* pCurve = uECC_secp256r1();
+  uECC_make_key(pubKey, privKey, pCurve);
+
+  /* Reverse keys (to little endian). */
+  lctrReverse(pubKey, LL_ECC_KEY_LEN);
+  lctrReverse(pubKey + LL_ECC_KEY_LEN, LL_ECC_KEY_LEN);
+  lctrReverseCopy(lmgrScCb.privKey, privKey, LL_ECC_KEY_LEN);
+
+  /* Notify host that the key was generated. */
+  lctrNotifyReadLocalP256PubKeyInd(pubKey);
+
+  lmgrScCb.eccOpActive = FALSE;
+#endif
 
   return LL_SUCCESS;
 }
@@ -471,23 +542,23 @@ uint8_t LctrGenerateDhKey(const uint8_t *pPubKey, const uint8_t *pPrivKey)
 uint8_t LctrGenerateDebugDhKey()
 {
   const uint8_t privKey[LL_ECC_KEY_LEN] = {
-                                          0xbd, 0x1a, 0x3c, 0xcd,  0xa6, 0xb8, 0x99, 0x58,
-                                          0x99, 0xb7, 0x40, 0xeb,  0x7b, 0x60, 0xff, 0x4a,
-                                          0x50, 0x3f, 0x10, 0xd2,  0xe3, 0xb3, 0xc9, 0x74,
-                                          0x38, 0x5f, 0xc5, 0xa3,  0xd4, 0xf6, 0x49, 0x3f
+                                            0xbd, 0x1a, 0x3c, 0xcd,  0xa6, 0xb8, 0x99, 0x58,
+                                            0x99, 0xb7, 0x40, 0xeb,  0x7b, 0x60, 0xff, 0x4a,
+                                            0x50, 0x3f, 0x10, 0xd2,  0xe3, 0xb3, 0xc9, 0x74,
+                                            0x38, 0x5f, 0xc5, 0xa3,  0xd4, 0xf6, 0x49, 0x3f
                                           };
 
   const uint8_t pubKey[LL_ECC_KEY_LEN * 2] = {
-                                             /* pubDebugKey_x */
-                                             0xe6, 0x9d, 0x35, 0x0e,  0x48, 0x01, 0x03, 0xcc,
-                                             0xdb, 0xfd, 0xf4, 0xac,  0x11, 0x91, 0xf4, 0xef,
-                                             0xb9, 0xa5, 0xf9, 0xe9,  0xa7, 0x83, 0x2c, 0x5e,
-                                             0x2c, 0xbe, 0x97, 0xf2,  0xd2, 0x03, 0xb0, 0x20,
-                                             /* pubDebuKey_y */
-                                             0x8b, 0xd2, 0x89, 0x15,  0xd0, 0x8e, 0x1c, 0x74,
-                                             0x24, 0x30, 0xed, 0x8f,  0xc2, 0x45, 0x63, 0x76,
-                                             0x5c, 0x15, 0x52, 0x5a,  0xbf, 0x9a, 0x32, 0x63,
-                                             0x6d, 0xeb, 0x2a, 0x65,  0x49, 0x9c, 0x80, 0xdc
+                                               /* pubDebugKey_x */
+                                               0xe6, 0x9d, 0x35, 0x0e,  0x48, 0x01, 0x03, 0xcc,
+                                               0xdb, 0xfd, 0xf4, 0xac,  0x11, 0x91, 0xf4, 0xef,
+                                               0xb9, 0xa5, 0xf9, 0xe9,  0xa7, 0x83, 0x2c, 0x5e,
+                                               0x2c, 0xbe, 0x97, 0xf2,  0xd2, 0x03, 0xb0, 0x20,
+                                               /* pubDebuKey_y */
+                                               0x8b, 0xd2, 0x89, 0x15,  0xd0, 0x8e, 0x1c, 0x74,
+                                               0x24, 0x30, 0xed, 0x8f,  0xc2, 0x45, 0x63, 0x76,
+                                               0x5c, 0x15, 0x52, 0x5a,  0xbf, 0x9a, 0x32, 0x63,
+                                               0x6d, 0xeb, 0x2a, 0x65,  0x49, 0x9c, 0x80, 0xdc
                                              };
 
    /* Allow only one key pair generation at a time. */
@@ -529,8 +600,10 @@ uint8_t LctrSetValidatePublicKeyMode(uint8_t validateMode)
 /*************************************************************************************************/
 void LctrScInit(void)
 {
+#if ENABLE_UECC
   lctrEventHdlrTbl[LCTR_EVENT_SC_GENERATE_P256_KEY_PAIR] = lctrScGenerateP256KeyPairContinue;
   lctrEventHdlrTbl[LCTR_EVENT_SC_GENERATE_DHKEY] = lctrScGenerateDhKeyContinue;
+#endif
 
   lmgrPersistCb.featuresDefault |= LL_FEAT_REMOTE_PUB_KEY_VALIDATION;
   lmgrScCb.validatePubKeyMode = KEY_VALIDATE_MODE_ALT2;

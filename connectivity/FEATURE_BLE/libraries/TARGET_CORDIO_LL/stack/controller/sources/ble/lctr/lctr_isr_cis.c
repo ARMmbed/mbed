@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 ARM Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -120,9 +120,9 @@ bool_t lctrCisProcessRxAck(lctrCisCtx_t *pCisCtx)
 {
   bool_t result = FALSE;
 
+  /* Nulls must not be ACKed. */
   if (pCisCtx->rxHdr.np == 1)
   {
-    /* NULL PDU doesn't need to be acked or processed.*/
     return result;
   }
 
@@ -141,7 +141,10 @@ bool_t lctrCisProcessRxAck(lctrCisCtx_t *pCisCtx)
     if ((pCisCtx->rxHdr.len) ||
         ((pCisCtx->rxHdr.len == 0) && (pCisCtx->rxHdr.llid == LL_LLID_ISO_UNF_END_PDU)))
     {
-      /* lctrCisIncPacketCounterRx(pCisCtx) */ /* done after decryption in lctrCisRxPendingHandler */
+      if (lctrSetDecryptPktCountHdlr)
+      {
+        lctrCisIncPacketCounterRx(pCisCtx);
+      }
       result = TRUE;
     }
     else /* Empty PDU. */
@@ -152,7 +155,10 @@ bool_t lctrCisProcessRxAck(lctrCisCtx_t *pCisCtx)
     /* length of 0 and LLID of LL_LLID_EMPTY_PDU implies padding/empty PDU. */
 
     pCisCtx->txHdr.nesn++;
-    pCisCtx->rxFtParamList.pHead->ftParam.pduRcved = TRUE;
+    if (pCisCtx->rxFtParamList.pHead != NULL)
+    {
+      pCisCtx->rxFtParamList.pHead->ftParam.pduRcved = TRUE;
+    }
     return result;
   }
 
@@ -191,10 +197,9 @@ void lctrCisTxPduAck(lctrCisCtx_t *pCisCtx)
 /*************************************************************************************************/
 bool_t lctrCisProcessTxAck(lctrCisCtx_t *pCisCtx)
 {
-  if (((pCisCtx->rxHdr.nesn ^ pCisCtx->txHdr.sn) & 1) == 1)           /* bits are different */
+  if (((pCisCtx->rxHdr.nesn ^ pCisCtx->dataSn) & 1) == 1)           /* bits are different */
   {
-    pCisCtx->txHdr.sn++;
-
+    pCisCtx->dataSn++;
 
     if (pCisCtx->txBufPendAck)
     {
@@ -205,11 +210,13 @@ bool_t lctrCisProcessTxAck(lctrCisCtx_t *pCisCtx)
     else
     {
       /*** Peer ACK'ed an Empty PDU ***/
-
       pCisCtx->txDataCounter++;
     }
 
-    pCisCtx->txFtParamList.pHead->ftParam.pduAcked = TRUE;
+    if (pCisCtx->txFtParamList.pHead != NULL)
+    {
+      pCisCtx->txFtParamList.pHead->ftParam.pduAcked = TRUE;
+    }
 
     return TRUE;
   }
@@ -276,6 +283,7 @@ uint16_t lctrCisSetupForTx(lctrCigCtx_t *pCigCtx, uint8_t rxStatus, bool_t reqTx
   pCisCtx->txHdr.np   = 0;
   pCisCtx->txHdr.len  = 0;
   pCisCtx->txHdr.llid = LL_LLID_ISO_UNF_END_PDU;
+  pCisCtx->txHdr.sn = pCisCtx->dataSn;
 
   if ((rxStatus != BB_STATUS_SUCCESS) ||
       reqTx)
@@ -312,6 +320,7 @@ uint16_t lctrCisSetupForTx(lctrCigCtx_t *pCigCtx, uint8_t rxStatus, bool_t reqTx
       bbDesc[0].pBuf[0] ^= llTesterCb.pktLlId & 0x03;
 #endif
 
+      lctrSetBbCisPacketCounterTx(pCisCtx);
       BbBleCisTxData(&bbDesc[0], bbDescCnt);
       numTxBytes = LL_DATA_HDR_LEN + bbDesc[0].pBuf[LCTR_ISO_DATA_PDU_LEN_OFFSET];
 
@@ -325,7 +334,10 @@ uint16_t lctrCisSetupForTx(lctrCigCtx_t *pCigCtx, uint8_t rxStatus, bool_t reqTx
       /*** Send Empty PDU ***/
 
       lctrCisBuildEmptyPdu(pCisCtx);
-      pFtParam->pduType[pFtParam->pduCounter] = LCTR_CIS_PDU_EMPTY;
+      if (pFtParam != NULL)
+      {
+        pFtParam->pduType[pFtParam->pduCounter] = LCTR_CIS_PDU_EMPTY;
+      }
 
       PalBbBleTxBufDesc_t desc = {.pBuf = lctrCisIsr.emptyPdu, .len = sizeof(lctrCisIsr.emptyPdu)};
       BbBleCisTxData(&desc, 1);
@@ -347,12 +359,12 @@ uint16_t lctrCisSetupForTx(lctrCigCtx_t *pCigCtx, uint8_t rxStatus, bool_t reqTx
 /*************************************************************************************************/
 void lctrCisRxPostProcessing(lctrCisCtx_t *pCisCtx, uint8_t *pRxBuf)
 {
-  if (pCisCtx->validRx)       /* Another buffer ready to replace the received one. */
-  {
-    lctrCisRxEnq(pRxBuf, pCisCtx->cisEvtCounter, pCisCtx->cisHandle);
-  }
-  else
+  if (!pCisCtx->validRx && (pRxBuf != NULL)) /* Another buffer ready to replace the received one. */
   {
     lctrCisRxPduFree(pRxBuf);
+    pRxBuf = NULL;
   }
+
+  /* Notify the task */
+  lctrCisRxEnq(pRxBuf, pCisCtx->cisEvtCounter, pCisCtx->cisHandle);
 }

@@ -242,7 +242,7 @@ void attsProcReadBlobReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
 
   if (err)
   {
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_BLOB_REQ, handle, err);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_BLOB_REQ, handle, err);
   }
 }
 
@@ -370,7 +370,7 @@ void attsProcFindTypeReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
   }
   else
   {
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_FIND_TYPE_REQ, startHandle, err);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_FIND_TYPE_REQ, startHandle, err);
   }
 }
 
@@ -461,7 +461,7 @@ void attsProcReadTypeReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
         }
         else
         {
-          attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_TYPE_REQ, startHandle, ATT_ERR_RESOURCES);
+          attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_TYPE_REQ, startHandle, ATT_ERR_RESOURCES);
         }
 
         return;
@@ -558,7 +558,7 @@ void attsProcReadTypeReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
   }
   else
   {
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_TYPE_REQ, startHandle, err);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_TYPE_REQ, startHandle, err);
   }
 }
 
@@ -670,7 +670,7 @@ void attsProcReadMultReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
       WsfMsgFree(pBuf);
     }
 
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_MULT_REQ, handle, err);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_MULT_REQ, handle, err);
   }
 }
 
@@ -833,6 +833,6 @@ void attsProcReadGroupTypeReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
   }
   else
   {
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_GROUP_TYPE_REQ, startHandle, err);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_GROUP_TYPE_REQ, startHandle, err);
   }
 }

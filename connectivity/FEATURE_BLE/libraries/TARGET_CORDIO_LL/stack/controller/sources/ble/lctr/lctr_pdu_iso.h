@@ -82,7 +82,7 @@ typedef struct
   uint16_t          pktSn;              /*!< Packet sequence number. */
   uint16_t          sduLen;             /*!< SDU length. */
   lctrPktStatus_t   ps:8;               /*!< Packet status. */
-  const uint8_t     *pSdu;              /*!< First byte of ISO SDU. */
+  uint8_t           *pSdu;              /*!< First byte of ISO SDU. */
 } lctrIsoHdr_t;
 
 /*! \brief      ISO SDU descriptor. */
@@ -136,7 +136,7 @@ uint8_t lctrBisPackBigChannelMapInd(uint8_t *pBuf, uint64_t chanMap, uint16_t in
 uint8_t lctrBisPackBigTerminateInd(uint8_t *pBuf, uint8_t reason, uint16_t instance);
 
 /* Unpack */
-uint8_t lctrIsoUnpackHdr(lctrIsoHdr_t *pHdr, const uint8_t *pBuf);
+uint8_t lctrIsoUnpackHdr(lctrIsoHdr_t *pHdr, uint8_t *pBuf);
 uint8_t lctrCisUnpackDataPduHdr(lctrCisDataPduHdr_t *pHdr, const uint8_t *pBuf);
 uint8_t lctrBisUnpackDataPduHdr(lctrBisDataPduHdr_t *pHdr, const uint8_t *pBuf);
 uint8_t lctrBisUnpackBigChannelMapInd(uint64_t *pChanMap, uint16_t *pInstance, const uint8_t *pBuf);

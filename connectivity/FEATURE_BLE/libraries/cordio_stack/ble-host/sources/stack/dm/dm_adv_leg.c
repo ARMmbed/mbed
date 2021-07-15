@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2016-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -166,7 +166,7 @@ void dmAdvActStart(dmAdvMsg_t *pMsg)
 {
   DM_TRACE_INFO1("dmAdvActStart: state: %d", dmAdvCb.advState[DM_ADV_HANDLE_DEFAULT]);
 
-   if (dmAdvCb.advState[DM_ADV_HANDLE_DEFAULT] == DM_ADV_STATE_IDLE)
+  if (dmAdvCb.advState[DM_ADV_HANDLE_DEFAULT] == DM_ADV_STATE_IDLE)
   {
     /* if doing directed advertising ignore the request */
     if ((dmAdvCb.advType[DM_ADV_HANDLE_DEFAULT] == DM_ADV_CONN_DIRECT) ||
@@ -444,9 +444,6 @@ void dmAdvStartDirected(uint8_t advType, uint16_t duration, uint8_t addrType, ui
   /* if not advertising */
   if (dmAdvCb.advState[DM_ADV_HANDLE_DEFAULT] == DM_ADV_STATE_IDLE)
   {
-    /* start advertising */
-    HciLeSetAdvEnableCmd(TRUE);
-
     /* store advertising info */
     dmAdvCb.advState[DM_ADV_HANDLE_DEFAULT] = (advType == DM_ADV_CONN_DIRECT) ? \
                                               DM_ADV_STATE_STARTING_DIRECTED : DM_ADV_STATE_STARTING;
@@ -454,6 +451,9 @@ void dmAdvStartDirected(uint8_t advType, uint16_t duration, uint8_t addrType, ui
     dmAdvCb.advDuration[DM_ADV_HANDLE_DEFAULT] = duration;
     BdaCpy(dmAdvCb.peerAddr[DM_ADV_HANDLE_DEFAULT], pAddr);
     dmAdvCb.peerAddrType[DM_ADV_HANDLE_DEFAULT] = addrType;
+
+    /* start advertising */
+    HciLeSetAdvEnableCmd(TRUE);
   }
 }
 

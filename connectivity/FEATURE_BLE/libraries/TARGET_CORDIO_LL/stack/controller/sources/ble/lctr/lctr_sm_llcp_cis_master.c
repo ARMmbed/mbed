@@ -249,7 +249,12 @@ bool_t lctrMstLlcpExecuteCisEstSm(lctrConnCtx_t *pCtx, uint8_t event)
   }
 
   lctrCisCtx_t *pCisCtx = lctrFindCisByHandle(pCtx->llcpCisHandle);
-  WSF_ASSERT(pCisCtx != NULL)
+  if (pCisCtx == NULL)
+  {
+    LL_TRACE_WARN1("lctrMstLlcpExecuteCisEstSm: CIS context not found cis_handle=%u", pCtx->llcpCisHandle);
+    /* TRUE to prevent further processing of this message. */
+    return TRUE;
+  }
 
   switch (pCtx->llcpState)
   {

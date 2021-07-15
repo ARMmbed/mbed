@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2010-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -130,7 +130,7 @@ smpScPubKey_t *smpGetPeerPublicKey(dmConnId_t connId);
 void smpSetPeerPublicKey(dmConnId_t connId, smpScPubKey_t *pKey);
 void SmpScSetOobCfg(dmConnId_t connId, dmSecLescOobCfg_t *pConfig);
 void smpScAuthReq(smpCcb_t *pCcb, uint8_t oob, uint8_t display);
-void smpScFailWithReattempt(smpCcb_t *pCcb);
+void smpScFailWithReattempt(smpCcb_t *pCcb, uint8_t status);
 void SmpScInit(void);
 
 /* common command send functoins */

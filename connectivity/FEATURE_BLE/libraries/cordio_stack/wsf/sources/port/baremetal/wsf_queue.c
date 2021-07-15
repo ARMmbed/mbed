@@ -1,10 +1,8 @@
 /*************************************************************************************************/
 /*!
- *  \file   wsf_queue.c
+ *  \file
  *
  *  \brief  General purpose queue service.
- *
- *  Copyright (c) 2009-2018 Arm Ltd. All Rights Reserved.
  *
  *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
@@ -167,7 +165,6 @@ void WsfQueuePush(wsfQueue_t *pQueue, void *pElem)
  *  \param  pElem     Pointer to element to be inserted.
  *  \param  pPrev     Pointer to previous element in the queue before element to be inserted.
  *                    Note:  set pPrev to NULL if pElem is first element in queue.
- *  \return None.
  */
 /*************************************************************************************************/
 void WsfQueueInsert(wsfQueue_t *pQueue, void *pElem, void *pPrev)
@@ -212,7 +209,6 @@ void WsfQueueInsert(wsfQueue_t *pQueue, void *pElem, void *pPrev)
  *  \param  pElem     Pointer to element to be removed.
  *  \param  pPrev     Pointer to previous element in the queue before element to be removed.
  *                    Note:  set pPrev to NULL if pElem is first element in queue.
- *  \return None.
  */
 /*************************************************************************************************/
 void WsfQueueRemove(wsfQueue_t *pQueue, void *pElem, void *pPrev)

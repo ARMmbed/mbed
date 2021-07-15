@@ -606,6 +606,8 @@ void lctrTxDataPduQueue(lctrConnCtx_t *pCtx, uint16_t fragLen, lctrAclHdr_t *pAc
 /*************************************************************************************************/
 void lctrTxCtrlPduQueue(lctrConnCtx_t *pCtx, uint8_t *pBuf)
 {
+  pCtx->numTxPendCtrlPdu++;
+
 #if (LL_ENABLE_TESTER)
   uint16_t connHandle = LCTR_GET_CONN_HANDLE(pCtx);
 #endif

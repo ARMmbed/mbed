@@ -35,24 +35,20 @@ extern "C" {
  *  \{ */
 
 /**************************************************************************************************
-  Macros
-**************************************************************************************************/
-
-/*! \brief      Operational states. */
-typedef enum
-{
-  PAL_TIMER_STATE_UNINIT = 0,    /*!< Uninitialized state. */
-  PAL_TIMER_STATE_ERROR  = 0,    /*!< Error state. */
-  PAL_TIMER_STATE_READY,         /*!< Ready state. */
-  PAL_TIMER_STATE_BUSY           /*!< Busy state. */
-} PalTimerState_t;
-
-/**************************************************************************************************
   Data Types
 **************************************************************************************************/
 
 /*! \brief      Completion callback. */
 typedef void (*PalTimerCompCback_t)(void);
+
+/*! \brief      Timer states. */
+typedef enum
+{
+  PAL_TIMER_STATE_UNINIT = 0,
+  PAL_TIMER_STATE_ERROR = 0,
+  PAL_TIMER_STATE_READY,
+  PAL_TIMER_STATE_BUSY
+} PalTimerState_t;
 
 /**************************************************************************************************
   Function Declarations
@@ -64,9 +60,9 @@ void PalTimerDeInit(void);
 
 /* Control and Status */
 PalTimerState_t PalTimerGetState(void);
+uint32_t PalTimerGetTimeToNextExpiration(void);
 void PalTimerStart(uint32_t expUsec);
 void PalTimerStop(void);
-uint32_t PalTimerGetCurrentTime(void);
 
 /*! \} */    /* PAL_TIMER */
 

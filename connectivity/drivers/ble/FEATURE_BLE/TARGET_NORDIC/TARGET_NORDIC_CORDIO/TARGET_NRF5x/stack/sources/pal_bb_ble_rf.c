@@ -72,12 +72,12 @@ int16_t bbBleRxPathComp = -1280;
 
 /*************************************************************************************************/
 /*!
- *  \brief      Get receive RF path compensation.
+ *  \brief      Get transmit RF path compensation.
  *
  *  \return     Transmit RF path compensation (in 1-dBm units).
  */
 /*************************************************************************************************/
-int8_t PalRadioGetRxRfPathComp(void)
+int8_t palRadioGetTxRfPathComp(void)
 {
   uint16_t pathCompUnsigned = (uint16_t)(bbBleTxPathComp - BB_BLE_MIN_PATH_COMP);
 
@@ -195,7 +195,7 @@ int8_t PalRadioGetActualTxPower(int8_t txPwr, bool_t compFlag)
 
   if (compFlag)
   {
-    txPwr += PalRadioGetRxRfPathComp();
+    txPwr += palRadioGetTxRfPathComp();
   }
 
   return txPwr;

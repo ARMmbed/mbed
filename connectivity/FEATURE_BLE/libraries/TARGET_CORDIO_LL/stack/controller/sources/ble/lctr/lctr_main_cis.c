@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -143,6 +143,38 @@ void lctrCleanupCtx(lctrCisCtx_t *pCisCtx)
   lctrCigCtx_t *pCigCtx = lctrFindCigById(pCisCtx->cigId);
   WSF_ASSERT(pCigCtx);
 
+  uint8_t *pBuf;
+  uint8_t numTxBufs;
+  wsfHandlerId_t handlerId;
+
+  pCisCtx->cisEvtCounter = 0;
+  pCisCtx->firstFromPeer = FALSE;
+  pCisCtx->connEst = FALSE;
+
+  /* Must do one at a time in case one datapath is not used. */
+  LctrRemoveIsoDataPath(pCisCtx->cisHandle, LL_ISO_DATA_PATH_INPUT_BIT);
+  LctrRemoveIsoDataPath(pCisCtx->cisHandle, LL_ISO_DATA_PATH_OUTPUT_BIT);
+
+  /* Flush remaining transmit packets. */
+  numTxBufs = lctrCisTxQueueClear(pCisCtx);
+
+  /* Flush remaining transmit packets. */
+  while ((pBuf = WsfMsgDeq(&pCisCtx->txIsoQ, &handlerId)) != NULL)
+  {
+    lctrDataTxIncAvailBuf();
+    numTxBufs++;
+
+    WsfMsgFree(pBuf);
+  }
+
+  /* Flush remaining Tx/Rx flush timeout list. */
+  lctrCisFtListClear(&pCisCtx->txFtParamList);
+  lctrCisFtListClear(&pCisCtx->rxFtParamList);
+
+  /* Cleanup timers. */
+  WsfTimerStop(&pCisCtx->tmrSupTimeout);
+  WsfTimerStop(&pCisCtx->tmrProcRsp);
+
   if (lctrCisIsHeadCis(&pCigCtx->list, pCisCtx) == TRUE)
   {
     pCigCtx->headCisRmved = TRUE;
@@ -177,6 +209,11 @@ void lctrCleanupCtx(lctrCisCtx_t *pCisCtx)
 
     if (lctrCisIsListEmpty(&pCigCtx->list))
     {
+      /* Refresh CIG context to get ready for re-starting CIS. */
+      pCigCtx->headCisRmved = FALSE;
+      pCigCtx->isBodBuilt = FALSE;
+      pCigCtx->isBodStarted = FALSE;
+
       if (pCigCtx->isRmAdded == TRUE)
       {
         SchRmRemove(LCTR_GET_CIG_RM_HANDLE(pCigCtx));
@@ -204,7 +241,6 @@ void lctrCleanupCtx(lctrCisCtx_t *pCisCtx)
   }
 
   void *pIsoBuf;
-  uint8_t handlerId;
   while ((pIsoBuf = WsfMsgDeq(&pCisCtx->isoalTxCtx.pendingSduQ, &handlerId)) != NULL)
   {
     WsfMsgFree(pIsoBuf);
@@ -222,36 +258,8 @@ void lctrCleanupCtx(lctrCisCtx_t *pCisCtx)
 /*************************************************************************************************/
 void lctrFreeCisCtx(lctrCisCtx_t *pCisCtx)
 {
-  uint8_t *pBuf;
-  uint8_t numTxBufs;
-  wsfHandlerId_t handlerId;
-
   WSF_ASSERT(pCisCtx->enabled);
   pCisCtx->enabled = FALSE;
-
-  /* Clean up receive context. */
-  lctrIsoOutDataPathClear(&pCisCtx->dataPathOutCtx);
-
-  /* Flush remaining transmit packets. */
-  numTxBufs = lctrCisTxQueueClear(pCisCtx);
-
-  /* Flush remaining transmit packets. */
-  while ((pBuf = WsfMsgDeq(&pCisCtx->txIsoQ, &handlerId)) != NULL)
-  {
-    lctrDataTxIncAvailBuf();
-    numTxBufs++;
-
-    WsfMsgFree(pBuf);
-  }
-
-  /* Flush remaining Tx/Rx flush timeout list. */
-  lctrCisFtListClear(&pCisCtx->txFtParamList);
-  lctrCisFtListClear(&pCisCtx->rxFtParamList);
-
-  /* Cleanup timers. */
-  WsfTimerStop(&pCisCtx->tmrSupTimeout);
-  WsfTimerStop(&pCisCtx->tmrProcRsp);
-
 }
 
 /*************************************************************************************************/
@@ -444,7 +452,6 @@ uint16_t LctrInitCisMem(uint8_t *pFreeMem, uint32_t freeMemSize)
   pLctrCisTbl = (lctrCisCtx_t *)pAvailMem;
   pAvailMem += sizeof(lctrCisCtx_t) * pLctrRtCfg->maxCis;
 
-
   if (((uint32_t)pAvailMem) & 3)
   {
     /* Align to next word. */
@@ -493,7 +500,7 @@ void lctrCisInitFtParam(lctrFtParam_t *pFtParam, uint8_t bn, uint8_t ft, uint8_t
   if (bn == 1)
   {
     /* BN = 1, numSubEvtFt[0] = BN * NSE */
-    pFtParam->lastSubEvtFt[0] = bn * nse;
+    pFtParam->lastSubEvtFt[0] = nse;
     pFtParam->isPduDone[0] = FALSE;
     pFtParam->pduType[0] = LCTR_CIS_PDU_DEFAULT;
   }
@@ -784,7 +791,6 @@ void lctrCisSetupEncrypt(lctrCisCtx_t *pCisCtx)
 
   PalCryptoAesEcb(pCtx->ltk, pEnc->sk, pCtx->skd);
 
-  WSF_ASSERT(lctrInitCipherBlkHdlr);
   memcpy(pEnc->iv, pCtx->iv, sizeof(pEnc->iv));
   uint8_t *pTemp, accAddr[4];
   pTemp = accAddr;
@@ -796,7 +802,10 @@ void lctrCisSetupEncrypt(lctrCisCtx_t *pCisCtx)
   pEnc->dir = (pCisCtx->role == LL_ROLE_MASTER) ? 1 : 0;     /* master = 1; slave = 0 */
   pEnc->type = PAL_BB_TYPE_CIS;
 
-  lctrInitCipherBlkHdlr(pEnc, pCisCtx->cisHandle, pEnc->dir);
+  if (lctrInitCipherBlkHdlr)
+  {
+    lctrInitCipherBlkHdlr(pEnc, pCisCtx->cisHandle, pEnc->dir);
+  }
 
   pEnc->enaEncrypt = pCtx->bleData.chan.enc.enaEncrypt;
   pEnc->enaDecrypt = pCtx->bleData.chan.enc.enaDecrypt;
@@ -1638,7 +1647,14 @@ uint32_t lctrCisCalcSubEvtDurationUsecSeq(uint8_t phyMToS, uint8_t phySToM, uint
       duration += LL_DATA_LEN_TO_TIME_2M(plMToS, TRUE);
       break;
     case BB_PHY_BLE_CODED:
-      duration += LL_DATA_LEN_TO_TIME_CODED_S8(plMToS, TRUE);
+      if (lmgrGetOpFlag(LL_OP_MODE_FLAG_FORCE_CIS_CODED_PHY_S2))
+      {
+        duration += LL_DATA_LEN_TO_TIME_CODED_S2(plMToS, TRUE);
+      }
+      else
+      {
+        duration += LL_DATA_LEN_TO_TIME_CODED_S8(plMToS, TRUE);
+      }
       break;
   }
 
@@ -1655,7 +1671,14 @@ uint32_t lctrCisCalcSubEvtDurationUsecSeq(uint8_t phyMToS, uint8_t phySToM, uint
       duration += LL_DATA_LEN_TO_TIME_2M(plSToM, TRUE);
       break;
     case BB_PHY_BLE_CODED:
-      duration += LL_DATA_LEN_TO_TIME_CODED_S8(plSToM, TRUE);
+      if (lmgrGetOpFlag(LL_OP_MODE_FLAG_FORCE_CIS_CODED_PHY_S2))
+      {
+        duration += LL_DATA_LEN_TO_TIME_CODED_S2(plSToM, TRUE);
+      }
+      else
+      {
+        duration += LL_DATA_LEN_TO_TIME_CODED_S8(plSToM, TRUE);
+      }
       break;
   }
 
@@ -1745,65 +1768,168 @@ void lctrCisTxTestPayloadHandler(lctrCisCtx_t * pCisCtx)
 
 /*************************************************************************************************/
 /*!
- *  \brief      Action function for cis power monitoring.
+ *  \brief     Generate a lost/invalid SDU in case of flushed SDU.
  *
- *  \param      rssi      CIS RX RSSI.
- *  \param      status    rx status.
- *  \param      phy       phy.
- *  \param      pConnCtx  Connection context.
-*************************************************************************************************/
-void lctrCisPowerMonitorCheckRssi(int8_t rssi, uint8_t status, uint8_t phy, lctrConnCtx_t *pConnCtx)
+ *  \param     pCisCtx   CIS context.
+ */
+/*************************************************************************************************/
+void lctrCisCheckUnframedFlush(lctrCisCtx_t *pCisCtx)
 {
-  if (!(pConnCtx->usedFeatSet & LL_FEAT_POWER_CONTROL_REQUEST))
+  /*** Send up error SDU ***/
+  uint8_t handlerId;
+  uint8_t *pSdu;
+  uint8_t numHandles = 0;
+  uint16_t handles[1] = { pCisCtx->cisHandle };
+  uint16_t numSdu[1] = { 0 };
+
+  /* NULL signals lost PDU; release previously stored fragments. */
+  if (lctrRecombineRxUnframedSdu(&pCisCtx->isoalRxCtx, NULL))
+  {
+    while ((pSdu = WsfMsgDeq(&pCisCtx->isoalRxCtx.data.unframed.pendSduQ, &handlerId)) != NULL)
+    {
+      /* Enqueue SDU for processing. */
+      if (!lctrIsoRxConnEnq(&pCisCtx->dataPathOutCtx, pCisCtx->cisHandle,
+                            pCisCtx->rxPktCounter, pSdu))
+      {
+        /* The buffer was not freed, so free it now. */
+        WsfMsgFree(pSdu);
+      }
+
+      numHandles = 1;
+      numSdu[0]++;
+    }
+  }
+  else
+  {
+    if (lmgrGetOpFlag(LL_OP_MODE_FLAG_ENA_ISO_LOST_NOTIFY) &&
+       (((pCisCtx->role == LL_ROLE_SLAVE) && (pCisCtx->data.slv.rxFromMaster == FALSE)) ||
+        ((pCisCtx->role == LL_ROLE_MASTER) && (pCisCtx->data.mst.rxFromSlave == FALSE))))
+    {
+      /* No prior fragments; send lost SDU. */
+      if ((pSdu = lctrRxSduAlloc()) != NULL)
+      {
+        /* TODO: This code path increases this twice: once in lctrRxSduAlloc and lctrIsoRxConnEnq.
+         * Change to only increase once.
+         */
+        lctrIsoDataRxIncAvailBuf(1);
+
+        lctrIsoHdr_t isoHdr =
+        {
+          /* ISO header */
+          .handle = pCisCtx->cisHandle,
+          .pb     = LCTR_PB_COMP,
+          .tsFlag = FALSE,
+          .len    = 0,
+
+          /* Data load */
+          .ts     = 0,
+          .pktSn  = pCisCtx->rxPktCounter,
+          .sduLen = 0,
+          .ps     = LCTR_PS_LOST
+        };
+
+        lctrIsoPackHdr(pSdu, &isoHdr);
+
+        /* Enqueue SDU for processing. */
+        if (!lctrIsoRxConnEnq(&pCisCtx->dataPathOutCtx, pCisCtx->cisHandle,
+                              pCisCtx->rxPktCounter, pSdu))
+        {
+          /* The buffer was not freed, so free it now. */
+          WsfMsgFree(pSdu);
+        }
+        numHandles = 1;
+        numSdu[0]++;
+      }
+      else
+      {
+        LL_TRACE_WARN0("SDU Could not be allocated.");
+      }
+    }
+  }
+
+  if (lmgrPersistCb.recvIsoPendCback && numHandles)
+  {
+    /* Notify host received SDUs. */
+    lmgrPersistCb.recvIsoPendCback(numHandles, handles, numSdu);
+  }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Service function for CIS power control.
+ *
+ *  \param      pConnCtx  Connection context.
+ *
+*************************************************************************************************/
+void lctrCisServicePowerMonitor(lctrConnCtx_t *pConnCtx)
+{
+  if (!(pConnCtx->usedFeatSet & LL_FEAT_POWER_CONTROL_REQUEST) ||
+      lmgrGetOpFlag(LL_OP_MODE_FLAG_DIS_POWER_MONITOR))
   {
     pConnCtx->monitoringState = LCTR_PC_MONITOR_DISABLED;
     return;
   }
 
-  if (lmgrCb.opModeFlags & LL_OP_MODE_DISABLE_POWER_MONITOR)
-  {
-    return;
-  }
-
   int8_t sendReqDelta = 0;
+  lctrCisCtx_t *pCisCtx = NULL;
 
-  if ((rssi < pConnCtx->pclMonitorParam.autoMonitor.lowThreshold) ||
-      (status != BB_STATUS_SUCCESS))
+  for (unsigned int i = 0; i < pLctrRtCfg->maxCis; i++)
   {
-    pConnCtx->cisRssiExtremeTimeSpent++;
+    pCisCtx = &pLctrCisTbl[i];
 
-    if (pConnCtx->cisRssiExtremeTimeSpent >= pConnCtx->pclMonitorParam.autoMonitor.minTimeSpent)
+    if ((pCisCtx->aclHandle == LCTR_GET_CONN_HANDLE(pConnCtx)) &&
+        (pCisCtx->enabled) &&  (pCisCtx->connEst))
     {
-      if (!(pConnCtx->peerPwrLimits & LL_PWR_CONTROL_LIMIT_MAX_BIT))
+      if (((pCisCtx->role == LL_ROLE_SLAVE) && (pCisCtx->phyMToS == pConnCtx->bleData.chan.rxPhy)) ||
+          ((pCisCtx->role == LL_ROLE_MASTER) && (pCisCtx->phySToM == pConnCtx->bleData.chan.rxPhy)))
       {
-        LL_TRACE_INFO1("RSSI too low, requesting increase in power. phy=%u", phy);
-        sendReqDelta = pConnCtx->pclMonitorParam.autoMonitor.requestVal;
+        /* This power is already managed by ACL, so no need to run management on CIS. */
+        return;
       }
-      pConnCtx->cisRssiExtremeTimeSpent = 0;
+
+      goto CisManageRssiPower;
     }
   }
-  else if (rssi >  pConnCtx->pclMonitorParam.autoMonitor.highThreshold)
-  {
-    pConnCtx->cisRssiExtremeTimeSpent++;
+  return;
 
-    if (pConnCtx->cisRssiExtremeTimeSpent >= pConnCtx->pclMonitorParam.autoMonitor.minTimeSpent)
-    {
-      if (!(pConnCtx->peerPwrLimits & LL_PWR_CONTROL_LIMIT_MIN_BIT))
-      {
-        LL_TRACE_INFO1("RSSI too high, requesting decrease in power. phy=%u", phy);
-        sendReqDelta = -(pConnCtx->pclMonitorParam.autoMonitor.requestVal);
-      }
-      pConnCtx->cisRssiExtremeTimeSpent = 0;
-    }
-  }
-  else
+CisManageRssiPower:
+
+  lctrRssiAddAveragePoint(&pConnCtx->cisRunAvg, -((int8_t) (pConnCtx->cisAccumulatedRssi / pConnCtx->cisTotalAccumulatedRssi)));
+  pConnCtx->cisAccumulatedRssi = 0;
+  pConnCtx->cisTotalAccumulatedRssi = 0;
+
+  if (pConnCtx->cisRunAvg.avgCount >= LL_PC_TBL_LEN)
   {
-    pConnCtx->cisRssiExtremeTimeSpent = 0;
+    int8_t averageRunning = lctrRssiGetAverage(&pConnCtx->cisRunAvg);
+
+    if ((averageRunning > pConnCtx->pclMonitorParam.autoMonitor.highThreshold) &&
+        !(pConnCtx->peerPwrLimits & LL_PWR_CONTROL_LIMIT_MIN_BIT))
+    {
+      sendReqDelta = -(pConnCtx->pclMonitorParam.autoMonitor.requestVal);
+    }
+    else if ((averageRunning < pConnCtx->pclMonitorParam.autoMonitor.lowThreshold) &&
+             !(pConnCtx->peerPwrLimits & LL_PWR_CONTROL_LIMIT_MAX_BIT))
+    {
+      sendReqDelta = pConnCtx->pclMonitorParam.autoMonitor.requestVal;
+    }
   }
 
   if (sendReqDelta != 0)
   {
+    if ((pConnCtx->llcpActiveProc == LCTR_PROC_PWR_CTRL) ||
+        (pConnCtx->llcpPendMask & (1 << LCTR_PROC_PWR_CTRL)))
+    {
+      LL_TRACE_WARN0("Power control LLCP already ongoing or pended upon attempt to start new power control process.");
+      return;
+    }
+
     lctrMsgPwrCtrlReq_t *pMsg;
+    uint8_t phy = ((pCisCtx->role == LL_ROLE_MASTER) ? pCisCtx->phySToM : pCisCtx->phyMToS);
+
+    /* Decide to request S8 or S2 PHY. */
+    phy += (((phy == LL_PHY_LE_CODED) &&
+            (pCisCtx->bleData.chan.initTxPhyOptions == LL_PHY_OPTIONS_S2_PREFERRED)) ? 1 : 0);
+
     if ((pMsg = (lctrMsgPwrCtrlReq_t *)WsfMsgAlloc(sizeof(*pMsg))) != NULL)
     {
       pMsg->hdr.handle = LCTR_GET_CONN_HANDLE(pConnCtx);
@@ -1814,6 +1940,8 @@ void lctrCisPowerMonitorCheckRssi(int8_t rssi, uint8_t status, uint8_t phy, lctr
 
       WsfMsgSend(lmgrPersistCb.handlerId, pMsg);
     }
+
+    pConnCtx->cisRunAvg.avgCount = 0;
   }
 }
 

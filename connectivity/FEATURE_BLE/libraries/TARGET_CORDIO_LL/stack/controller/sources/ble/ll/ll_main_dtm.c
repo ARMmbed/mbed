@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -137,8 +137,8 @@ static uint32_t llCalcPacketInterval(uint8_t len, uint8_t phy, uint8_t phyOption
       break;
   }
 
-  /* ceil((L + 249) / 625) * 625 */
-  return LL_MATH_DIV_625(totalTime + 249 + 624) * 625;
+  /* ceil((t) / 625) * 625 */
+  return LL_MATH_DIV_625(totalTime + 624) * 625;
 }
 
 /*************************************************************************************************/
@@ -211,7 +211,7 @@ static inline void llPrbs9Payload(uint8_t *pBuf, uint8_t len)
 
 /*************************************************************************************************/
 /*!
- *  \brief      Buikld transmit buffer.
+ *  \brief      Build transmit buffer.
  *
  *  \param      len         Length of test data.
  *  \param      pktType     Test packet payload type.
@@ -408,7 +408,7 @@ static bool_t llTestTxComplete(BbOpDesc_t *pOp, uint8_t status)
 /*************************************************************************************************/
 uint8_t LlEnhancedTxTest(uint8_t rfChan, uint8_t len, uint8_t pktType, uint8_t phy, uint16_t numPkt)
 {
-  WSF_CS_INIT();
+  WSF_CS_INIT(cs);
 
   LL_TRACE_INFO3("### LlApi ###  LlTxTest, rfChan=%u, len=%u, pktType=%u", rfChan, len, pktType);
 
@@ -489,7 +489,7 @@ uint8_t LlEnhancedTxTest(uint8_t rfChan, uint8_t len, uint8_t pktType, uint8_t p
   len = WSF_MIN(len, WSF_MAX(LL_ADVB_MAX_LEN - LL_ADV_HDR_LEN, LL_DTM_MAX_PLD_LEN));
 
   /* Modify operational parameters. */
-  WSF_CS_ENTER();
+  WSF_CS_ENTER(cs);
   llTestCb.tx.pduLen  = WSF_MIN(len, WSF_MAX(LL_ADVB_MAX_LEN - LL_ADV_HDR_LEN, LL_DTM_MAX_PLD_LEN));
   llTestCb.tx.pktType = pktType;
   llTestCb.tx.chanIdx = llConvertRfChanToChanIdx(rfChan);
@@ -515,7 +515,7 @@ uint8_t LlEnhancedTxTest(uint8_t rfChan, uint8_t len, uint8_t pktType, uint8_t p
 
   llTestCb.tx.errPattern = 0xFFFFFFFF;
   llTestCb.tx.errBit     = 0;
-  WSF_CS_EXIT();
+  WSF_CS_EXIT(cs);
 
   if (llTestCb.state == LL_TEST_STATE_TX)
   {

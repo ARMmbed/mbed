@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2010-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -77,8 +77,12 @@ void smprScActSendPubKey(smpCcb_t *pCcb, smpMsg_t *pMsg)
   /* Execute Common Auth Select actions */
   smpScActAuthSelect(pCcb, pMsg);
 
-  /* Send our public key */
-  smpScSendPubKey(pCcb, pMsg);
+  /* Verify auth select didn't result in a cancel request */
+  if (pCcb->state)
+  {
+    /* Send our public key */
+    smpScSendPubKey(pCcb, pMsg);
+  }
 }
 
 /*************************************************************************************************/
@@ -306,7 +310,7 @@ void smprScActPkSendRand(smpCcb_t *pCcb, smpMsg_t *pMsg)
   /* Verify the Calculated Cai to previously received Cai */
   if (memcmp(pCcb->pScCcb->pScratch->PeerCa_Ea, pMsg->aes.pCiphertext, SMP_RAND_LEN))
   {
-    smpScFailWithReattempt(pCcb);
+    smpScFailWithReattempt(pCcb, SMP_ERR_CONFIRM_VALUE);
   }
   else
   {
@@ -417,7 +421,7 @@ void smprScActOobSendRand(smpCcb_t *pCcb, smpMsg_t *pMsg)
     /* Check that the Ca value passed via OOB methods match expectations */
     if (memcmp(pCcb->pScCcb->pScratch->PeerCa_Ea, pMsg->aes.pCiphertext, SMP_CONFIRM_LEN))
     {
-      smpScFailWithReattempt(pCcb);
+      smpScFailWithReattempt(pCcb, SMP_ERR_CONFIRM_VALUE);
       return;
     }
   }
@@ -527,6 +531,8 @@ void smprScActDHKeyCheckSend(smpCcb_t *pCcb, smpMsg_t *pMsg)
 
     memset((pCcb->pScCcb->pLtk->ltk_t + encKeyLen), 0, (SMP_KEY_LEN - encKeyLen));
     pCcb->keyReady = TRUE;
+    
+    SMP_TRACE_128("LTK:", pCcb->pScCcb->pLtk->ltk_t);
 
     /* Send the DH Key check Eb to the initiator */
     smpScSendDHKeyCheck(pCcb, pMsg, pCcb->pScCcb->pScratch->Nb_Eb);

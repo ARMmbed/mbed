@@ -4,7 +4,7 @@
  *
  *  \brief  Link layer controller master BIG ISR callbacks.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -43,6 +43,9 @@ static struct
   uint8_t *pCtrlBuf;        /*!< Received BIS Control PDU buffer. */
   uint8_t *pDataBuf[LL_MAX_BIS][LL_MAX_BN];
                             /*!< Received data buffers. */
+  uint8_t numRxPdus[LL_MAX_BIS];
+                            /*!< Number of successfully received packets for each BIS. */
+  uint8_t curChanIdx;       /*!< Current channel index. */
 } lctrMstBisIsr;
 
 /**************************************************************************************************
@@ -54,42 +57,86 @@ static struct
  *  \brief  Update loop counters for sequential packing.
  *
  *  \param  pBigCtx     BIG context.
+ *  \param  pReAcqTrain Returns TRUE if re-acquisition is required, unchanged otherwise.
  *
  *  \return TRUE if more Rx pending, FALSE otherwise.
  */
 /*************************************************************************************************/
-static bool_t lctrMstBisLoopCounterSequential(lctrBigCtx_t *pBigCtx)
+static bool_t lctrMstBisLoopCounterSequential(lctrBigCtx_t *pBigCtx, bool_t *pReAcqTrain)
 {
-  size_t numSePkts = (pBigCtx->bn * pBigCtx->irc) + lctrMstBisIsr.se.ptIdx;
+  int numSkipSe = -1;
+  PalBbBleChan_t *pCurChan = NULL;
+  uint32_t curSeOffs;
 
-  /* BIG Event limit (beyond BIS Control SubEvent). */
-
-  if (lctrMstBisIsr.se.bisEvtIdx >= pBigCtx->numBis)
+  do
   {
-    return FALSE;
-  }
+    numSkipSe++;
+    uint8_t numSeIntervals = 1;
 
-  if (!lctrSlvBisCalcNextIdxSequential(pBigCtx, &lctrMstBisIsr.se, numSePkts))
-  {
-    if (!lctrMstBisIsr.cstf)
+    unsigned int numSePkts = (pBigCtx->bn * pBigCtx->irc) + lctrMstBisIsr.se.ptIdx;
+
+    /* BIG Event limit (beyond BIS Control SubEvent). */
+
+    if (lctrMstBisIsr.se.bisEvtIdx >= pBigCtx->numBis)
     {
       return FALSE;
     }
-  }
 
-  /* Compute next channel. */
-  lctrSeCtx_t nextSe = lctrMstBisIsr.se;
-  if (lctrSlvBisCalcNextIdxSequential(pBigCtx, &nextSe, numSePkts))
-  {
-    lctrMstBisIsr.pNextChan = &pBigCtx->pBisCtx[nextSe.bisEvtIdx]->chan;
-  }
-  else
-  {
-    lctrMstBisIsr.pNextChan = &pBigCtx->ctrChan;
-  }
+    if (!lctrBisCalcNextIdxSequential(pBigCtx, &lctrMstBisIsr.se, numSePkts))
+    {
+      if (!lctrMstBisIsr.cstf)
+      {
+        return FALSE;
+      }
+    }
 
-  /* Compute next packet time. */
-  lctrMstBisIsr.nextSeOffs += pBigCtx->subInterUsec;
+    if (lctrMstBisIsr.se.bisEvtIdx < pBigCtx->numBis)
+    {
+      /* Compute next channel. */
+      pCurChan = lctrMstBisIsr.pNextChan;
+      lctrSeCtx_t nextSe = lctrMstBisIsr.se;
+      while (TRUE)
+      {
+        if (lctrBisCalcNextIdxSequential(pBigCtx, &nextSe, numSePkts))
+        {
+          if (pBigCtx->pBisCtx[nextSe.bisEvtIdx] == NULL)
+          {
+            /* Filtered BIS. */
+            numSeIntervals++;
+            continue;
+          }
+
+          WSF_ASSERT(pBigCtx->pBisCtx[nextSe.bisEvtIdx] != NULL);
+          lctrMstBisIsr.pNextChan = &pBigCtx->pBisCtx[nextSe.bisEvtIdx]->chan;
+        }
+        else
+        {
+          lctrMstBisIsr.pNextChan = &pBigCtx->ctrChan;
+        }
+
+        break;
+      }
+    }
+
+    /* Compute next packet time. */
+    curSeOffs = lctrMstBisIsr.nextSeOffs;
+    lctrMstBisIsr.nextSeOffs += pBigCtx->subInterUsec * numSeIntervals;
+
+    if (lmgrGetOpFlag(LL_OP_MODE_FLAG_ENA_BIS_RECV_DUP))
+    {
+      /* Always receive duplicates. */
+      break;
+    }
+
+  /* Skip SE if data already received; do not receive duplicates. */
+  } while (lctrMstBisIsr.pDataBuf[lctrMstBisIsr.se.bisEvtIdx][lctrMstBisIsr.se.burstIdx] != NULL);
+
+  if ((numSkipSe > 0) && pCurChan)
+  {
+    /* Re-acquire the receive train. */
+    BbBleBisRxDataReAcq(pBigCtx->roleData.mst.anchorPoint + pBigCtx->roleData.mst.firstBisOffsUsec + curSeOffs, pCurChan);
+    *pReAcqTrain = TRUE;
+  }
 
   return TRUE;
 }
@@ -99,42 +146,69 @@ static bool_t lctrMstBisLoopCounterSequential(lctrBigCtx_t *pBigCtx)
  *  \brief  Update loop counters for interleaved packing.
  *
  *  \param  pBigCtx     BIG context.
+ *  \param  pReAcqTrain Returns TRUE if re-acquisition is required, unchanged otherwise.
  *
  *  \return TRUE if more Rx pending, FALSE otherwise.
  */
 /*************************************************************************************************/
-static bool_t lctrMstBisLoopCounterInterleaved(lctrBigCtx_t *pBigCtx)
+static bool_t lctrMstBisLoopCounterInterleaved(lctrBigCtx_t *pBigCtx, bool_t *pReAcqTrain)
 {
-  size_t numSePkts = (pBigCtx->bn * pBigCtx->irc) + lctrMstBisIsr.se.ptIdx;
+  int numSkipSe = -1;
+  PalBbBleChan_t *pCurChan;
+  uint32_t curSeOffs;
 
-  /* BIG Event limit (beyond BIS Control SubEvent). */
-
-  if (numSePkts > pBigCtx->nse)
+  do
   {
-    return FALSE;
-  }
+    numSkipSe++;
 
-  if (!lctrSlvBisCalcNextIdxInterleaved(pBigCtx, &lctrMstBisIsr.se, numSePkts))
-  {
-    if (!lctrMstBisIsr.cstf)
+    unsigned int numSePkts = (pBigCtx->bn * pBigCtx->irc) + lctrMstBisIsr.se.ptIdx;
+
+    /* BIG Event limit (beyond BIS Control SubEvent). */
+
+    if (numSePkts > pBigCtx->nse)
     {
       return FALSE;
     }
-  }
 
-  /* Compute next channel. */
-  lctrSeCtx_t nextSe = lctrMstBisIsr.se;
-  if (lctrSlvBisCalcNextIdxInterleaved(pBigCtx, &nextSe, numSePkts))
-  {
-    lctrMstBisIsr.pNextChan = &pBigCtx->pBisCtx[nextSe.bisEvtIdx]->chan;
-  }
-  else
-  {
-    lctrMstBisIsr.pNextChan = &pBigCtx->ctrChan;
-  }
+    if (!lctrBisCalcNextIdxInterleaved(pBigCtx, &lctrMstBisIsr.se, numSePkts))
+    {
+      if (!lctrMstBisIsr.cstf)
+      {
+        return FALSE;
+      }
+    }
 
-  /* Compute next packet time. */
-  lctrMstBisIsr.nextSeOffs += pBigCtx->bisSpaceUsec;
+    /* Compute next channel. */
+    pCurChan = lctrMstBisIsr.pNextChan;
+    curSeOffs = lctrMstBisIsr.nextSeOffs;
+    lctrSeCtx_t nextSe = lctrMstBisIsr.se;
+    if (lctrBisCalcNextIdxInterleaved(pBigCtx, &nextSe, numSePkts))
+    {
+      lctrMstBisIsr.pNextChan = &pBigCtx->pBisCtx[nextSe.bisEvtIdx]->chan;
+    }
+    else
+    {
+      lctrMstBisIsr.pNextChan = &pBigCtx->ctrChan;
+    }
+
+    /* Compute next packet time. */
+    lctrMstBisIsr.nextSeOffs += pBigCtx->bisSpaceUsec;
+
+    if (lmgrGetOpFlag(LL_OP_MODE_FLAG_ENA_BIS_RECV_DUP))
+    {
+      /* Always receive duplicates. */
+      break;
+    }
+
+  /* Skip SE if data already received; do not receive duplicates. */
+  } while (lctrMstBisIsr.pDataBuf[lctrMstBisIsr.se.bisEvtIdx][lctrMstBisIsr.se.burstIdx] != NULL);
+
+  if (numSkipSe > 0)
+  {
+    /* Re-acquire the receive train. */
+    BbBleBisRxDataReAcq(pBigCtx->roleData.mst.anchorPoint + pBigCtx->roleData.mst.firstBisOffsUsec + curSeOffs, pCurChan);
+    *pReAcqTrain = TRUE;
+  }
 
   return TRUE;
 }
@@ -161,18 +235,47 @@ static bool_t lctrMstBisRxData(lctrBigCtx_t *pBigCtx, bool_t reAcqSync, uint8_t 
     return FALSE;
   }
 
-  /*** Commit transmission ***/
+  /*** Commit reception ***/
 
-  lctrBisCtx_t * const pBisCtx = pBigCtx->pBisCtx[lctrMstBisIsr.se.bisEvtIdx];
-  BbBleBisRxData(pBuf, LL_ISO_DATA_HDR_LEN + BB_DATA_PLD_MAX_LEN,
-                 pBigCtx->roleData.mst.anchorPoint + lctrMstBisIsr.nextSeOffs,
+  /* Set the inline decryption packet counter. */
+  if (pBigCtx->encrypt && lctrSetDecryptPktCountHdlr)
+  {
+    uint64_t pktCtr;
+
+    /* Check if this is the control subevent. */
+    if (lctrMstBisIsr.pNextChan == &pBigCtx->ctrChan)
+    {
+      /* Set packet counter to the bisPayloadCounter of the first subevent. */
+      pktCtr = pBigCtx->eventCounter * pBigCtx->bn;
+      lctrSetDecryptPktCountHdlr(pktCtr);
+    }
+    else
+    {
+      /* Set packet counter to the current bisPayloadCounter. */
+      pktCtr = (pBigCtx->eventCounter * pBigCtx->bn) + lctrMstBisIsr.se.burstIdx;
+      lctrSetDecryptPktCountHdlr(pktCtr);
+    }
+  }
+
+  BbBleBisRxData(pBuf, LL_ISO_DATA_HDR_LEN + pBigCtx->maxPdu + (pBigCtx->encrypt ? LL_DATA_MIC_LEN : 0),
+                 pBigCtx->roleData.mst.anchorPoint + pBigCtx->roleData.mst.firstBisOffsUsec + lctrMstBisIsr.nextSeOffs,
                  lctrMstBisIsr.pNextChan,
                  reAcqSync);
 
   /*** Post-commit calculation ***/
 
-  /* Now that channel data is set in BB, compute next channel information. */
-  pBisCtx->chan.chanIdx = LmgrSelectNextSubEvtChannel(&pBisCtx->chSelInfo);
+  if (lctrMstBisIsr.se.bisEvtIdx < pBigCtx->numBis)
+  {
+    lctrBisCtx_t * const pBisCtx = pBigCtx->pBisCtx[lctrMstBisIsr.se.bisEvtIdx];
+
+    if (pBisCtx && pBisCtx->enabled)
+    {
+      lctrMstBisIsr.curChanIdx = pBisCtx->chan.chanIdx;
+
+      /* Now that channel data is set in BB, compute next channel information. */
+      pBisCtx->chan.chanIdx = LmgrSelectNextSubEvtChannel(&pBisCtx->chSelInfo);
+    }
+  }
 
   return TRUE;
 }
@@ -272,6 +375,7 @@ static void lctrMstBigControlPostProcess(lctrBigCtx_t *pBigCtx)
   }
 
   lctrBisRxIsoDataPduFree(lctrMstBisIsr.pCtrlBuf);
+  lctrMstBisIsr.pCtrlBuf = NULL;
 }
 
 /*************************************************************************************************/
@@ -314,7 +418,7 @@ static void lctrMstBigControlProcedureHandler(lctrBigCtx_t *pBigCtx)
  *  \param  rxEvtCtr    Received event counter.
  */
 /*************************************************************************************************/
-static void lctrMstBisRxDataPduHandler(lctrBigCtx_t *pBigCtx, uint32_t rxEvtCtr)
+static void lctrMstBisRxDataPduHandler(lctrBigCtx_t *pBigCtx, uint32_t rxEvtCtr, uint32_t sduRef)
 {
   uint8_t numHandles = 0;
   uint16_t handles[LL_MAX_BIS] = { 0 };
@@ -322,20 +426,26 @@ static void lctrMstBisRxDataPduHandler(lctrBigCtx_t *pBigCtx, uint32_t rxEvtCtr)
   uint64_t pktCtrBase = rxEvtCtr * pBigCtx->bn;
   lctrIsoalRxCtx_t *pRxCtx;
 
-  for (unsigned int i = 0; i < pBigCtx->numBis; i++)
+  for (unsigned int bisIdx = 0; bisIdx < pBigCtx->numBis; bisIdx++)
   {
-    lctrBisCtx_t * const pBisCtx = pBigCtx->pBisCtx[i];
+    lctrBisCtx_t * const pBisCtx = pBigCtx->pBisCtx[bisIdx];
+
+    if (pBisCtx == NULL)
+    {
+      /* Filtered BIS. */
+      continue;
+    }
+
     pRxCtx = &pBisCtx->roleData.mst.isoalRxCtx;
 
-    uint8_t *pDataPdu;
-    uint8_t pldCtrOffs;
-
-    while ((pDataPdu = lctrBisDequeueRxDataPdu(pBisCtx, &pldCtrOffs)) != NULL)
+    for (uint8_t burstIdx = 0; burstIdx < pBigCtx->bn; burstIdx++)
     {
-      uint64_t pktCtr = pktCtrBase + pldCtrOffs;
+      uint8_t *pDataPdu = lctrBisDequeueRxDataPdu(pBisCtx, burstIdx);
+
+      uint64_t pktCtr = pktCtrBase + burstIdx;
       pBisCtx->chan.enc.pRxPktCounter = &pktCtr;
 
-      if (lctrPktDecryptHdlr)
+      if (pDataPdu && lctrPktDecryptHdlr)
       {
         if (!lctrPktDecryptHdlr(&pBisCtx->chan.enc, pDataPdu))
         {
@@ -348,160 +458,268 @@ static void lctrMstBisRxDataPduHandler(lctrBigCtx_t *pBigCtx, uint32_t rxEvtCtr)
 
       if (pBisCtx->pBigCtx->framing == LL_ISO_PDU_TYPE_UNFRAMED)
       {
-        /* Store payload offset for test transit. */
-        pBisCtx->test.util.unframed.payloadOffset = pldCtrOffs;
-
-        lctrBisDataPduHdr_t pduHdr;
-        lctrBisUnpackDataPduHdr(&pduHdr, pDataPdu);
-
-        /*** Assemble ISO SDU ***/
-
-        uint8_t * const pIsoSdu = pDataPdu - LCTR_ISO_SDU_START_OFFSET;
-
-        switch (pBisCtx->path)
+        if (pDataPdu)
         {
-          case LL_ISO_DATA_PATH_HCI:
+          /* Store payload offset for test transit. */
+          pBisCtx->test.util.unframed.burstIdx = burstIdx;
+
+          lctrBisDataPduHdr_t pduHdr;
+          lctrBisUnpackDataPduHdr(&pduHdr, pDataPdu);
+
+          /*** Assemble ISO SDU ***/
+
+          uint8_t * const pIsoSdu = pDataPdu - LCTR_ISO_SDU_START_OFFSET;
+
+          lctrIsoHdr_t isoHdr =
           {
-            lctrIsoHdr_t isoHdr =
-            {
-              /* ISO header */
-              .handle = pBisCtx->handle,
-              .len    = pduHdr.len,
-              /* .pb  = 0, */  /* assigned below */
-              .tsFlag = FALSE,
+            /* ISO header */
+            .handle = pBisCtx->handle,
+            .len    = pduHdr.len,
+            /* .pb  = 0, */  /* assigned below */
+            .tsFlag = FALSE,
 
-              /* Data load */
-              .ts     = 0,
-              .pktSn  = pktCtr,
-              .sduLen = pduHdr.len,
-              .ps     = LCTR_PS_VALID
-            };
+            /* Data load */
+            .ts     = sduRef,
+            .pktSn  = pktCtr,
+            .sduLen = pduHdr.len,
+            .ps     = LCTR_PS_VALID
+          };
 
-            if (pBigCtx->lastPduMissed)
+          switch (pBisCtx->lastLlid)
+          {
+            case LL_LLID_ISO_UNF_END_PDU:
             {
-              pRxCtx->data.unframed.ps = LCTR_PS_INVALID;
-            }
-
-            switch (pBisCtx->lastLlid)
-            {
+              switch (pduHdr.llid)
+              {
               case LL_LLID_ISO_UNF_END_PDU:
-              {
-                switch (pduHdr.llid)
-                {
-                case LL_LLID_ISO_UNF_END_PDU:
-                default:
-                  isoHdr.pb = LCTR_PB_COMP;
-                  isoHdr.tsFlag = TRUE;
-                  break;
-                case LL_LLID_ISO_UNF_CONT_PDU:
-                  isoHdr.pb = LCTR_PB_FIRST;
-                  isoHdr.tsFlag = TRUE;
-                  break;
-                }
-                break;
-              }
-              case LL_LLID_ISO_UNF_CONT_PDU:
-              {
-                switch (pduHdr.llid)
-                {
-                case LL_LLID_ISO_UNF_END_PDU:
-                default:
-                  isoHdr.pb = LCTR_PB_LAST;
-                  break;
-                case LL_LLID_ISO_UNF_CONT_PDU:
-                  isoHdr.pb = LCTR_PB_CONT;
-                  break;
-                }
-                break;
-              }
               default:
-                LL_TRACE_WARN2("Unexpected LLID recieved; dropping Rx ISO PDU, bigHandle=%u, pktCtr[15:0]=%u", pBigCtx->handle, pktCtr);
-                WsfMsgFree(pIsoSdu);
-                continue;
-            }
-
-            pBisCtx->lastLlid = pduHdr.llid;
-
-            uint8_t hdrLen;
-            hdrLen = lctrIsoPackHdr(pIsoSdu, &isoHdr);
-            /* Adjust SDU payload to start immediately after the header. */
-            memmove(pIsoSdu + hdrLen, pDataPdu + LL_ISO_DATA_HDR_LEN, isoHdr.sduLen);
-
-            /* Move to temporary queue to collect SDU fragments until complete. */
-            if (!lctrIsoUnframedRxSduPendQueue(pRxCtx, pIsoSdu, pBisCtx->handle, isoHdr.sduLen, pduHdr.llid))
-            {
+                isoHdr.pb = LCTR_PB_COMP;
+                isoHdr.tsFlag = TRUE;
+                isoHdr.ts = PalBbGetCurrentTime();
+                break;
+              case LL_LLID_ISO_UNF_CONT_PDU:
+                isoHdr.pb = LCTR_PB_FIRST;
+                isoHdr.tsFlag = TRUE;
+                isoHdr.ts = PalBbGetCurrentTime();
+                break;
+              }
               break;
             }
-
-            /* Complete SDU ready to go out. Empty the temp queue and send it out. */
-            uint8_t handlerId;
-            uint8_t *pSduFrag;
-            while ((pSduFrag = WsfMsgDeq(&pRxCtx->data.unframed.pendSduQ, &handlerId)) != NULL)
+            case LL_LLID_ISO_UNF_CONT_PDU:
             {
-              lctrBisRxIsoSduEnq(pBisCtx, pSduFrag);
+              switch (pduHdr.llid)
+              {
+              case LL_LLID_ISO_UNF_END_PDU:
+              default:
+                isoHdr.pb = LCTR_PB_LAST;
+                break;
+              case LL_LLID_ISO_UNF_CONT_PDU:
+                isoHdr.pb = LCTR_PB_CONT;
+                break;
+              }
+              break;
+            }
+            default:
+              LL_TRACE_WARN2("Unexpected LLID received; dropping Rx ISO PDU, bigHandle=%u, pktCtr[15:0]=%u", pBigCtx->handle, pktCtr);
+              WsfMsgFree(pIsoSdu);
+              continue;
+          }
+
+          pBisCtx->lastLlid = pduHdr.llid;
+
+          uint8_t hdrLen;
+          hdrLen = lctrIsoPackHdr(pIsoSdu, &isoHdr);
+          /* Adjust SDU payload to start immediately after the header. */
+          /* TODO optimize memory layout, cf. lctrRecombineRxUnframedSdu(). */
+          memmove(pIsoSdu + hdrLen, pDataPdu + LL_ISO_DATA_HDR_LEN, isoHdr.sduLen);
+
+          /* Store fragment until complete fragment received. */
+          if (!lctrRecombineRxUnframedSdu(pRxCtx, pIsoSdu))
+          {
+            break;
+          }
+
+          /* Deliver the SDU fragments. */
+          uint8_t handlerId;
+          uint8_t *pSdu;
+          while ((pSdu = WsfMsgDeq(&pRxCtx->data.unframed.pendSduQ, &handlerId)) != NULL)
+          {
+            if (pBisCtx->test.enabled) /* In cases of test mode, queue it here. */
+            {
+              lctrOutDataPathCtx_t *pOutDataPathCtx = &pBisCtx->roleData.mst.dataPathOutCtx;
+              WSF_ASSERT(pOutDataPathCtx->id != LL_ISO_DATA_PATH_VS);
+
+              WsfMsgEnq(&pOutDataPathCtx->cfg.hci.rxDataQ, pBisCtx->handle, pSdu);
+              pOutDataPathCtx->cfg.hci.numRxPend++;
+              /* TODO optimize counter, accounting upon allocation. */
+              lctrIsoDataRxDecAvailBuf();
+            }
+            else if (lctrIsoRxConnEnq(&pBisCtx->roleData.mst.dataPathOutCtx,
+                                 pBisCtx->handle, pktCtr, pSdu))
+            {
+              /* Implies HCI data path. */
               numSdu[numHandles]++;
             }
-          break;
+            else
+            {
+              WsfMsgFree(pSdu);
+            }
           }
+        }
+        else /* (pDataPdu == NULL) */
+        {
+          /* Indicate SDU has missing data. */
+          pRxCtx->data.unframed.ps = LCTR_PS_INVALID;
 
-          case LL_ISO_DATA_PATH_VS:
+          /* End fragment lost. */
+          if ((burstIdx + 1) == pBigCtx->bn)
           {
-            WSF_ASSERT(lctrCodecHdlr.out);
-            lctrCodecHdlr.out(pBisCtx->handle, pDataPdu + LL_ISO_DATA_HDR_LEN, pDataPdu[LCTR_ISO_DATA_PDU_LEN_OFFSET], pktCtr);
-            WsfMsgFree(pIsoSdu);  /* TODO Resolve PDU free in Audio layer */
-            break;
-          }
+            /* NULL signals lost PDU; release previously stored fragments. */
+            if (lctrRecombineRxUnframedSdu(pRxCtx, NULL))
+            {
+              /* Deliver the SDU fragments. */
+              uint8_t handlerId;
+              uint8_t *pSdu;
+              while ((pSdu = WsfMsgDeq(&pRxCtx->data.unframed.pendSduQ, &handlerId)) != NULL)
+              {
+                if (pBisCtx->test.enabled) /* In cases of test mode, queue it here. */
+                {
+                  lctrOutDataPathCtx_t *pOutDataPathCtx = &pBisCtx->roleData.mst.dataPathOutCtx;
+                  WSF_ASSERT(pOutDataPathCtx->id != LL_ISO_DATA_PATH_VS);
 
-          default:
-          {
-            LL_TRACE_WARN2("Data path disabled; dropping Rx ISO PDU, bigHandle=%u, pktCtr[15:0]=%u", pBigCtx->handle, pktCtr);
-            WsfMsgFree(pIsoSdu);
-            break;
+                  WsfMsgEnq(&pOutDataPathCtx->cfg.hci.rxDataQ, pBisCtx->handle, pSdu);
+                  pOutDataPathCtx->cfg.hci.numRxPend++;
+                  /* TODO optimize counter, accounting upon allocation. */
+                  lctrIsoDataRxDecAvailBuf();
+                }
+                else if (lctrIsoRxConnEnq(&pBisCtx->roleData.mst.dataPathOutCtx,
+                                     pBisCtx->handle, pktCtr, pSdu))
+                {
+                  /* Implies HCI data path. */
+                  numSdu[numHandles]++;
+                }
+                else
+                {
+                  WsfMsgFree(pSdu);
+                }
+              }
+            }
+            else
+            {
+              if (lmgrGetOpFlag(LL_OP_MODE_FLAG_ENA_ISO_LOST_NOTIFY) &&
+                  (lctrMstBisIsr.numRxPdus[bisIdx] == 0))
+              {
+                /* No prior fragments; send lost SDU. */
+                uint8_t *pSdu = lctrBisRxIsoDataPduAlloc();
+
+                if (pSdu)
+                {
+                  uint8_t *pIsoSdu = pSdu - LCTR_ISO_SDU_START_OFFSET;
+                  lctrIsoHdr_t isoHdr =
+                  {
+                    /* ISO header */
+                    .handle = pBisCtx->handle,
+                    .pb     = LCTR_PB_COMP,
+                    .tsFlag = FALSE,
+                    .len    = 0,
+
+                    /* Data load */
+                    .ts     = sduRef,
+                    .pktSn  = pktCtr,
+                    .sduLen = 0,
+                    .ps     = LCTR_PS_LOST
+                  };
+
+                  lctrIsoPackHdr(pIsoSdu, &isoHdr);
+
+                  if (pBisCtx->test.enabled) /* In cases of test mode, queue it here. */
+                  {
+                    lctrOutDataPathCtx_t *pOutDataPathCtx = &pBisCtx->roleData.mst.dataPathOutCtx;
+                    WSF_ASSERT(pOutDataPathCtx->id != LL_ISO_DATA_PATH_VS);
+
+                    WsfMsgEnq(&pOutDataPathCtx->cfg.hci.rxDataQ, pBisCtx->handle, pSdu);
+                    pOutDataPathCtx->cfg.hci.numRxPend++;
+                    /* TODO optimize counter, accounting upon allocation. */
+                    lctrIsoDataRxDecAvailBuf();
+                  }
+                  else if (lctrIsoRxConnEnq(&pBisCtx->roleData.mst.dataPathOutCtx,
+                                       pBisCtx->handle, pktCtr, pIsoSdu))
+                  {
+                    /* Implies HCI data path. */
+                    numSdu[numHandles]++;
+                  }
+                  else
+                  {
+                    WsfMsgFree(pIsoSdu);
+                  }
+                }
+                else
+                {
+                  LL_TRACE_WARN2("ISO SDU data flow controlled, lost SDU sync packet delivery failed, bigHandle=%u, pktCtr[15:0]=%u", pBigCtx->handle, pktCtr);
+                }
+              }
+            }
           }
         }
       }
       else /* LL_ISO_PDU_TYPE_FRAMED */
       {
-        switch (pBisCtx->path)
+        if (pDataPdu)
         {
-          case LL_ISO_DATA_PATH_HCI:
+          switch (pBisCtx->roleData.mst.dataPathOutCtx.id)
           {
-            numSdu[numHandles] += lctrAssembleRxFramedSdu(&pBisCtx->roleData.mst.isoalRxCtx, &pBisCtx->roleData.mst.rxIsoSduQ,
-                                                          pBisCtx->handle, pDataPdu, pDataPdu[LCTR_ISO_DATA_PDU_LEN_OFFSET]);
-
-            break;
-          }
-          case LL_ISO_DATA_PATH_VS:
-          {
-            WSF_ASSERT(lctrCodecHdlr.out);
-
-            lctrAssembleRxFramedSdu(&pBisCtx->roleData.mst.isoalRxCtx, &pBisCtx->roleData.mst.rxIsoSduQ,
-                                    pBisCtx->handle, pDataPdu, pDataPdu[LCTR_ISO_DATA_PDU_LEN_OFFSET]);
-
-            uint8_t *pIsoBuf;
-            while ((pIsoBuf = lctrBisRxIsoSduDeq(pBisCtx)) != NULL)
+            case LL_ISO_DATA_PATH_HCI:
             {
-              lctrIsoHdr_t isoHdr;
-              lctrIsoUnpackHdr(&isoHdr, pIsoBuf);
+              numSdu[numHandles] += lctrAssembleRxFramedSdu(&pBisCtx->roleData.mst.isoalRxCtx, &pBisCtx->roleData.mst.dataPathOutCtx.cfg.hci.rxDataQ,
+                                                            pBisCtx->handle, pDataPdu, pDataPdu[LCTR_ISO_DATA_PDU_LEN_OFFSET]);
 
-              lctrCodecHdlr.out(pBisCtx->handle, isoHdr.pSdu, isoHdr.sduLen, pktCtr);
-              WsfMsgFree(pIsoBuf);  /* TODO Resolve PDU free in Audio layer */
+              break;
             }
-            break;
+            case LL_ISO_DATA_PATH_VS:
+            {
+              WSF_ASSERT(lctrCodecHdlr.out);
+
+              lctrAssembleRxFramedSdu(&pBisCtx->roleData.mst.isoalRxCtx, &pBisCtx->roleData.mst.dataPathOutCtx.cfg.codec.rxDataQ,
+                                      pBisCtx->handle, pDataPdu, pDataPdu[LCTR_ISO_DATA_PDU_LEN_OFFSET]);
+
+              uint8_t *pIsoBuf;
+              while ((pIsoBuf = lctrBisRxIsoSduDeq(pBisCtx)) != NULL)
+              {
+                lctrIsoHdr_t isoHdr;
+                lctrIsoUnpackHdr(&isoHdr, pIsoBuf);
+
+                lctrCodecHdlr.out(pBisCtx->handle, isoHdr.pSdu, isoHdr.sduLen, isoHdr.ts);
+                WsfMsgFree(pIsoBuf);
+                lctrIsoDataRxIncAvailBuf(1);
+              }
+              break;
+            }
+            default:
+            {
+              if (pBisCtx->test.enabled)
+              {
+                numSdu[numHandles] += lctrAssembleRxFramedSdu(&pBisCtx->roleData.mst.isoalRxCtx, &pBisCtx->roleData.mst.dataPathOutCtx.cfg.hci.rxDataQ,
+                                                              pBisCtx->handle, pDataPdu, pDataPdu[LCTR_ISO_DATA_PDU_LEN_OFFSET]);
+
+                break;
+              }
+
+              LL_TRACE_WARN2("Data path disabled; dropping Rx ISO PDU, bigHandle=%u, pktCtr[15:0]=%u", pBigCtx->handle, pktCtr);
+              break;
+            }
           }
-          default:
-          {
-            LL_TRACE_WARN2("Data path disabled; dropping Rx ISO PDU, bigHandle=%u, pktCtr[15:0]=%u", pBigCtx->handle, pktCtr);
-            break;
-          }
+          lctrBisRxIsoDataPduFree(pDataPdu);
         }
-        lctrBisRxIsoDataPduFree(pDataPdu);
+        else /* (pDataPdu == NULL) */
+        {
+          /* TODO Send NULL audio sync to ISOAL assembler */
+        }
       }
     }
 
     if (numSdu[numHandles])
     {
-      if (!pBisCtx->test.enabled)
+      if (!pBisCtx->test.enabled && (pBisCtx->roleData.mst.dataPathOutCtx.id != LL_ISO_DATA_PATH_VS))
       {
         handles[numHandles] = pBisCtx->handle;
         numHandles++;
@@ -513,7 +731,7 @@ static void lctrMstBisRxDataPduHandler(lctrBigCtx_t *pBigCtx, uint32_t rxEvtCtr)
     }
   }
 
-  if (numHandles)
+  if (lmgrPersistCb.recvIsoPendCback && numHandles)
   {
     /* Notify host received SDUs. */
     lmgrPersistCb.recvIsoPendCback(numHandles, handles, numSdu);
@@ -534,7 +752,13 @@ static void lctrMstBisRxTestPduHandler(lctrBigCtx_t *pBigCtx, uint32_t rxEvtCtr)
   {
     lctrBisCtx_t * const pBisCtx = pBigCtx->pBisCtx[i];
 
-    /* Consume data for RX test. */
+    if (pBisCtx == NULL)
+    {
+      /* Filtered BIS. */
+      continue;
+    }
+
+    /* Consume data for Rx test. */
     if (pBisCtx->test.enabled)
     {
       if (!pBisCtx->test.term)
@@ -557,13 +781,11 @@ static void lctrMstBisRxTestPduHandler(lctrBigCtx_t *pBigCtx, uint32_t rxEvtCtr)
               pBisCtx->test.pendInit = FALSE;
             }
 
-            LL_TRACE_INFO1("COUNTER = %d", pBisCtx->test.util.framed.payloadCtr);
             expPayloadCtr = pBisCtx->test.util.framed.payloadCtr++;
           }
           else /* LL_ISO_PDU_TYPE_UNFRAMED */
           {
-            expPayloadCtr = (rxEvtCtr * pBigCtx->bn) +
-                            pBisCtx->test.util.unframed.payloadOffset;
+            expPayloadCtr = (rxEvtCtr * pBigCtx->bn) + pBisCtx->test.util.unframed.burstIdx;
           }
 
           lctrValidateIsoTestData((uint8_t *)isoHdr.pSdu, isoHdr.sduLen, &pBisCtx->roleData.mst.stats,
@@ -609,6 +831,10 @@ void lctrMstBisRxCompletion(BbOpDesc_t *pOp, uint8_t *pBuf, uint8_t status)
   if (status == BB_STATUS_SUCCESS)
   {
     lctrMstBisIsr.numRcvdPkt++;
+    lctrMstBisIsr.numRxPdus[lctrMstBisIsr.se.bisEvtIdx]++;
+
+    /* Extra WW only needed for initial received packet. */
+    pBigCtx->roleData.mst.initWwUsec = 0;
   }
 
   if (pBigCtx->state != LCTR_MST_BIG_STATE_SYNCED)
@@ -619,11 +845,32 @@ void lctrMstBisRxCompletion(BbOpDesc_t *pOp, uint8_t *pBuf, uint8_t status)
 
   switch (status)
   {
+  case BB_STATUS_CRC_FAILED:
+    LL_TRACE_WARN3("BB failed with status=CRC_FAILED, bigHandle=%u, bleChan=%u, eventCounter=%u", pBigCtx->handle, lctrMstBisIsr.curChanIdx, pBigCtx->eventCounter);
+    LL_TRACE_WARN3("                                  bisEvtIdx=%u, burstIdx=%u, repIdx=%u", lctrMstBisIsr.se.bisEvtIdx, lctrMstBisIsr.se.burstIdx, lctrMstBisIsr.se.repIdx);
+    break;
+
+  case BB_STATUS_RX_TIMEOUT:
+    LL_TRACE_WARN3("BB failed with status=RX_TIMEOUT, bigHandle=%u, bleChan=%u, eventCounter=%u", pBigCtx->handle, lctrMstBisIsr.curChanIdx, pBigCtx->eventCounter);
+    LL_TRACE_WARN3("                                  bisEvtIdx=%u, burstIdx=%u, repIdx=%u", lctrMstBisIsr.se.bisEvtIdx, lctrMstBisIsr.se.burstIdx, lctrMstBisIsr.se.repIdx);
+    break;
+
+  case BB_STATUS_MIC_FAILED:
+    LL_TRACE_WARN2("lctrMstBisRxCompletion: BB failed with status MIC_FAILED Data/Control PDU received, bigHandle=%u", pBigCtx->handle, pBigCtx->eventCounter);
+    lctrMstBigSendMsg(pBigCtx, LCTR_MST_BIG_INT_MIC_FAILED);
+    BbSetBodTerminateFlag();
+    goto RxPostProcess;
+    break;
+
   case BB_STATUS_FAILED:
+    LL_TRACE_ERR3("BB failed with status=FAILED, bigHandle=%u, bleChan=%u, eventCounter=%u", pBigCtx->handle, lctrMstBisIsr.curChanIdx, pBigCtx->eventCounter);
+    LL_TRACE_ERR3("                              bisEvtIdx=%u, burstIdx=%u, repIdx=%u", lctrMstBisIsr.se.bisEvtIdx, lctrMstBisIsr.se.burstIdx, lctrMstBisIsr.se.repIdx);
+    /* Fallthrough */
   case BB_STATUS_CANCELED:
     /* Continue to next BIG Event. */
     BbSetBodTerminateFlag();
     goto RxPostProcess;
+    break;
 
   default:
     break;
@@ -640,7 +887,7 @@ void lctrMstBisRxCompletion(BbOpDesc_t *pOp, uint8_t *pBuf, uint8_t status)
     case BB_STATUS_SUCCESS:
     case BB_STATUS_CRC_FAILED:
       /* Store peer's timing info for synchronizing next BIS Events and ISO Events. */
-      pBigCtx->roleData.mst.anchorPoint = pBigCtx->roleData.mst.rxSyncTime = pBis->startTsUsec;
+      pBigCtx->roleData.mst.anchorPoint = pBigCtx->roleData.mst.rxSyncTime = pBis->startTsUsec - pBigCtx->roleData.mst.firstBisOffsUsec;
       break;
 
     default:
@@ -682,10 +929,9 @@ void lctrMstBisRxCompletion(BbOpDesc_t *pOp, uint8_t *pBuf, uint8_t status)
   {
   case BB_STATUS_RX_TIMEOUT:
     /* Re-acquire the receive train. */
-    BbBleBisRxDataReAcq(pBigCtx->roleData.mst.anchorPoint + lctrMstBisIsr.nextSeOffs,
+    BbBleBisRxDataReAcq(pBigCtx->roleData.mst.anchorPoint + pBigCtx->roleData.mst.firstBisOffsUsec + lctrMstBisIsr.nextSeOffs,
                         lctrMstBisIsr.pNextChan);
     reAcqTrain = TRUE;
-    pBigCtx->lastPduMissed = TRUE;
     break;
 
   default:
@@ -697,7 +943,7 @@ void lctrMstBisRxCompletion(BbOpDesc_t *pOp, uint8_t *pBuf, uint8_t status)
   switch (pBigCtx->packing)
   {
   case LL_PACKING_INTERLEAVED:
-    if (!lctrMstBisLoopCounterInterleaved(pBigCtx))
+    if (!lctrMstBisLoopCounterInterleaved(pBigCtx, &reAcqTrain))
     {
       /* Continue to next BIG Event. */
       BbSetBodTerminateFlag();
@@ -707,7 +953,7 @@ void lctrMstBisRxCompletion(BbOpDesc_t *pOp, uint8_t *pBuf, uint8_t status)
 
   case LL_PACKING_SEQUENTIAL:
   default:
-    if (!lctrMstBisLoopCounterSequential(pBigCtx))
+    if (!lctrMstBisLoopCounterSequential(pBigCtx, &reAcqTrain))
     {
       /* Continue to next BIG Event. */
       BbSetBodTerminateFlag();
@@ -742,7 +988,7 @@ RxPostProcess:
       }
       else if (hdr.cssn == pBigCtx->bcp.cssn)
       {
-        LL_TRACE_WARN1("Unexpected duplicate BIS Control PDU recieved, bigHandle=%u", pBigCtx->handle);
+        LL_TRACE_WARN1("Unexpected duplicate BIS Control PDU received, bigHandle=%u", pBigCtx->handle);
       }
       else
       {
@@ -788,22 +1034,23 @@ void lctrMstBigBeginOp(BbOpDesc_t *pOp)
   }
 
   memset(&lctrMstBisIsr, 0, sizeof(lctrMstBisIsr));
+  lctrMstBisIsr.se.bisEvtIdx = pBigCtx->roleData.mst.firstBisEvtIdx;
 
   /* Compute next packet time. */
+  lctrMstBisIsr.pNextChan = NULL;
   switch (pBigCtx->packing)
   {
     case LL_PACKING_INTERLEAVED:
       if (pBigCtx->numBis > 1)
       {
-        lctrMstBisIsr.pNextChan = &pBigCtx->pBisCtx[1]->chan;
+        if (pBigCtx->roleData.mst.pSecondBisCtx)
+        {
+          lctrMstBisIsr.pNextChan = &pBigCtx->roleData.mst.pSecondBisCtx->chan;
+        }
       }
       else if (pBigCtx->nse > 1)
       {
-        lctrMstBisIsr.pNextChan = &pBigCtx->pBisCtx[0]->chan;
-      }
-      else
-      {
-        lctrMstBisIsr.pNextChan = &pBigCtx->ctrChan;
+        lctrMstBisIsr.pNextChan = &pBigCtx->roleData.mst.pFirstBisCtx->chan;
       }
 
       lctrMstBisIsr.nextSeOffs = pBigCtx->bisSpaceUsec;
@@ -813,19 +1060,23 @@ void lctrMstBigBeginOp(BbOpDesc_t *pOp)
     default:
       if (pBigCtx->nse > 1)
       {
-        lctrMstBisIsr.pNextChan = &pBigCtx->pBisCtx[0]->chan;
+        lctrMstBisIsr.pNextChan = &pBigCtx->roleData.mst.pFirstBisCtx->chan;
       }
       else if (pBigCtx->numBis > 1)
       {
-        lctrMstBisIsr.pNextChan = &pBigCtx->pBisCtx[1]->chan;
-      }
-      else
-      {
-        lctrMstBisIsr.pNextChan = &pBigCtx->ctrChan;
+        if (pBigCtx->roleData.mst.pSecondBisCtx)
+        {
+          lctrMstBisIsr.pNextChan = &pBigCtx->roleData.mst.pSecondBisCtx->chan;
+        }
       }
 
       lctrMstBisIsr.nextSeOffs = pBigCtx->subInterUsec;
       break;
+  }
+
+  if (lctrMstBisIsr.pNextChan == NULL)
+  {
+    lctrMstBisIsr.pNextChan = &pBigCtx->ctrChan;
   }
 
   lctrMstBisIsr.cstf = TRUE;    /* receive Control PDU by default */
@@ -840,6 +1091,26 @@ void lctrMstBigBeginOp(BbOpDesc_t *pOp)
 
 /*************************************************************************************************/
 /*!
+ *  \brief  Abort a BIS operation.
+ *
+ *  \param  pOp     Aborted operation.
+ */
+/*************************************************************************************************/
+void lctrMstBigAbortOp(BbOpDesc_t *pOp)
+{
+  WSF_ASSERT(pOp->protId == BB_PROT_BLE);
+  WSF_ASSERT(pOp->prot.pBle->chan.opType == BB_BLE_OP_MST_BIS_EVENT);
+
+  LL_TRACE_WARN1("!!! BIG Synchronizer BOD aborted, eventCounter=%u", ((lctrBigCtx_t *)pOp->pCtx)->eventCounter);
+
+  /* Clear state since abort is called without lctrMstBigBeginOp() initializing state. */
+  memset(&lctrMstBisIsr, 0, sizeof(lctrMstBisIsr));
+
+  lctrMstBigEndOp(pOp);
+}
+
+/*************************************************************************************************/
+/*!
  *  \brief  End a BIS operation.
  *
  *  \param  pOp     Completed operation.
@@ -850,12 +1121,7 @@ void lctrMstBigEndOp(BbOpDesc_t *pOp)
   lctrBigCtx_t * const pBigCtx = pOp->pCtx;
   BbBleData_t * const pBle = &pBigCtx->bleData;
   BbBleMstBisEvent_t * const pBis = &pBle->op.mstBis;
-  if (pBigCtx->state != LCTR_MST_BIG_STATE_SYNCED)
-  {
-    lctrMstBigSendMsg(pBigCtx, LCTR_MST_BIG_INT_TERMINATED_SYNC);
-    WsfTimerStop(&pBigCtx->roleData.mst.bigSyncTmr);
-    return;
-  }
+  uint32_t sduRef = pBigCtx->roleData.mst.anchorPoint;
 
   /* Enqueue BIS Data PDUs. */
 
@@ -863,15 +1129,37 @@ void lctrMstBigEndOp(BbOpDesc_t *pOp)
 
   for (unsigned int bisIdx = 0; bisIdx < pBigCtx->numBis; bisIdx++)
   {
-    for (unsigned int bnIdx = 0; bnIdx < pBigCtx->bn; bnIdx++)
+    for (unsigned int burstIdx = 0; burstIdx < pBigCtx->bn; burstIdx++)
     {
-      if (lctrMstBisIsr.pDataBuf[bisIdx][bnIdx])
+      if (lctrMstBisIsr.pDataBuf[bisIdx][burstIdx])
       {
-        lctrBisEnqueueRxDataPdu(pBigCtx->pBisCtx[bisIdx],
-                                lctrMstBisIsr.pDataBuf[bisIdx][bnIdx],
-                                bnIdx);  /* payload counter offset from rxEventCounter */
+        if (pBigCtx->pBisCtx[bisIdx])
+        {
+          lctrBisEnqueueRxDataPdu(pBigCtx->pBisCtx[bisIdx],
+                                  lctrMstBisIsr.pDataBuf[bisIdx][burstIdx],
+                                  burstIdx);
+        }
+        else
+        {
+          lctrBisRxIsoDataPduFree(lctrMstBisIsr.pDataBuf[bisIdx][burstIdx]);
+        }
       }
     }
+  }
+
+  if (pBigCtx->state != LCTR_MST_BIG_STATE_SYNCED)
+  {
+    /* Terminate after PDUs are queued by lctrBisEnqueueRxDataPdu(). */
+    lctrMstBigSendMsg(pBigCtx, LCTR_MST_BIG_INT_TERMINATED_SYNC);
+    WsfTimerStop(&pBigCtx->roleData.mst.bigSyncTmr);
+
+    if (lctrMstBisIsr.pCtrlBuf)
+    {
+      lctrBisRxIsoDataPduFree(lctrMstBisIsr.pCtrlBuf);
+      lctrMstBisIsr.pCtrlBuf = NULL;
+    }
+
+    return;
   }
 
   /* BIG Control procedure. */
@@ -884,6 +1172,7 @@ void lctrMstBigEndOp(BbOpDesc_t *pOp)
     }
     else
     {
+      /* No need to continue Rx process on MIC errors. */
       goto RxPostProcess;
     }
   }
@@ -907,10 +1196,10 @@ void lctrMstBigEndOp(BbOpDesc_t *pOp)
     unsyncTimeUsec += pBigCtx->isoInterUsec;
 
     uint32_t wwTotalUsec = lctrCalcWindowWideningUsec(unsyncTimeUsec, pBigCtx->roleData.mst.totalAcc)
-                           + pBigCtx->roleData.mst.extraWwUsec;
+                           + pBigCtx->roleData.mst.initWwUsec;
     /* TODO Limit to half the ISO Interval size */
 
-    pOp->dueUsec = pBigCtx->roleData.mst.anchorPoint - wwTotalUsec;
+    pOp->dueUsec = pBigCtx->roleData.mst.anchorPoint + pBigCtx->roleData.mst.firstBisOffsUsec - wwTotalUsec;
     pBis->rxSyncDelayUsec = wwTotalUsec << 1;   /* multiply 2 for before and after BIG Anchor Point */
 
     lctrSelectBigChannels(pBigCtx);
@@ -927,7 +1216,7 @@ void lctrMstBigEndOp(BbOpDesc_t *pOp)
 RxPostProcess:
   /* Consume ISO Data PDU. */
 
-  lctrMstBisRxDataPduHandler(pBigCtx, rxEventCounter);
+  lctrMstBisRxDataPduHandler(pBigCtx, rxEventCounter, sduRef);
   lctrMstBisRxTestPduHandler(pBigCtx, rxEventCounter);
 
   if (lmgrCb.sendIsoCmplEvt)

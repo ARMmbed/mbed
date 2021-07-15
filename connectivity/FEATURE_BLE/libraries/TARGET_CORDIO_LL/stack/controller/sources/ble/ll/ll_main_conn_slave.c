@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -46,6 +46,18 @@ uint8_t LlReadRemoteFeat(uint16_t handle)
 
   if (LctrIsProcActPended(handle, LCTR_CONN_MSG_API_REMOTE_FEATURE) == TRUE)
   {
+
+    /* The process can already be pended when the connection starts up if
+     * host sends this command right when connection establishes if
+     * LL_OP_MODE_FLAG_ENA_FEAT_LLCP_STARTUP is enabled.
+     */
+    if (LctrIsConnHandleEnabled(handle) &&
+        !LctrIsFeatExchHostInit(handle))
+    {
+      LctrSetHostNotifyFeatExch(handle);
+      return LL_SUCCESS;
+    }
+
     return LL_ERROR_CODE_CMD_DISALLOWED;
   }
 

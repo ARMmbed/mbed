@@ -137,7 +137,14 @@ void BbBleBisSlaveInit(void)
 /*************************************************************************************************/
 void BbBleBisTxData(PalBbBleTxBufDesc_t descs[], uint8_t cnt, uint32_t nextPduTime, PalBbBleChan_t *pNextChan)
 {
-  bbBleSetAbsIfs(nextPduTime, pNextChan);
+  if (pNextChan)
+  {
+    bbBleSetAbsIfs(nextPduTime, pNextChan);
+  }
+  else
+  {
+    bbBleClrIfs();
+  }
 
   if (bbBleCb.evtState == 0)
   {
@@ -148,4 +155,14 @@ void BbBleBisTxData(PalBbBleTxBufDesc_t descs[], uint8_t cnt, uint32_t nextPduTi
     BB_ISR_MARK(bbBisStats.txSetupUsec);
     PalBbBleTxTifsData(descs, cnt);
   }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Get BIS packet statistics.
+ */
+/*************************************************************************************************/
+void BbBleGetBisStats(BbBleDataPktStats_t *pStats)
+{
+  *pStats = bbBisStats;
 }

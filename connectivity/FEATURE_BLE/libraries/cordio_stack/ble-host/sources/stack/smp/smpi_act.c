@@ -164,6 +164,9 @@ void smpiActProcPairRsp(smpCcb_t *pCcb, smpMsg_t *pMsg)
     /* proceed to process pairing */
     if (smpCb.procPairing(pCcb, &oob, &display))
     {
+      /* clear key ready */
+      pCcb->keyReady = FALSE;
+
       smpCb.procAuthReq(pCcb, oob, display);
     }
   }

@@ -352,6 +352,24 @@ void BbBleGetConnStats(BbBleDataPktStats_t *pStats);
 
 /*************************************************************************************************/
 /*!
+ *  \brief      Get CIS packet statistics.
+ *
+ *  \param      pStats      CIS data statistics.
+ */
+/*************************************************************************************************/
+void BbBleGetCisStats(BbBleDataPktStats_t *pStats);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Get BIS packet statistics.
+ *
+ *  \param      pStats      BIS data statistics.
+ */
+/*************************************************************************************************/
+void BbBleGetBisStats(BbBleDataPktStats_t *pStats);
+
+/*************************************************************************************************/
+/*!
  *  \brief      Get test mode packet statistics.
  *
  *  \param      pStats      Test data statistics.
@@ -403,15 +421,6 @@ void BbBleBisMasterInit(void);
  */
 /*************************************************************************************************/
 void BbBleBisSlaveInit(void);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Get CIS packet statistics.
- *
- *  \param      pStats      CIS data statistics.
- */
-/*************************************************************************************************/
-void BbBleGetCisStats(BbBleDataPktStats_t *pStats);
 
 /*! \} */    /* BB_API_BLE */
 

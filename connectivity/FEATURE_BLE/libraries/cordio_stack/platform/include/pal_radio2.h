@@ -4,7 +4,7 @@
  *
  *  \brief      Radio interface file.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@
 #define PAL_RADIO_H
 
 #include <stdint.h>
+#include "pal_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,7 +59,8 @@ typedef enum
   PAL_RADIO_STATUS_SUCCESS,         /*!< Operation completed successfully. */
   PAL_RADIO_STATUS_FAILED,          /*!< General failure. */
   PAL_RADIO_STATUS_TIMEOUT,         /*!< Rx timed out. */
-  PAL_RADIO_STATUS_CRC_FAILED       /*!< Rx CRC match failed. */
+  PAL_RADIO_STATUS_CRC_FAILED,      /*!< Rx CRC match failed. */
+  PAL_RADIO_STATUS_MIC_FAILED       /*!< Rx MIC match failed. */
 } PalRadioStatus_t;
 
 typedef enum
@@ -74,7 +76,7 @@ typedef enum
 typedef void (*PalRadioTxComp_t)(PalRadioStatus_t status);
 
 /*! \brief  Rx completion call signature. */
-typedef void (*PalRadioRxComp_t)(PalRadioStatus_t status, uint32_t tstamp, PalRadioPhy_t phy, int8_t rssi);
+typedef void (*PalRadioRxComp_t)(PalRadioStatus_t status, uint32_t startOffs, PalRadioPhy_t phy, int8_t rssi);
 
 /**************************************************************************************************
   Functions
@@ -85,6 +87,7 @@ void PalRadioInit(void);
 void PalRadioDeInit(void);
 
 /* Control and Status */
+PalRadioState_t PalRadioGetState(void);
 void PalRadioRegisterTxComplete(PalRadioTxComp_t cback);
 void PalRadioRegisterRxComplete(PalRadioRxComp_t cback);
 void PalRadioSetAccessAddress(uint32_t addr);
@@ -95,14 +98,23 @@ int8_t PalRadioGetTxPower(void);
 void PalRadioSetPhy(PalRadioPhy_t txPhy, PalRadioPhy_t rxPhy);
 void PalRadioSetDataWhitening(uint8_t ena);
 void PalRadioSetPrbs15(uint8_t ena);
-PalRadioState_t PalRadioGetState(void);
+
+/* Encryption */
+void PalRadioSetEncryption(uint8_t txEna, uint8_t rxEna);
+void PalRadioSetSessionKey(uint8_t *pSK);
+void PalRadioSetIV(uint8_t *pIV);
+void PalRadioSetDirection(uint8_t dir);
+void PalRadioSetEncryptionType(uint8_t type);
+void PalRadioSetPacketCounter(uint64_t pktCtr);
 
 /* Data Transfer */
 void PalRadioTxStart(uint32_t dueTime);
-void PalRadioTxNext(uint32_t offsUsec);
+void PalRadioTxTifs(uint16_t tifsUsec);
+void PalRadioTxOffset(uint32_t offsUsec);
 void PalRadioTxData(uint8_t *pBuf, uint16_t len);
-void PalRadioRxStart(uint32_t dueTime, uint32_t rxTimeoutUsec);
-void PalRadioRxNext(uint32_t offsUsec, uint32_t rxTimeoutUsec);
+bool_t PalRadioRxStart(uint32_t dueTime, uint32_t rxTimeoutUsec);
+void PalRadioRxTifs(uint16_t tifsUsec, uint32_t rxTimeoutUsec);
+bool_t PalRadioRxOffset(uint32_t offsUsec, uint32_t rxTimeoutUsec);
 void PalRadioRxData(uint8_t *pBuf, uint16_t len);
 void PalRadioStop(void);
 

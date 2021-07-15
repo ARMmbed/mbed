@@ -71,6 +71,11 @@ static bool_t bbMstCisCheckContOp(BbOpDesc_t *pCur, BbBleMstCisEvent_t *pCis, bo
     return TRUE;
   }
 
+  /* Cancel TIFS timer. */
+  PalBbBleCancelTifs();
+
+  (void)pCis->checkContOpPostCback(pCur, pNewCisCtx);
+
   /* Updated channel parameter. */
   BbBleData_t *pBle = pCur->prot.pBle;
   PalBbBleSetChannelParam(&pBle->chan);
@@ -121,13 +126,13 @@ static void bbMstCisTxCompCback(uint8_t status)
 
   pCis->txDataCback(pCur, status);
 
-  if (bbBleCb.pRxCisDataBuf &&
+  if (bbBleCb.pRxDataBuf &&
       (status == BB_STATUS_SUCCESS))
   {
     BB_ISR_MARK(bbCisStats.rxSetupUsec);
 
     bbBleSetTifs();     /* TODO set only if Tx may follow in CE */
-    PalBbBleRxTifsData(bbBleCb.pRxCisDataBuf, bbBleCb.rxDataLen);
+    PalBbBleRxTifsData(bbBleCb.pRxDataBuf, bbBleCb.rxDataLen);
   }
   else
   {
@@ -140,10 +145,10 @@ static void bbMstCisTxCompCback(uint8_t status)
       case BB_STATUS_FAILED:
       default:
         /* Free Rx data buffer before BOD end. */
-        if (bbBleCb.pRxCisDataBuf != NULL)        /* buffer should always exist, but still check */
+        if (bbBleCb.pRxDataBuf != NULL)        /* buffer should always exist, but still check */
         {
-          uint8_t *pBuf = bbBleCb.pRxCisDataBuf;
-          bbBleCb.pRxCisDataBuf = NULL;
+          uint8_t *pBuf = bbBleCb.pRxDataBuf;
+          bbBleCb.pRxDataBuf = NULL;
           pCis->rxDataCback(pCur, pBuf, BB_STATUS_CANCELED);
         }
         break;
@@ -199,9 +204,9 @@ static void bbMstCisRxCompCback(uint8_t status, int8_t rssi, uint32_t crc, uint3
   pCis->rssi = rssi;
   pCis->rxPhyOptions = rxPhyOptions;
 
-  WSF_ASSERT(bbBleCb.pRxCisDataBuf);
-  uint8_t *pBuf = bbBleCb.pRxCisDataBuf;
-  bbBleCb.pRxCisDataBuf = NULL;
+  WSF_ASSERT(bbBleCb.pRxDataBuf);
+  uint8_t *pBuf = bbBleCb.pRxDataBuf;
+  bbBleCb.pRxDataBuf = NULL;
 
   pCis->rxDataCback(pCur, pBuf, status);
 
@@ -210,7 +215,7 @@ static void bbMstCisRxCompCback(uint8_t status, int8_t rssi, uint32_t crc, uint3
 
   if (BbGetBodTerminateFlag() || bodComplete)
   {
-    WSF_ASSERT(!bbBleCb.pRxCisDataBuf);
+    WSF_ASSERT(!bbBleCb.pRxDataBuf);
 
     /* Cancel TIFS timer if active. */
     switch (status)
@@ -280,6 +285,7 @@ static void bbMstExecuteCisOp(BbOpDesc_t *pBod, BbBleData_t *pBle)
   WSF_ASSERT(pBle->op.mstCis.rxDataCback);
   WSF_ASSERT(pBle->op.mstCis.execCback);
   WSF_ASSERT(pBle->op.mstCis.checkContOpCback);
+  WSF_ASSERT(pBle->op.mstCis.checkContOpPostCback);
 
   #if(LL_ENABLE_TESTER)
     pBle->chan.txPower += pBle->chan.txPwrOffset;
@@ -317,10 +323,10 @@ static void bbMstCancelCisOp(BbOpDesc_t *pBod, BbBleData_t *pBle)
 
   PalBbBleCancelData();
 
-  if (bbBleCb.pRxCisDataBuf)
+  if (bbBleCb.pRxDataBuf)
   {
-    uint8_t *pBuf = bbBleCb.pRxCisDataBuf;
-    bbBleCb.pRxCisDataBuf = NULL;
+    uint8_t *pBuf = bbBleCb.pRxDataBuf;
+    bbBleCb.pRxDataBuf = NULL;
 
     /* Buffer free expected to be called during this routine. */
     pBle->op.mstCis.rxDataCback(pBod, pBuf, BB_STATUS_CANCELED);

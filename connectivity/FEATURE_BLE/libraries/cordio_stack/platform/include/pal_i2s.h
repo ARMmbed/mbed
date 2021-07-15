@@ -92,6 +92,7 @@ void PalI2sDeConfig(void);
 /* Data Transfer */
 void PalI2sReadData(uint8_t *pData, uint16_t len);
 void PalI2sWriteData(const uint8_t *pData, uint16_t len);
+void PalI2sReadWriteData(uint8_t *pRdData, const uint8_t *pWrData, uint16_t len);
 
 /*! \} */    /* PAL_I2S */
 

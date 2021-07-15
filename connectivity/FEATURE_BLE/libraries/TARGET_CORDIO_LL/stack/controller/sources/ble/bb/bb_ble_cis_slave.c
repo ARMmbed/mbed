@@ -83,6 +83,11 @@ static bool_t bbSlvCisCheckNextOp(BbOpDesc_t *pCur, BbBleSlvCisEvent_t *pCis, bo
     return TRUE;
   }
 
+  /* Cancel TIFS timer. */
+  PalBbBleCancelTifs();
+
+  (void)pCis->checkContOpPostCback(pCur, pNewCisCtx);
+
   /* Update channel parameter. */
   BbBleData_t *pBle = pCur->prot.pBle;
   PalBbBleSetChannelParam(&pBle->chan);
@@ -148,10 +153,10 @@ static void bbSlvCisTxCompCback(uint8_t status)
   {
     if (bodComplete)
     {
-      if (bbBleCb.pRxCisDataBuf != NULL)
+      if (bbBleCb.pRxDataBuf != NULL)
       {
-        uint8_t *pBuf = bbBleCb.pRxCisDataBuf;
-        bbBleCb.pRxCisDataBuf = NULL;
+        uint8_t *pBuf = bbBleCb.pRxDataBuf;
+        bbBleCb.pRxDataBuf = NULL;
         pCis->rxDataCback(pCur, pBuf, BB_STATUS_CANCELED);
       }
 
@@ -168,10 +173,10 @@ static void bbSlvCisTxCompCback(uint8_t status)
   }
   else
   {
-    if (bbBleCb.pRxCisDataBuf != NULL)
+    if (bbBleCb.pRxDataBuf != NULL)
     {
-      uint8_t *pBuf = bbBleCb.pRxCisDataBuf;
-      bbBleCb.pRxCisDataBuf = NULL;
+      uint8_t *pBuf = bbBleCb.pRxDataBuf;
+      bbBleCb.pRxDataBuf = NULL;
       pCis->rxDataCback(pCur, pBuf, BB_STATUS_CANCELED);
     }
 
@@ -231,7 +236,7 @@ static void bbSlvCisRxCompCback(uint8_t status, int8_t rssi, uint32_t crc, uint3
 
   if (pCis->isFirstTs == TRUE)
   {
-    /* Update startTs for the successful rx, otherwise use the due time. */
+    /* Update startTs for the successful Rx, otherwise use the due time. */
     if (status == BB_STATUS_SUCCESS)
     {
       pCis->startTsUsec = timestamp;
@@ -245,30 +250,49 @@ static void bbSlvCisRxCompCback(uint8_t status, int8_t rssi, uint32_t crc, uint3
   }
   else
   {
-    /* Update rxTs for the successful rx, otherwise use the due time. */
+    /* Update rxTs for the successful Rx, otherwise use the due time. */
     if (status == BB_STATUS_SUCCESS)
     {
       pCis->rxTsUsec = timestamp;
     }
   }
 
-  WSF_ASSERT(bbBleCb.pRxCisDataBuf);
+  WSF_ASSERT(bbBleCb.pRxDataBuf);
 
-  uint8_t *pBuf = bbBleCb.pRxCisDataBuf;
-  bbBleCb.pRxCisDataBuf = NULL;
+  uint8_t *pBuf = bbBleCb.pRxDataBuf;
+  bbBleCb.pRxDataBuf = NULL;
 
   /* Set Tx buffer or BOD cancel expected to be called during this routine. */
   pCis->rxDataCback(pCur, pBuf, status);
 
-  if ((status != BB_STATUS_RX_TIMEOUT) &&   /* BB_STATUS_RX_TIMEOUT will setup Tx which will be failed and terminate BOD. */
-       BbGetBodTerminateFlag())
+  bool_t bodComplete = FALSE;
+  bool_t newCisCtx = FALSE;
+
+  switch (status)
   {
-    WSF_ASSERT(!bbBleCb.pRxCisDataBuf);
+    case BB_STATUS_RX_TIMEOUT:
+    case BB_STATUS_FAILED:
+      bodComplete = bbSlvCisCheckNextOp(pCur, pCis, &newCisCtx);
+
+      /* Skip the post subevent callback if switching to the new CIS context. */
+      if (newCisCtx == FALSE)
+      {
+        bbSlvCisPostSubEvt(pCur, pCis, status);
+      }
+      break;
+    default:
+      break;
+  }
+
+  if (BbGetBodTerminateFlag() || bodComplete)
+  {
+    WSF_ASSERT(!bbBleCb.pRxDataBuf);
 
     /* Cancel TIFS timer if active. */
     switch (status)
     {
       case BB_STATUS_SUCCESS:
+      case BB_STATUS_CRC_FAILED:
         PalBbBleCancelTifs();
         break;
       default:
@@ -320,6 +344,7 @@ static void bbSlvExecuteCisOp(BbOpDesc_t *pBod, BbBleData_t *pBle)
   WSF_ASSERT(pCis->rxDataCback);
   WSF_ASSERT(pCis->execCback);
   WSF_ASSERT(pCis->checkContOpCback);
+  WSF_ASSERT(pCis->checkContOpPostCback);
 
   pCis->isFirstTs = TRUE;
   pCis->rxTsUsec = pBod->dueUsec;
@@ -357,10 +382,10 @@ static void bbSlvCancelCisOp(BbOpDesc_t *pBod, BbBleData_t *pBle)
 
   PalBbBleCancelData();
 
-  if (bbBleCb.pRxCisDataBuf)
+  if (bbBleCb.pRxDataBuf)
   {
-    uint8_t *pBuf = bbBleCb.pRxCisDataBuf;
-    bbBleCb.pRxCisDataBuf = NULL;
+    uint8_t *pBuf = bbBleCb.pRxDataBuf;
+    bbBleCb.pRxDataBuf = NULL;
 
     /* Buffer free expected to be called during this routine. */
     pBle->op.slvCis.rxDataCback(pBod, pBuf, BB_STATUS_CANCELED);

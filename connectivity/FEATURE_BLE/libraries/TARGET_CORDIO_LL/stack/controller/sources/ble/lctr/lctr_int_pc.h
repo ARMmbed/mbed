@@ -4,7 +4,7 @@
  *
  *  \brief  Internal link layer controller power control interface file.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,25 +24,17 @@
 #define LCTR_INT_PC_H
 
 #include "lctr_api.h"
-#include "lctr_int_conn.h"
+#include "lctr_int_conn_slave.h"
+#include "lctr_int_conn_master.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/**************************************************************************************************
-  External Constants
-**************************************************************************************************/
-
-/*! \brief      Master LLCP state machine table. */
-extern LctrLlcpHdlr_t lctrMstLlcpSmTbl[LCTR_LLCP_SM_TOTAL];
-
-/*! \brief      Slave LLCP state machine table. */
-extern LctrLlcpHdlr_t lctrSlvLlcpSmTbl[LCTR_LLCP_SM_TOTAL];
-
 /*************************************************************************************************
  * Function Declarations
 *************************************************************************************************/
+
 uint8_t lctrCalcPathLossZone(lctrConnCtx_t *pCtx);
 void lctrNotifyHostPathLossRpt(lctrConnCtx_t *pCtx);
 void lctrPathLossMonitorAct(lctrConnCtx_t *pCtx);
@@ -59,10 +51,10 @@ void lctrSendPeerPowerControlRsp(lctrConnCtx_t *pCtx);
 void lctrStorePeerPowerControlRsp(lctrConnCtx_t *pCtx);
 
 /* Power monitoring actions. */
-void lctrAutoPowerMonitorAct(lctrConnCtx_t *pCtx);
+void lctrConnServicePowerMonitor(lctrConnCtx_t *pCtx);
 
 /* Power reporting actions. */
-void lctrNotifyPowerReportInd(lctrConnCtx_t *pCtx, uint8_t reason, uint8_t phy, int8_t txPower, uint8_t limits, int8_t delta);
+void lctrNotifyPowerReportInd(lctrConnCtx_t *pCtx, uint8_t status, uint8_t reason, uint8_t phy, int8_t txPower, uint8_t limits, int8_t delta);
 int8_t lctrAttemptTxPowerChange(lctrConnCtx_t *pCtx, uint8_t phy, int8_t delta);
 void lctrSendPowerChangeInd(lctrConnCtx_t *pCtx, uint8_t phy, int8_t delta, int8_t txPower, bool_t phyChange);
 

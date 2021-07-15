@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@
 #include "hci_defs.h"
 #include "ll_api.h"
 #include "bb_api.h"
-#include "pal_bb.h"
+#include "pal_frc.h"
 #include "wsf_assert.h"
 #include "wsf_msg.h"
 #include "util/bstream.h"
@@ -92,7 +92,7 @@ void LhciHandler(wsfEventMask_t event, wsfMsgHdr_t *pMsg)
   uint32_t startTime;
   uint32_t endTime;
 
-  startTimeValid = PalBbGetTimestamp(NULL);
+  startTimeValid = PalFrcGetCurrentTime();
   if (startTimeValid)
   {
     startTime = PalBbGetCurrentTime();
@@ -153,9 +153,9 @@ void LhciHandler(wsfEventMask_t event, wsfMsgHdr_t *pMsg)
     lhciPersistCb.evtTrPending = FALSE;
     ChciTrNeedsService(CHCI_TR_PROT_BLE);
 
-    if (lhciCb.evtCompCback)
+    if (lhciPersistCb.evtCompCback)
     {
-      lhciCb.evtCompCback();
+      lhciPersistCb.evtCompCback();
     }
   }
 
@@ -173,10 +173,10 @@ void LhciHandler(wsfEventMask_t event, wsfMsgHdr_t *pMsg)
   }
 
   if (startTimeValid &&
-      PalBbGetTimestamp(NULL))
+      PalFrcGetCurrentTime())
   {
     endTime = PalBbGetCurrentTime();
-    uint32_t durUsec = BbGetTargetTimeDelta(endTime, startTime);
+    uint32_t durUsec = PalFrcDeltaUs(endTime, startTime);
     if (lhciHandlerWatermarkUsec < durUsec)
     {
       lhciHandlerWatermarkUsec = durUsec;
@@ -238,6 +238,7 @@ void lhciSendComplete(uint8_t type, uint8_t *pBuf)
           case HCI_LE_DIRECT_ADV_REPORT_EVT:
           case HCI_LE_EXT_ADV_REPORT_EVT:
           case HCI_LE_PER_ADV_REPORT_EVT:
+          case HCI_LE_BIG_INFO_ADV_REPORT_EVT:
             lhciCb.numAdvReport--;
             break;
           case HCI_LE_SCAN_REQ_RCVD_EVT:
@@ -348,8 +349,12 @@ bool_t lhciService(uint8_t *pType, uint16_t *pLen, uint8_t **pBuf)
 /*************************************************************************************************/
 void lhciSendHwError(uint8_t code)
 {
-  lhciCb.hwErrorCode = code;
-  WsfSetEvent(lhciPersistCb.handlerId, LHCI_EVT_HW_ERR);
+  /* Only send once. Host is expected to reset system after first error code. */
+  if (lhciCb.hwErrorCode == 0)
+  {
+    lhciCb.hwErrorCode = code;
+    WsfSetEvent(lhciPersistCb.handlerId, LHCI_EVT_HW_ERR);
+  }
 }
 
 /*************************************************************************************************/
@@ -398,8 +403,9 @@ static void LhciSetDefaultHciSupCmd(uint8_t *pBuf)
              HCI_SUP_LE_RECEIVER_TEST |                         /* Rx device */
              HCI_SUP_LE_TRANSMITTER_TEST |                      /* Tx device */
              HCI_SUP_LE_TEST_END;                               /* mandatory */
+  pBuf[41] = HCI_SUP_LE_MODIFY_SLEEP_CLK_ACCURACY;
   pBuf[44] = HCI_SUP_LE_SET_HOST_FEATURE;                       /* v5.2 */
-  pBuf[45] = HCI_SUP_LE_TRANSMITTER_TEST_V4;                    /* v5.2 */
+  pBuf[45] = 0;                                                 /* v5.2 */
   pBuf[38] = HCI_SUP_LE_READ_TX_POWER;                          /* mandatory (5.0) */
 
   if (lhciCmdTbl[LHCI_MSG_CONN])
@@ -475,6 +481,8 @@ static void LhciSetDefaultHciSupCmd(uint8_t *pBuf)
   {
     pBuf[34] |= HCI_SUP_LE_READ_LOCAL_P256_PUB_KEY |            /* Secure connections */
                 HCI_SUP_LE_GENERATE_DHKEY;                      /* Secure connections */
+
+    pBuf[41] |= HCI_SUP_LE_GENERATE_DHKEY_V2;                   /* Secure connections */
   }
 
   if (lhciCmdTbl[LHCI_MSG_PHY])
@@ -570,7 +578,7 @@ static void LhciSetDefaultHciSupCmd(uint8_t *pBuf)
   {
     pBuf[41] |= HCI_SUP_LE_READ_BUF_SIZE_V2 |                   /* ISO */
                 HCI_SUP_LE_READ_ISO_TX_SYNC;                    /* ISO */
-    pBuf[44] |= HCI_SUP_LE_SETUP_ISO_DATA_PATH |                /* ISO */
+    pBuf[43] |= HCI_SUP_LE_SETUP_ISO_DATA_PATH |                /* ISO */
                 HCI_SUP_LE_REMOVE_ISO_DATA_PATH  |              /* ISO */
                 HCI_SUP_LE_REQ_PEER_SCA;                        /* ISO */
 
@@ -618,5 +626,5 @@ void LhciInitFinalize(void)
 /*************************************************************************************************/
 void LhciRegisterSendTrCompleteHandler(lhciCompHandler_t compCback)
 {
-  lhciCb.evtCompCback = compCback;
+  lhciPersistCb.evtCompCback = compCback;
 }

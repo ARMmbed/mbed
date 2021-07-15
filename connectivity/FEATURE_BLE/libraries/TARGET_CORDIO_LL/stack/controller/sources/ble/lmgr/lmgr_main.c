@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -63,27 +63,36 @@ void LmgrSetDefaults(void)
   lmgrCb.features = lmgrPersistCb.featuresDefault;
 
   lmgrCb.opModeFlags =
-    /* LL_OP_MODE_FLAG_ENA_VER_LLCP_STARTUP | */        /* disabled */
-    /* LL_OP_MODE_FLAG_SLV_REQ_IMMED_ACK | */           /* disabled */
-    /* LL_OP_MODE_FLAG_BYPASS_CE_GUARD | */             /* disabled */
-    /* LL_OP_MODE_FLAG_MST_RETX_AFTER_RX_NACK | */      /* disabled */
-    /* LL_OP_MODE_FLAG_MST_IGNORE_CP_RSP | */           /* disabled */
-    /* LL_OP_MODE_FLAG_MST_UNCOND_CP_RSP | */           /* disabled */
-    /* LL_OP_MODE_FLAG_REQ_SYM_PHY | */                 /* disabled */
-    /* LL_OP_MODE_FLAG_ENA_FEAT_LLCP_STARTUP | */       /* disabled */
-    /* LL_OP_MODE_FLAG_SLV_DELAY_LLCP_STARTUP | */      /* disabled */
-    LL_OP_MODE_FLAG_ENA_SLV_LATENCY_WAKEUP |
+    /* LL_OP_MODE_FLAG_ENA_VER_LLCP_STARTUP |  */       /* disabled */
+    /* LL_OP_MODE_FLAG_SLV_REQ_IMMED_ACK |  */          /* disabled */
+    /* LL_OP_MODE_FLAG_BYPASS_CE_GUARD |  */            /* disabled */
+    /* LL_OP_MODE_FLAG_MST_RETX_AFTER_RX_NACK |  */     /* disabled */
+    /* LL_OP_MODE_FLAG_MST_IGNORE_CP_RSP |  */          /* disabled */
+    /* LL_OP_MODE_FLAG_MST_UNCOND_CP_RSP |  */          /* disabled */
     LL_OP_MODE_FLAG_ENA_LEN_LLCP_STARTUP |
+    /* LL_OP_MODE_FLAG_REQ_SYM_PHY |  */                /* disabled */
+    /* LL_OP_MODE_FLAG_ENA_FEAT_LLCP_STARTUP | */       /* disabled. */
+    /* LL_OP_MODE_FLAG_SLV_DELAY_LLCP_STARTUP |  */     /* disabled */
+    LL_OP_MODE_FLAG_ENA_SLV_LATENCY_WAKEUP |
+    LL_OP_MODE_FLAG_ENA_SLV_AUX_SCAN_RSP_ADI |
+    LL_OP_MODE_FLAG_ENA_MST_CIS_NULL_PDU |
+    /* LL_OP_MODE_FLAG_ENA_SLV_AUX_IND_ADVA |  */       /* disabled */
+    LL_OP_MODE_FLAG_ENA_ADV_CHAN_RAND |
+    /* LL_OP_MODE_FLAG_DIS_POWER_MONITOR |  */          /* disabled */
+    /* LL_OP_MODE_FLAG_ENA_BIS_RECV_DUP |  */           /* disabled */
+    /* LL_OP_MODE_FLAG_ENA_ISO_LOST_NOTIFY | */
+    LL_OP_MODE_FLAG_ENA_CH_RPT_LLCP_AFTER_FEAT |
+    /* LL_OP_MODE_FLAG_IGNORE_CRC_ERR_TS | */           /* disabled */
+    /* LL_OP_MODE_FLAG_FORCE_CIS_CODED_PHY_S2 | */      /* disabled */
+
+    /* diagnostics only */
     LL_OP_MODE_FLAG_ENA_ADV_DLY |
     LL_OP_MODE_FLAG_ENA_SCAN_BACKOFF |
     LL_OP_MODE_FLAG_ENA_WW |
     LL_OP_MODE_FLAG_ENA_SLV_LATENCY |
-    LL_OP_MODE_FLAG_ENA_SLV_AUX_SCAN_RSP_ADI |
-    LL_OP_MODE_FLAG_ENA_MST_CIS_NULL_PDU |
-    /* LL_OP_MODE_FLAG_ENA_SLV_AUX_IND_ADVA | */        /* disabled */
-    LL_OP_MODE_FLAG_ENA_ADV_CHAN_RAND |
-    /* LL_OP_MODE_DISABLE_POWER_MONITOR |  */           /* disabled */
-    LL_OP_MODE_FLAG_ENA_LLCP_TIMER;
+    LL_OP_MODE_FLAG_ENA_LLCP_TIMER |
+    LL_OP_MODE_FLAG_ENA_SUBRATE_CE |
+    0;
 
   lmgrCb.chanClass = LL_CHAN_DATA_ALL;
 }

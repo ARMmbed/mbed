@@ -94,10 +94,6 @@ typedef struct
 
   uint16_t rxDataLen;                   /*!< Receive data buffer length. */
   uint8_t *pRxDataBuf;                  /*!< Current Rx data buffer. */
-
-  /* TODO combine with above? */
-  uint16_t rxCisDataLen;                /*!< Receive CIS data buffer length. */
-  uint8_t *pRxCisDataBuf;               /*!< Current Rx CIS data buffer. */
 } bbBleCtrlBlk_t;
 
 /**************************************************************************************************

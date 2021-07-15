@@ -2,7 +2,7 @@
 /*!
  *  \file   hci_vs.c
  *
- *  \brief  HCI vendor specific functions for generic controllers.
+ *  \brief  HCI vendor specific functions for single-chip.
  *
  *  Copyright (c) 2011-2018 Arm Ltd. All Rights Reserved.
  *
@@ -32,8 +32,6 @@
 
 #include "hci_mbed_os_adaptation.h"
 
-/* PORTING: reset handling code has been removed since it's handled by the mbed-os driver */
-
 /*************************************************************************************************/
 /*!
  *  \fn     hciCoreResetStart
@@ -49,17 +47,6 @@ void hciCoreResetStart(void)
   hci_mbed_os_start_reset_sequence();
 }
 
-/*************************************************************************************************/
-/*!
- *  \fn     hciCoreResetSequence
- *
- *  \brief  Implement the HCI reset sequence.
- *
- *  \param  pMsg    HCI event message from previous command in the sequence.
- *
- *  \return None.
- */
-/*************************************************************************************************/
 void hciCoreResetSequence(uint8_t *pMsg) 
 { 
   /* PORTING: reset sequence handled by mbed-os */
@@ -69,7 +56,7 @@ void hciCoreResetSequence(uint8_t *pMsg)
 void hci_mbed_os_signal_reset_sequence_done(void)
 {
   /* last command in sequence; set resetting state and call callback */
-  wsfMsgHdr_t    hdr;
+   wsfMsgHdr_t    hdr;
   hciCb.resetting = FALSE;
   hdr.param = 0;
   hdr.event = HCI_RESET_SEQ_CMPL_CBACK_EVT;
@@ -140,5 +127,6 @@ uint8_t hciCoreHwErrorRcvd(uint8_t *p)
 /*************************************************************************************************/
 void HciVsInit(uint8_t param)
 {
+  /* XXX */
   hciCoreCb.extResetSeq = NULL;
 }

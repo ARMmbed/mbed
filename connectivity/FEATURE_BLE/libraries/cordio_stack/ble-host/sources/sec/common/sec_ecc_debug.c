@@ -155,5 +155,5 @@ void SecEccInit()
 
 }
 
-#endif /* SEC_ECC_CFG */
+ #endif /* SEC_ECC_CFG */
 #endif /* defined(SEC_ECC_CFG) */

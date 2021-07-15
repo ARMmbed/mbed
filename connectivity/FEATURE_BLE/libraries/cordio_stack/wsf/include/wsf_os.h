@@ -89,7 +89,7 @@ typedef wsfHandlerId_t  wsfTaskId_t;
 typedef uint8_t wsfTaskEvent_t;
 
 /*! \brief      Idle check function. */
-typedef bool_t (*WsfOsIdleCheckFunc_t)(void);
+typedef bool_t (*WsfOsIdleHandler_t)(void);
 
 /**************************************************************************************************
   External Variables
@@ -187,7 +187,17 @@ wsfHandlerId_t WsfOsSetNextHandler(wsfEventHandler_t handler);
 
 /*************************************************************************************************/
 /*!
- *  \brief  Check if WSF is ready to sleep.
+*  \brief  Initialize OS control structure.
+*
+*  \return None.
+*/
+/*************************************************************************************************/
+void WsfOsInit(void);
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Check if WSF is ready to sleep.  This function should be called when interrupts
+ *          are disabled.
  *
  *  \return Return TRUE if there are no pending WSF task events set, FALSE otherwise.
  */
@@ -200,31 +210,6 @@ bool_t wsfOsReadyToSleep(void);
  */
 /*************************************************************************************************/
 void wsfOsDispatcher(void);
-
-/*************************************************************************************************/
-/*!
-*  \brief  Initialize OS control structure.
-*
-*  \return None.
-*/
-/*************************************************************************************************/
-void WsfOsInit(void);
-
-/*************************************************************************************************/
-/*!
- *  \brief  OS starts main loop
- */
-/*************************************************************************************************/
-void WsfOsEnterMainLoop(void);
-
-/*************************************************************************************************/
-/*!
- *  \brief  Register service check functions.
- *
- *  \param  func   Service function.
- */
-/*************************************************************************************************/
-void WsfOsRegisterSleepCheckFunc(WsfOsIdleCheckFunc_t func);
 
 /*! \} */    /* WSF_OS_API */
 

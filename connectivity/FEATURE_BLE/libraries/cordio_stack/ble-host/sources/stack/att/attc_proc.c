@@ -410,13 +410,13 @@ void attcProcRsp(attcCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
     }
     /* else if api is on deck */
     else if ((pCcb->slot == ATT_BEARER_SLOT_ID) &&
-             (attcCb.onDeck[pCcb->connId - 1].hdr.event != ATTC_MSG_API_NONE))
+             (attcCb.onDeck[pCcb->connId-1].hdr.event != ATTC_MSG_API_NONE))
     {
       /* set up and send request */
-      attcSetupReq(pCcb, &attcCb.onDeck[pCcb->connId - 1]);
+      attcSetupReq(pCcb, &attcCb.onDeck[pCcb->connId-1]);
 
       /* clear on deck */
-      attcCb.onDeck[pCcb->connId - 1].hdr.event = ATTC_MSG_API_NONE;
+      attcCb.onDeck[pCcb->connId-1].hdr.event = ATTC_MSG_API_NONE;
     }
   }
 }

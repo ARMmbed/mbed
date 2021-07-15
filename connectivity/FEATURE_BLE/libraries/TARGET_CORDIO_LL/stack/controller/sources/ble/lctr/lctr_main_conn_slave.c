@@ -375,6 +375,7 @@ void lctrSlvConnBuildOp(lctrConnCtx_t *pCtx)
       LL_TRACE_INFO1("                                connIntervalUsec=%u", LCTR_CONN_IND_US(pCtx->connInterval));
       LL_TRACE_INFO1("                                dueUsec=%u", pOp->dueUsec);
       LL_TRACE_INFO1("                                minDurUsec=%u", pOp->minDurUsec);
+      LL_TRACE_INFO1("                                pBod=0x%08x", pOp);
       break;
     }
 
@@ -432,6 +433,9 @@ void LctrSlvConnInit(void)
   /* Add channel selection handler. */
   lctrChSelHdlr[LL_CH_SEL_1] = lctrSelectNextDataChannel;
 
+  /* Register channel class update handler. */
+  lctrRegisterChClassHandler(lctrConnChClassUpdate);
+
   lctrConnDefaults();
 
   /* Set supported features. */
@@ -455,7 +459,13 @@ void LctrSlvConnInit(void)
   if (pLctrRtCfg->btVer >= LL_VER_BT_CORE_SPEC_5_1)
   {
     lmgrPersistCb.featuresDefault |=
-        (LL_FEAT_PAST_SENDER | LL_FEAT_SCA_UPDATE);
+      LL_FEAT_PAST_SENDER |
+      LL_FEAT_SCA_UPDATE;
+  }
+  if (pLctrRtCfg->btVer >= LL_VER_BT_CORE_SPEC_SYDNEY)
+  {
+    lmgrPersistCb.featuresDefault |=
+      LL_FEAT_CHANNEL_CLASSIFICATION;
   }
 }
 

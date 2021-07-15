@@ -4,7 +4,7 @@
  *
  *  \brief  LL HCI event module implementation file.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ static uint8_t lhciPackPowerReportEvt(uint8_t *pBuf, const LlPowerReportInd_t *p
  *  \return Packet length.
  */
 /*************************************************************************************************/
-static uint8_t lhciPackPathLossEvt(uint8_t *pBuf, const LlPathLossThresholdEvt_t *pEvt)
+static uint8_t lhciPackPathLossEvt(uint8_t *pBuf, const LlPathLossThresholdInd_t *pEvt)
 {
   const uint8_t len = HCI_LEN_LE_PATH_LOSS_ZONE;
 
@@ -105,7 +105,7 @@ bool_t lhciPclEncodeEvtPkt(LlEvt_t *pEvt)
       {
         if ((pEvtBuf = lhciAllocEvt(HCI_LE_META_EVT, HCI_LEN_LE_PATH_LOSS_ZONE)) != NULL)
         {
-          lhciPackPathLossEvt(pEvtBuf, &pEvt->pathLossEvt);
+          lhciPackPathLossEvt(pEvtBuf, &pEvt->pathLossInd);
         }
       }
       break;

@@ -76,6 +76,7 @@ uint8_t eattGetSlotId(dmConnId_t connId, uint16_t cid);
 eattConnCb_t *eattGetConnCb(dmConnId_t connId);
 void eattHandler(wsfMsgHdr_t *pMsg);
 void eattExecCallback(dmConnId_t connId, uint8_t event, uint8_t status);
+void attEmptyL2cCocDataCback(l2cCocEvt_t *pMsg);
 
 #ifdef __cplusplus
 };

@@ -22,6 +22,7 @@
  */
 /*************************************************************************************************/
 
+#include "ll_api.h"
 #include "lctr_pdu_adv_ae.h"
 #include "lctr_pdu_adv.h"
 #include "lctr_int_adv_slave.h"
@@ -190,11 +191,13 @@ static uint8_t lctrPackExtAdvHeader(lctrAdvSet_t *pAdvSet, uint8_t manExtHdrFlag
   }
 
   if ((manExtHdrFlags & LL_EXT_HDR_ADI_BIT) ||
-      ((optExtHdrFlags & LL_EXT_HDR_ADI_BIT) && (!(pAdvSet->extHdrFlags & LL_EXT_HDR_ADI_BIT))))
+      ((optExtHdrFlags & LL_EXT_HDR_ADI_BIT) &&
+       (!(pAdvSet->extHdrFlags & LL_EXT_HDR_ADI_BIT) || (isPeriodic && pAdvSet->perParam.enableAdi))))
   {
     /* Pack AdvDataInfo */
     extHdrFlags |= LL_EXT_HDR_ADI_BIT;
-    UINT16_TO_BSTREAM(pBuf, (pAdvSet->param.advSID << 12) | ((pAdvSet->param.advDID & 0x0FFF) << 0));
+    uint8_t did = isPeriodic ? pAdvSet->perParam.advDID : pAdvSet->param.advDID;
+    UINT16_TO_BSTREAM(pBuf, (pAdvSet->param.advSID << 12) | ((did & 0x0FFF) << 0));
 
 #if (LL_ENABLE_TESTER == TRUE)
     if ((llTesterCb.extHdr.pduMatchMask & (1 << pPduHdr->pduType)) &&
@@ -610,6 +613,7 @@ uint8_t lctrPackAuxAdvIndPdu(lctrAdvSet_t *pAdvSet, uint8_t *pPduBuf, lctrAdvDat
   }
 
   /*** Host allowed options ***/
+
   lctrChooseSetAdvA(&pduHdr, pBle, pAdvSet);
   lctrChooseSetPeerA(&pduHdr, pBle, pAdvSet);
 
@@ -742,6 +746,11 @@ void lctrPackAuxPtr(lctrAdvSet_t const *pAdvSet, uint32_t offsUsec, uint8_t chId
   {
     offsUnits = LCTR_OFFS_UNITS_300_USEC;
     auxOffset = LL_MATH_DIV_300(offsUsec);
+  }
+
+  if (auxOffset > LCTR_AUX_PTR_MAX_OFFSET)
+  {
+    LL_TRACE_ERR1("AUX Offset exceeds max allowed value: %u", auxOffset);
   }
 
   pAuxPtr[0] = chIdx |                  /* LL Channel */
@@ -932,6 +941,7 @@ uint8_t lctrPackSyncIndPdu(lctrAdvSet_t *pAdvSet, uint8_t *pPduBuf, lctrAdvDataB
 
   uint8_t manExtHdrFlags = 0;
   uint8_t optExtHdrFlags = LL_EXT_HDR_AUX_PTR_BIT |
+                           ((lmgrCb.features & LL_FEAT_PER_ADV_ADI_SUP) ? LL_EXT_HDR_ADI_BIT : 0) |
                            ((pAdvSet->perParam.advEventProp & LL_EXT_HDR_TX_PWR_BIT) ? LL_EXT_HDR_TX_PWR_BIT : 0);
 
   return lctrPackExtAdvHeader(pAdvSet, manExtHdrFlags, optExtHdrFlags,

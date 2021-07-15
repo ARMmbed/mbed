@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2016-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -202,7 +202,7 @@ void BbExecuteBod(BbOpDesc_t *pBod)
 
   WSF_ASSERT(pBod->protId < BB_PROT_NUM);
   /* TODO: Removed this assert as it spuriously seems to be taken. */
-  /* WSF_ASSERT(!bbCb.pOpInProgress); */
+  /* WSF_ASSERT(bbCb.pOpInProgress == NULL); */
   bbCb.pOpInProgress = pBod;
   bbCb.termBod = FALSE;
 
@@ -228,11 +228,6 @@ void BbExecuteBod(BbOpDesc_t *pBod)
   {
     bbCb.prot[pBod->protId].execOpCback(pBod);
   }
-
-  if (bbCb.termBod)
-  {
-    bbCb.pOpInProgress = NULL;
-  }
 }
 
 /*************************************************************************************************/
@@ -247,12 +242,12 @@ void BbCancelBod(void)
     BbOpDesc_t * const pBod = bbCb.pOpInProgress;
 
     WSF_ASSERT(pBod->protId < BB_PROT_NUM);
+
+    bbCb.pOpInProgress = NULL;
     if (bbCb.prot[pBod->protId].cancelOpCback != NULL)
     {
       bbCb.prot[pBod->protId].cancelOpCback(pBod);
     }
-
-    bbCb.pOpInProgress = NULL;
   }
 }
 
@@ -402,7 +397,7 @@ uint32_t BbAdjustTime(uint32_t dueUsec)
 
 /*************************************************************************************************/
 /*!
- *  \brief      Get Delta between target and reference time. Only valid if target time is in the future.
+ *  \brief      Get delta between target and reference time. Only valid if target time is in the future.
  *
  *  \param      targetUsec    Target time in microseconds.
  *  \param      refUsec       Reference time in microseconds.

@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -91,6 +91,18 @@ extern "C" {
 #define LL_MAX_BN               8       /*!< Absolute maximum number of bursts. */
 #endif
 
+#ifndef LL_PC_TBL_POW
+#define LL_PC_TBL_POW           2       /*!< Running average power control array sizes, must be a power of 2. */
+#endif
+
+#ifndef LL_PC_SERVICE_MS
+#define LL_PC_SERVICE_MS     1000       /*!< Power control service intervals in milliseconds. */
+#endif
+
+#ifndef LL_PC_REQ_CHANGE_DBM
+#define LL_PC_REQ_CHANGE_DBM    5       /*!< Request of increase/decrease in power value in units of dBm. */
+#endif
+
 #ifndef LHCI_ENABLE_VS
 #define LHCI_ENABLE_VS          1       /*!< Enable vendor specific command processing. */
 #endif
@@ -108,7 +120,8 @@ extern "C" {
 #endif
 
 #ifndef BB_ADV_PLD_MAX_LEN
-#define BB_ADV_PLD_MAX_LEN      255     /*!< Maximum advertising channel payload length (valid range 95 to 255). */
+#define BB_ADV_PLD_MAX_LEN      (BB_DATA_PLD_MAX_LEN + 4)
+                                        /*!< Maximum advertising channel payload length (valid range 95 to 255). */
 #endif
 
 #ifndef BB_FIXED_DATA_PKT_LEN

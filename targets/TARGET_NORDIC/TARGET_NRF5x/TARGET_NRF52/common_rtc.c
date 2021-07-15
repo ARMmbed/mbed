@@ -109,11 +109,11 @@ __STATIC_INLINE void errata_20(void)
         {
         }
     }
-    NRF_RTC1->TASKS_STOP = 0;
+    COMMON_RTC_INSTANCE->TASKS_STOP = 0;
 #endif
 }
 
-void RTC1_IRQHandler(void);
+void COMMON_RTC_IRQ_HANDLER(void);
 
 void common_rtc_init(void)
 {
@@ -129,7 +129,7 @@ void common_rtc_init(void)
 
     nrf_rtc_task_trigger(COMMON_RTC_INSTANCE, NRF_RTC_TASK_STOP);
 
-    NVIC_SetVector(RTC1_IRQn, (uint32_t)RTC1_IRQHandler);
+    NVIC_SetVector(COMMON_RTC_IRQn, (uint32_t)COMMON_RTC_IRQ_HANDLER);
 
     /* RTC is driven by the low frequency (32.768 kHz) clock, a proper request
      * must be made to have it running.
@@ -227,15 +227,6 @@ void common_rtc_set_interrupt(uint32_t ticks_count, uint32_t cc_channel,
 #if defined(TARGET_MCU_NRF51822)
 
 #include "mbed_toolchain.h"
-
-
-#define MAX_RTC_COUNTER_VAL     ((1uL << RTC_COUNTER_BITS) - 1)
-
-#ifndef RTC1_CONFIG_FREQUENCY
-    #define RTC1_CONFIG_FREQUENCY    32678 // [Hz]
-#endif
-
-
 
 void COMMON_RTC_IRQ_HANDLER(void)
 {

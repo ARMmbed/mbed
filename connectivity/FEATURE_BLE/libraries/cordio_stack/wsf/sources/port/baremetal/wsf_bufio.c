@@ -88,13 +88,13 @@ static void wsfBufIoUartTxStart(uint16_t len)
   /* Check if TX length exceeds 1 octet size from UART driver. */
   if (len <= 0xFF)
   {
-    PalUartWriteData(PAL_UART_ID_TERMINAL, WsfBufIoCb.tx.pBuf + WsfBufIoCb.tx.out, (uint16_t)len);
     WsfBufIoCb.tx.crt = len;
+    PalUartWriteData(PAL_UART_ID_TERMINAL, WsfBufIoCb.tx.pBuf + WsfBufIoCb.tx.out, (uint16_t)len);
   }
   else
   {
+	  WsfBufIoCb.tx.crt = 0xFF;
     PalUartWriteData(PAL_UART_ID_TERMINAL, WsfBufIoCb.tx.pBuf + WsfBufIoCb.tx.out, 0xFF);
-    WsfBufIoCb.tx.crt = 0xFF;
   }
 }
 

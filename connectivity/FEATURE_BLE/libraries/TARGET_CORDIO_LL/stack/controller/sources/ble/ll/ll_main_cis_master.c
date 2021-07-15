@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -59,8 +59,6 @@ static bool_t LlIsCigParamsValid(LlCisCigParams_t *pCigParam)
   const uint8_t MAX_NUM_CIS = 0x10;
   const uint8_t MAX_CIS_ID = 0xEF;
   const uint16_t MAX_SDU_SIZE = 0x0FFF;
-  const uint8_t MIN_PHY = 0x01;
-  const uint8_t MAX_PHY = 0x07;
   const uint8_t MAX_RTE = 0x0F;
 
   if (pCigParam->cigId > MAX_CIG_ID)
@@ -133,25 +131,25 @@ static bool_t LlIsCigParamsValid(LlCisCigParams_t *pCigParam)
       LL_TRACE_INFO0("LlIsCigParamsValid Invalid sduSizeSToM");
       return FALSE;
     }
-    if ((pCisParam->phyMToS < MIN_PHY) || (pCisParam->phyMToS > MAX_PHY))
+    if (pCisParam->phyMToS == 0)
     {
       LL_TRACE_INFO0("LlIsCigParamsValid Invalid phyMToS");
       return FALSE;
     }
-    if ((pCisParam->phySToM < MIN_PHY) || (pCisParam->phySToM > MAX_PHY))
+    if (pCisParam->phySToM == 0)
     {
       LL_TRACE_INFO0("LlIsCigParamsValid Invalid phySToM");
       return FALSE;
     }
     if (pCisParam->rteMToS > MAX_RTE)
     {
-      LL_TRACE_INFO0("LlIsCigParamsValid Invalid rteMToS");
-      return FALSE;
+      LL_TRACE_WARN0("LlIsCigParamsValid rteMToS out of controller range, setting to max");
+      pCisParam->rteMToS = MAX_RTE;
     }
     if (pCisParam->rteSToM > MAX_RTE)
     {
-      LL_TRACE_INFO0("LlIsCigParamsValid Invalid rteSToM");
-      return FALSE;
+      LL_TRACE_WARN0("LlIsCigParamsValid rteSToM out of controller range, setting to max");
+      pCisParam->rteSToM = MAX_RTE;
     }
   }
 
@@ -171,6 +169,7 @@ static bool_t LlIsCigPhyParamsValid(LlCisCigParams_t *pCigParam)
 {
   for (unsigned int i = 0; i < pCigParam->numCis; i++)
   {
+    const uint8_t phyMask = LL_PHYS_LE_1M_BIT | LL_PHYS_LE_2M_BIT | LL_PHYS_LE_CODED_BIT;
     LlCisCisParams_t *pCisParam = &pCigParam->pCisParam[i];
 
     if (!llValidatePhySupport(pCisParam->phyMToS, pCisParam->phySToM))
@@ -178,6 +177,11 @@ static bool_t LlIsCigPhyParamsValid(LlCisCigParams_t *pCigParam)
       return FALSE;
     }
 
+    if (((pCisParam->phyMToS & ~phyMask) != 0) ||         /* reserved bits set in phyMToS */
+        ((pCisParam->phySToM & ~phyMask) != 0))           /* reserved bits set in phySToM */
+    {
+      return FALSE;
+    }
 
     if (BB_SYM_PHY_REQ &&
         (pCisParam->phyMToS != pCisParam->phySToM))
@@ -215,8 +219,6 @@ static bool_t LlIsCigTestParamsValid(LlCisCigParamsTest_t *pSetCigParamTest)
   const uint8_t MAX_CIS_ID = 0xEF;
   const uint16_t MAX_SDU_SIZE = 0x0FFF;
   const uint16_t MAX_PDU_SIZE = 0x0FFB;
-  const uint8_t MIN_PHY = 0x01;
-  const uint8_t MAX_PHY = 0x07;
   const uint8_t MAX_BN = 0x0F;
 
   if (pSetCigParamTest->cigId > MAX_CIG_ID)
@@ -284,11 +286,11 @@ static bool_t LlIsCigTestParamsValid(LlCisCigParamsTest_t *pSetCigParamTest)
     {
       return FALSE;
     }
-    if ((pCisParam->phyMToS < MIN_PHY) || (pCisParam->phyMToS > MAX_PHY))
+    if (pCisParam->phyMToS == 0)
     {
       return FALSE;
     }
-    if ((pCisParam->phySToM < MIN_PHY) || (pCisParam->phySToM > MAX_PHY))
+    if (pCisParam->phySToM == 0)
     {
       return FALSE;
     }
@@ -325,9 +327,16 @@ static bool_t LlIsCigPhyTestParamsValid(LlCisCigParamsTest_t *pSetCigParamTest)
 {
   for (unsigned int i = 0; i < pSetCigParamTest->numCis; i++)
   {
+    const uint8_t phyMask = LL_PHYS_LE_1M_BIT | LL_PHYS_LE_2M_BIT | LL_PHYS_LE_CODED_BIT;
     LlCisCigCisParamsTest_t *pCisParam = &pSetCigParamTest->pCisParam[i];
 
     if (!llValidatePhySupport(pCisParam->phyMToS, pCisParam->phySToM))
+    {
+      return FALSE;
+    }
+
+    if (((pCisParam->phyMToS & ~phyMask) != 0) ||         /* reserved bits set in phyMToS */
+        ((pCisParam->phySToM & ~phyMask) != 0))           /* reserved bits set in phySToM */
     {
       return FALSE;
     }
@@ -356,26 +365,15 @@ uint8_t LlSetCigParams(LlCisCigParams_t *pCigParam, uint16_t *pCisHandles)
 {
   uint8_t status = LL_SUCCESS;
 
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams numCis=%d", pCigParam->numCis);
+  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams numCis=%u", pCigParam->numCis);
 
   memset(pCisHandles, 0, pCigParam->numCis * sizeof(uint16_t));
 
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams cigId=%d", pCigParam->cigId);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams sduIntervalMToS=%d", pCigParam->sduIntervalMToS);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams sduIntervalSToM=%d", pCigParam->sduIntervalSToM);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams sca=%d", pCigParam->sca);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams packing=%d", pCigParam->packing);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams framing=%d", pCigParam->framing);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams transLatMToS=%d", pCigParam->transLatMToS);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams transLatSToM=%d", pCigParam->transLatSToM);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams numCis=%d", pCigParam->numCis);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams cisId=%d", pCigParam->pCisParam[0].cisId);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams sduSizeMToS=%d", pCigParam->pCisParam[0].sduSizeMToS);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams sduSizeSToM=%d", pCigParam->pCisParam[0].sduSizeSToM);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams phyMToS=%d", pCigParam->pCisParam[0].phyMToS);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams phySToM=%d", pCigParam->pCisParam[0].phySToM);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams rteMToS=%d", pCigParam->pCisParam[0].rteMToS);
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams rteSToM=%d", pCigParam->pCisParam[0].rteSToM);
+  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams cigId=%u", pCigParam->cigId);
+  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams sduIntervalMToS=%u", pCigParam->sduIntervalMToS);
+  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams sduIntervalSToM=%u", pCigParam->sduIntervalSToM);
+  LL_TRACE_INFO2("### LlApi ###  LlSetCigParams packing=%u, framing=%u", pCigParam->packing, pCigParam->framing);
+  LL_TRACE_INFO1("### LlApi ###  LlSetCigParams numCis=%u", pCigParam->numCis);
 
   if ((LL_API_PARAM_CHECK == 1) &&
       (LlIsCigParamsValid(pCigParam) == FALSE))
@@ -413,7 +411,7 @@ uint8_t LlSetCigParamsTest(LlCisCigParamsTest_t *pSetCigParamTest, uint16_t *pCi
 {
   uint8_t status = LL_SUCCESS;
 
-  LL_TRACE_INFO1("### LlApi ###  LlSetCigParamsTest numCis=%d", pSetCigParamTest->numCis);
+  LL_TRACE_INFO1("### LlApi ###  LlSetCigParamsTest numCis=%u", pSetCigParamTest->numCis);
 
   memset(pCisHandles, 0, pSetCigParamTest->numCis * sizeof(uint16_t));
 
@@ -450,7 +448,7 @@ uint8_t LlCreateCis(uint8_t numCis, LlCisCreateCisParams_t *pCreateCisParam)
 {
   uint8_t status = LL_SUCCESS;
 
-  LL_TRACE_INFO1("### LlApi ###  LlCreateCis numCis=%d", numCis);
+  LL_TRACE_INFO1("### LlApi ###  LlCreateCis numCis=%u", numCis);
 
   if ((lmgrCb.features & LL_FEAT_ISO_HOST_SUPPORT) == 0)
   {
@@ -492,7 +490,7 @@ uint8_t LlRemoveCig(uint8_t cigId)
 {
   uint8_t status = LL_SUCCESS;
 
-  LL_TRACE_INFO1("### LlApi ###  LlRemoveCig CIG_ID=%d", cigId);
+  LL_TRACE_INFO1("### LlApi ###  LlRemoveCig CIG_ID=%u", cigId);
 
   status = LctrRemoveCig(cigId);
 

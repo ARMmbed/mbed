@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2016-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -99,6 +99,15 @@ typedef void (*BbBleTxAdvSetup_t)(BbOpDesc_t *pBod, uint32_t advTxTime);
 /*! \brief      Chain indication PDU transmit setup call signature. */
 typedef uint32_t (*BbBleTxAuxSetup_t)(BbOpDesc_t *pBod, bool_t isChainInd);
 
+/*! \brief      Aux Rx setup call signature. Returns TRUE if Scan was programmed. */
+typedef bool_t (*BbBleRxAuxSetup_t)(BbOpDesc_t *pBod, uint32_t refTime, uint32_t remScanDur);
+
+/*! \brief      Aux Tx complete call signature. Returns TRUE if BOD is complete. */
+typedef bool_t (*BbBleAuxTxComp_t)(BbOpDesc_t *pBod, uint8_t status);
+
+/*! \brief      Aux Rx complete call signature. Returns TRUE if BOD is complete. */
+typedef bool_t (*BbBleAuxRxComp_t)(BbOpDesc_t * const pCur, uint8_t status, int8_t rssi, uint32_t crc, uint32_t timestamp, uint8_t rxPhyOptions);
+
 /*! \brief      Returns TRUE if an scan request/response required. */
 typedef bool_t (*BbBleAdvComp_t)(BbOpDesc_t *pBod, const uint8_t *pBuf);
 
@@ -152,6 +161,13 @@ typedef struct
   BbBleAdvComp_t          txReqCback;         /*!< Scan request completion callback. */
   BbBleAdvComp_t          rxRspCback;         /*!< Scan response completion callback. */
 
+  /* Aux Scan BOD link */
+  BbOpDesc_t              *auxScanBod;        /*!< Pointer to the Aux Scan BOD */
+  BbBleRxAuxSetup_t       auxScanCheckCback;  /*!< Setup an Aux Scan that needs to be programmed ASAP. */
+  BbBleAuxTxComp_t        auxScanTxCompCback; /*!< Aux Scan Tx complete. */
+  BbBleAuxRxComp_t        auxScanRxCompCback; /*!< Aux Scan Rx complete. */
+  bool_t                  auxScanOpRunning;   /*!< Informs if an Aux Scan operation is running in the context of the Ext Scan BOD. */
+
   uint8_t                 txReqLen;           /*!< Scan request buffer length. */
 
   uint8_t                 scanChMap;          /*!< Scan channel map. */
@@ -202,6 +218,7 @@ typedef struct
   uint8_t                 *pTxAuxReqBuf;      /*!< Scan request buffer. */
 
   BbBleAdvComp_t          rxAuxAdvCback;      /*!< Advertising completion callback. */
+  BbBleAdvPost_t          rxAuxAdvPostCback;  /*!< Advertising completion post callback. */
   BbBleAdvComp_t          rxAuxRspCback;      /*!< Scan response completion callback. */
   BbBleRxChain_t          rxAuxChainCback;    /*!< Chain completion callback. */
   BbBleRxChainPost_t      rxAuxChainPostCback;/*!< Chain completion post callback. */
@@ -291,13 +308,14 @@ typedef struct
 /*! \brief      CIS master event operation data (\ref BB_BLE_OP_MST_CIS_EVENT). */
 typedef struct
 {
-  BbBleCisCheckContOp_t   checkContOpCback;   /*!< Check whether to continue current operation callback. */
-  BbBleExec_t             execCback;          /*!< Execute callback. */
-  BbBleExec_t             contExecCback;      /*!< Continue execute callback. */
-  BbBleCisPostExec_t      postSubEvtCback;    /*!< Post subevent callback. */
-  BbBleCancel_t           cancelCback;        /*!< Cancel callback. */
-  BbBleTxDataComp_t       txDataCback;        /*!< Transmit completion callback. */
-  BbBleCisRxDataComp_t    rxDataCback;        /*!< Receive completion callback. */
+  BbBleCisCheckContOp_t   checkContOpCback;     /*!< Check whether to continue current operation callback. */
+  BbBleCisCheckContOp_t   checkContOpPostCback; /*!< Check whether to continue current operation callback. */
+  BbBleExec_t             execCback;            /*!< Execute callback. */
+  BbBleExec_t             contExecCback;        /*!< Continue execute callback. */
+  BbBleCisPostExec_t      postSubEvtCback;      /*!< Post subevent callback. */
+  BbBleCancel_t           cancelCback;          /*!< Cancel callback. */
+  BbBleTxDataComp_t       txDataCback;          /*!< Transmit completion callback. */
+  BbBleCisRxDataComp_t    rxDataCback;          /*!< Receive completion callback. */
   /* Return parameters. */
   int8_t                  rssi;               /*!< RSSI of the last received packet. */
   uint8_t                 rxPhyOptions;       /*!< Rx PHY options. */
@@ -306,13 +324,14 @@ typedef struct
 /*! \brief      CIS slave event operation data (\ref BB_BLE_OP_SLV_CIS_EVENT). */
 typedef struct
 {
-  BbBleCisCheckContOp_t   checkContOpCback;   /*!< Check whether to continue current operation callback. */
-  BbBleExec_t             execCback;          /*!< Execute callback. */
-  BbBleExec_t             contExecCback;      /*!< Continue execute callback. */
-  BbBleCisPostExec_t      postSubEvtCback;    /*!< Post subevent callback. */
-  BbBleCancel_t           cancelCback;        /*!< Cancel callback. */
-  BbBleTxDataComp_t       txDataCback;        /*!< Transmit completion callback. */
-  BbBleRxDataComp_t       rxDataCback;        /*!< Receive completion callback. */
+  BbBleCisCheckContOp_t   checkContOpCback;     /*!< Check whether to continue current operation callback. */
+  BbBleCisCheckContOp_t   checkContOpPostCback; /*!< Check whether to continue current operation callback. */
+  BbBleExec_t             execCback;            /*!< Execute callback. */
+  BbBleExec_t             contExecCback;        /*!< Continue execute callback. */
+  BbBleCisPostExec_t      postSubEvtCback;      /*!< Post subevent callback. */
+  BbBleCancel_t           cancelCback;          /*!< Cancel callback. */
+  BbBleTxDataComp_t       txDataCback;          /*!< Transmit completion callback. */
+  BbBleRxDataComp_t       rxDataCback;          /*!< Receive completion callback. */
 
   /* Return parameters. */
   bool_t                  isFirstTs;          /*!< True for the first timestamp. */
@@ -489,6 +508,49 @@ void BbBleBisRxData(uint8_t *pBuf, uint16_t len, uint32_t nextPduTime, PalBbBleC
  */
 /*************************************************************************************************/
 void BbBleBisRxDataReAcq(uint32_t syncTime, PalBbBleChan_t *pChan);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Execute auxiliary scanning master BOD.
+ *
+ *  \param      pBod    Pointer to the BOD to execute.
+ *  \param      pBle    BLE operation parameters.
+ */
+/*************************************************************************************************/
+void BbMstExecuteLinkedAuxScanOp(BbOpDesc_t *pBod, BbBleData_t *pBle);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Tx completion for auxiliary scanning master operation.
+ *
+ *  \param      status      Completion status.
+ *  \param      pBod        Pointer to the BOD
+ *
+ *  Setup for next action in the operation or complete the operation.
+ *
+ *  \return     TRUE if BOD is complete, FALSE otherwise.
+ */
+/*************************************************************************************************/
+bool_t BbMstAuxScanTxCompHandler(BbOpDesc_t * const pBod, uint8_t status);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Rx completion for auxiliary scanning master operation.
+ *
+ *  \param      pCur            Pointer to the BOD
+ *  \param      status          Reception status.
+ *  \param      rssi            RSSI value.
+ *  \param      crc             CRC value.
+ *  \param      timestamp       Start of packet timestamp in microseconds.
+ *  \param      rxPhyOptions    Rx PHY options.
+ *
+ *  Setup for next action in the operation or complete the operation.
+ *
+ *  \return     TRUE if BOD is complete, FALSE otherwise.
+ */
+/*************************************************************************************************/
+bool_t BbMstAuxScanRxCompHandler(BbOpDesc_t * const pCur, uint8_t status, int8_t rssi, uint32_t crc,
+                                 uint32_t timestamp, uint8_t rxPhyOptions);
 
 /*! \} */    /* BB_API_BLE */
 

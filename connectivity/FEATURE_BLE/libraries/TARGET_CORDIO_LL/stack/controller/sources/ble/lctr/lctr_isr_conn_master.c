@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -47,6 +47,8 @@ static struct
 {
   uint8_t consCrcFailed;        /*!< Number of consecutive CRC failures. Used only by active operation. */
   bool_t rxFromSlave;           /*!< At least one packet received from slave. */
+  uint16_t numTxData;           /*!< Number of Tx data PDU in a single CE. */
+  uint16_t numRxData;           /*!< Number of Rx data PDU in a single CE. */
 } lctrMstConnIsr;
 
 /*! \brief  Check BB meets data PDU requirements. */
@@ -216,10 +218,12 @@ void lctrMstConnBeginOp(BbOpDesc_t *pOp)
     pLctrVsHdlrs->ceSetup(LCTR_GET_CONN_HANDLE(pCtx));
   }
 
-  /*** Initialize connection event resources. ***/
+  /*** Initialize connection event resources ***/
 
   lctrMstConnIsr.consCrcFailed = 0;
   lctrMstConnIsr.rxFromSlave = FALSE;
+  lctrMstConnIsr.numTxData = 0;
+  lctrMstConnIsr.numRxData = 0;
 
   /*** Setup for transmit ***/
 
@@ -295,6 +299,14 @@ void lctrMstConnEndOp(BbOpDesc_t *pOp)
     lctrStoreConnTimeoutTerminateReason(pCtx);
     WsfTimerStartMs(&pCtx->tmrSupTimeout, pCtx->supTimeoutMs);
 
+    if (!lmgrGetOpFlag(LL_OP_MODE_FLAG_ENA_FEAT_LLCP_STARTUP) &&
+        (pCtx->monitoringState == LCTR_PC_MONITOR_ENABLED) &&
+        (pCtx->powerMonitorScheme == LCTR_PC_MONITOR_AUTO) &&
+        !lmgrGetOpFlag(LL_OP_MODE_FLAG_DIS_POWER_MONITOR))
+    {
+      WsfTimerStartMs(&pCtx->tmrPowerCtrl, LL_PC_SERVICE_MS);
+    }
+
     pCtx->connEst = TRUE;
   }
   else if (lctrMstConnIsr.rxFromSlave)
@@ -304,13 +316,34 @@ void lctrMstConnEndOp(BbOpDesc_t *pOp)
   }
 
   pCtx->rssi = pConn->rssi;
-
-  if ((pCtx->monitoringState == LCTR_PC_MONITOR_ENABLED) &&
-      (pCtx->lastRxStatus == BB_STATUS_SUCCESS))
+  if ((pCtx->monitoringState == LCTR_PC_MONITOR_ENABLED))
   {
-    if (lctrPcActTbl[pCtx->powerMonitorScheme])
+    /* If a packet did not receive for whatever reason, add a datapoint with the lowest RSSI. */
+    if (pCtx->lastRxStatus != BB_STATUS_SUCCESS)
     {
-      lctrPcActTbl[pCtx->powerMonitorScheme](pCtx);
+      pCtx->rssi = 0x80; /* Most negative 8 bit number. */
+    }
+
+    switch (pCtx->powerMonitorScheme)
+    {
+      case LCTR_PC_MONITOR_AUTO:
+      {
+        /* Calculations handled on timer expiration for tmrPowerCtrl. */
+        /* Use a positive value to hold accumulated RSSI, as RSSI will never be positive. */
+        pCtx->pclMonitorParam.autoMonitor.accumulatedRssi += (uint32_t) (-(pCtx->rssi));
+        pCtx->pclMonitorParam.autoMonitor.totalAccumulatedRssi++;
+        break;
+      }
+      case LCTR_PC_MONITOR_PATH_LOSS:
+      {
+        /* Power control monitoring being enabled implies that this function exists. */
+        lctrPathLossMonitorActFn(pCtx);
+        break;
+      }
+      default:
+        /* Should not happen. */
+        WSF_ASSERT(FALSE);
+        break;
     }
   }
 
@@ -325,6 +358,17 @@ void lctrMstConnEndOp(BbOpDesc_t *pOp)
     lctrSendConnMsg(pCtx, LCTR_CONN_TERMINATED);
     WsfTimerStop(&pCtx->tmrSupTimeout);
     return;
+  }
+
+  /* Enhanced Connection Update. */
+  uint16_t numIntervals = 0;
+  if (lctrCalcSubrateConnEventsFn)
+  {
+    if ((numIntervals = lctrCalcSubrateConnEventsFn(pCtx, lctrMstConnIsr.numTxData + lctrMstConnIsr.numRxData)) > 0)
+    {
+      pCtx->eventCounter += numIntervals;
+      lctrChSelHdlr[pCtx->usedChSel](pCtx, numIntervals - 1);
+    }
   }
 
   if (pCtx->data.mst.sendConnUpdInd)
@@ -344,8 +388,9 @@ void lctrMstConnEndOp(BbOpDesc_t *pOp)
       else
 #endif
       {
-        ceOffset = LL_MIN_INSTANT + 1 +          /* +1 for next CE */
-                   pCtx->maxLatency;             /* ensure slave will listen this packet */
+        ceOffset = ((LL_MIN_INSTANT + 1 +     /* +1 for next CE */
+                     pCtx->maxLatency) *      /* ensure slave will listen to this packet */
+                    pCtx->ecu.srFactor);      /* include subrating factor */
 
         /* TODO: accommodate pCtx->connParam.offset[]. */
       }
@@ -382,8 +427,7 @@ void lctrMstConnEndOp(BbOpDesc_t *pOp)
 
   /*** Update for next operation ***/
 
-  uint32_t anchorPointUsec       = pOp->dueUsec;
-  uint16_t numIntervals          = 0;
+  uint32_t anchorPointUsec = pOp->dueUsec;
 
   if (pBle->chan.tifsTxPhyOptions != BB_PHY_OPTIONS_DEFAULT)
   {
@@ -455,7 +499,7 @@ void lctrMstConnAbortOp(BbOpDesc_t *pOp)
 {
   lctrConnCtx_t * const pCtx = pOp->pCtx;
 
-  LL_TRACE_INFO2("!!! Connection Master BOD aborted, handle=%u, eventCounter=%u", LCTR_GET_CONN_HANDLE(pCtx), pCtx->eventCounter);
+  LL_TRACE_WARN2("!!! Connection Master BOD aborted, handle=%u, eventCounter=%u", LCTR_GET_CONN_HANDLE(pCtx), pCtx->eventCounter);
 
   /* Reset operation to state before BOD began */
   if (pCtx->emptyPduPend &&
@@ -469,6 +513,9 @@ void lctrMstConnAbortOp(BbOpDesc_t *pOp)
   {
     return;
   }
+
+  lctrMstConnIsr.consCrcFailed = 0;
+  lctrMstConnIsr.rxFromSlave = FALSE;
 
   lctrMstConnEndOp(pOp);
 }
@@ -488,6 +535,11 @@ void lctrMstConnTxCompletion(BbOpDesc_t *pOp, uint8_t status)
     lctrConnCtx_t * const pCtx = pOp->pCtx;
 
     lctrSetControlPduAck(pCtx);
+
+    if (pCtx->txHdr.len)
+    {
+      lctrMstConnIsr.numTxData++;
+    }
   }
 }
 
@@ -570,6 +622,23 @@ void lctrMstConnRxCompletion(BbOpDesc_t *pOp, uint8_t *pRxBuf, uint8_t status)
   }
 
   lctrUnpackDataPduHdr(&pCtx->rxHdr, pRxBuf);
+
+  /* Check for MIC failure and if this is not a re-transmission */
+  if ((status == BB_STATUS_MIC_FAILED) &&
+      ((pCtx->rxHdr.sn ^ pCtx->txHdr.nesn) & 1) == 0)
+  {
+    LL_TRACE_WARN3("lctrMstConnRxCompletion: BB failed with status=MIC_FAILED, eventCounter=%u, bleChan=%u, handle=%u", pCtx->eventCounter, pCtx->bleData.chan.chanIdx, LCTR_GET_CONN_HANDLE(pCtx));
+    lctrSendConnMsg(pCtx, LCTR_CONN_TERM_MIC_FAILED);
+    /* Close connection event. */
+    BbSetBodTerminateFlag();
+    lctrRxPduFree(pRxBuf);
+    goto Done;
+  }
+
+  if (pCtx->rxHdr.len)
+  {
+    lctrMstConnIsr.numRxData++;
+  }
 
 #if (LL_ENABLE_TESTER)
   if (llTesterCb.ackMode != LL_TESTER_ACK_MODE_NORMAL)

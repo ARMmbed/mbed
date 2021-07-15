@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -46,6 +46,28 @@ static uint8_t lhciPackEncChangeEvt(uint8_t *pBuf, const LlEncChangeInd_t *pEvt)
   UINT8_TO_BSTREAM (pBuf, pEvt->status);
   UINT16_TO_BSTREAM(pBuf, pEvt->handle);
   UINT8_TO_BSTREAM (pBuf, pEvt->enabled);
+
+  return len;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Pack start encryption event packet [v2].
+ *
+ *  \param  pBuf        Packed packet buffer.
+ *  \param  pEvt        Encryption change indication data.
+ *
+ *  \return Packet length.
+ */
+/*************************************************************************************************/
+static uint8_t lhciPackEncChangeV2Evt(uint8_t *pBuf, const LlEncChangeInd_t *pEvt)
+{
+  const uint8_t len = HCI_LEN_ENC_CHANGE;
+
+  UINT8_TO_BSTREAM (pBuf, pEvt->status);
+  UINT16_TO_BSTREAM(pBuf, pEvt->handle);
+  UINT8_TO_BSTREAM (pBuf, pEvt->enabled);
+  UINT8_TO_BSTREAM (pBuf, pEvt->encKeySize);
 
   return len;
 }
@@ -128,7 +150,15 @@ bool_t lhciSlvEncEncodeEvtPkt(LlEvt_t *pEvt)
   switch (pEvt->hdr.event)
   {
     case LL_ENC_CHANGE_IND:
-      if (lhciCb.evtMsk & ((uint64_t)(HCI_EVT_MASK_ENC_CHANGE) << LHCI_BYTE_TO_BITS(0)))
+      if (lhciCb.evtMskPg2 & ((uint64_t)(HCI_EVT_MASK_ENC_CHANGE_V2) << LHCI_BYTE_TO_BITS(3)))
+      {
+        if ((pEvtBuf = lhciAllocEvt(HCI_ENC_CHANGE_V2_EVT, HCI_LEN_ENC_CHANGE_V2)) != NULL)
+        {
+          pEvt->encChangeInd.encKeySize = 0x01; /* Unused value. */
+          lhciPackEncChangeV2Evt(pEvtBuf, &pEvt->encChangeInd);
+        }
+      }
+      else if (lhciCb.evtMsk & ((uint64_t)(HCI_EVT_MASK_ENC_CHANGE) << LHCI_BYTE_TO_BITS(0)))
       {
         if ((pEvtBuf = lhciAllocEvt(HCI_ENC_CHANGE_EVT, HCI_LEN_ENC_CHANGE)) != NULL)
         {

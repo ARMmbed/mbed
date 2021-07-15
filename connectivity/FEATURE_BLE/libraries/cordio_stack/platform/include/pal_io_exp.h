@@ -4,7 +4,7 @@
  *
  *  \brief      I/O expander driver definition.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,50 +33,54 @@ extern "C" {
  *  \{ */
 
 /**************************************************************************************************
+  Macros
+**************************************************************************************************/
+
+/*! \brief      Invalid device ID. */
+#define PAL_IO_EXP_INVALID_ID 0xFF
+
+/**************************************************************************************************
   Data Types
 **************************************************************************************************/
 
 /*! \brief      Read register completion callback. */
-typedef void (*PalIoExpRdRegCompCback_t)(bool_t status, uint8_t portValue);
+typedef void (*PalIoExpReadCompCback_t)(uint32_t value);
 
 /*! \brief      Write register completion callback. */
-typedef void (*PalIoExpWrRegCompCback_t)(bool_t status);
+typedef void (*PalIoExpWriteCompCback_t)(void);
+
+/*! \brief      Device configuration. */
+typedef struct
+{
+  PalIoExpReadCompCback_t rdCback;  /*!< Read data completion callback. */
+  PalIoExpWriteCompCback_t wrCback; /*!< Write data completion callback. */
+  uint32_t inputMask;               /*!< Bitmask for input pins (1 for input, 0 for output). */
+  uint8_t addr;                     /*!< Device address defined by the voltage on the board. */
+} PalIoExpConfig_t;
 
 /*! \brief      Operational states. */
 typedef enum
 {
   PAL_IO_EXP_STATE_UNINIT = 0,  /*!< Uninitialized state. */
   PAL_IO_EXP_STATE_ERROR  = 0,  /*!< Error state. */
-  PAL_IO_EXP_STATE_INIT   = 1,  /*!< Initialized state. */
-  PAL_IO_EXP_STATE_READY  = 2,  /*!< Ready state. */
-  PAL_IO_EXP_STATE_BUSY   = 3,  /*!< Busy state. */
+  PAL_IO_EXP_STATE_READY  = 1,  /*!< Ready state. */
+  PAL_IO_EXP_STATE_BUSY   = 2,  /*!< Busy state. */
 } PalIoExpState_t;
-
-/*! \brief      Operations. */
-typedef enum
-{
-  PAL_IO_EXP_OP_INPUT          = 0x00,       /*!< Input Port. Read only. */
-  PAL_IO_EXP_OP_OUTPUT         = 0x01,       /*!< Output Port. Read/write. */
-  PAL_IO_EXP_OP_POL_INV        = 0x02,       /*!< Polarity Inversion. Read/write. */
-  PAL_IO_EXP_OP_CONFIG         = 0x03        /*!< Configuration. Read/write. */
-} PalIoOp_t;
 
 /**************************************************************************************************
   Function Declarations
 **************************************************************************************************/
 
 /* Initialization */
-void PalIoExpInit(void);
+uint8_t PalIoExpInit(PalIoExpConfig_t *pCfg);
 void PalIoExpDeInit(void);
-uint8_t PalIoExpRegisterDevice(uint8_t subAddr);
-void  PalIoExpRegisterCback(uint8_t devHandle, PalIoExpRdRegCompCback_t rdCback, PalIoExpWrRegCompCback_t wrCback);
 
 /* Control and Status */
-PalIoExpState_t PalIoExpGetState(uint8_t devHandle);
+PalIoExpState_t PalIoExpGetState(uint8_t id);
 
 /* Data transfer */
-void PalIoExpRead(uint8_t devHandle, PalIoOp_t op);
-void PalIoExpWrite(uint8_t devHandle, PalIoOp_t op, uint8_t value);
+void PalIoExpRead(uint8_t id);
+void PalIoExpWrite(uint8_t id, uint32_t value);
 
 /*! \} */    /* PAL_IO_EXP */
 

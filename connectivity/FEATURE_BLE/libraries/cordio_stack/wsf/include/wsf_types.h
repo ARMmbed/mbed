@@ -55,6 +55,18 @@ extern "C" {
   #define TRUE (!FALSE)
 #endif
 
+#ifndef UINT64_C
+#define UINT64_C(x) x##ULL
+#endif
+
+#ifndef UINT32_C
+#define UINT32_C(x) x##UL
+#endif
+
+#ifndef UINT8_C
+#define UINT8_C(x) (x)
+#endif
+
 /*! \} */    /* Integer Data Types */
 
 #ifdef __cplusplus

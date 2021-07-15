@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -106,7 +106,6 @@ void lctrExtAdvActStart(lctrAdvSet_t *pAdvSet)
   pAdvSet->pExtAdvAuxPtr = NULL;
   pAdvSet->connIndRcvd = FALSE;
   pAdvSet->shutdown = FALSE;
-  pAdvSet->bodTermCnt = 0;
 
   uint8_t status;
   if ((status = lctrSlvExtAdvBuildOp(pAdvSet, pLctrSlvExtAdvMsg->enable.durMs)) != LL_SUCCESS)
@@ -150,7 +149,6 @@ void lctrExtAdvActSelfStart(lctrAdvSet_t *pAdvSet)
   pAdvSet->pExtAdvAuxPtr = NULL;
   pAdvSet->connIndRcvd = FALSE;
   pAdvSet->shutdown = FALSE;
-  pAdvSet->bodTermCnt = 0;
 
   uint8_t status;
   if ((status = lctrSlvExtAdvBuildOp(pAdvSet, pLctrSlvExtAdvMsg->enable.durMs)) != LL_SUCCESS)
@@ -217,9 +215,10 @@ void lctrExtAdvActShutdown(lctrAdvSet_t *pAdvSet)
 /*************************************************************************************************/
 void lctrExtAdvActResetShutdown(lctrAdvSet_t *pAdvSet)
 {
-  /* LCTR_MSG_RESET is broadcasted by hciReset and the processing order between ext ADV SM and periodic ADV SM is not guaranteed. */
-  /* If ext ADV SM runs first, it will purge all info and periodic ADV SM may not run as intended.  */
-  /* So, reset cleanup of periodic advertising has to be done from extended ADV SM. */
+  /* LCTR_MSG_RESET is broadcasted by hciReset and the processing order between ext ADV SM and
+   * periodic ADV SM is not guaranteed. If ext ADV SM runs first, it will purge all info and periodic
+   * ADV SM may not run as intended. So, reset cleanup of periodic advertising has to be done from
+   * extended ADV SM. */
   if (pAdvSet->perParam.perState == LCTR_PER_ADV_STATE_ENABLED)
   {
     lctrPeriodicAdvActShutdown(pAdvSet);
@@ -424,9 +423,10 @@ void lctrExtAdvActAdvTerm(lctrAdvSet_t *pAdvSet)
 /*************************************************************************************************/
 void lctrExtAdvActReset(lctrAdvSet_t *pAdvSet)
 {
-  /* LCTR_MSG_RESET is broadcasted by hciReset and the processing order between ext ADV SM and periodic ADV SM is not guaranteed. */
-  /* If ext ADV SM runs first, it will purge all info and periodic ADV SM may not run as intended.  */
-  /* So, reset cleanup of periodic advertising has to be done from extended ADV SM. */
+  /* LCTR_MSG_RESET is broadcasted by hciReset and the processing order between ext ADV SM and
+   * periodic ADV SM is not guaranteed. If ext ADV SM runs first, it will purge all info and periodic
+   * ADV SM may not run as intended. So, reset cleanup of periodic advertising has to be done from
+   * extended ADV SM. */
   if (pAdvSet->perParam.perState == LCTR_PER_ADV_STATE_ENABLED)
   {
     lctrPeriodicAdvActShutdown(pAdvSet);
@@ -468,6 +468,9 @@ void lctrExtAdvActDurationExpired(lctrAdvSet_t *pAdvSet)
 
   /* Signal shutdown, event completion occurs in lctrExtAdvActSelfTerm(). */
   pAdvSet->shutdown = TRUE;
+
+  SchRemove(&pAdvSet->advBod);
+  SchRemove(&pAdvSet->auxAdvBod);
 }
 
 /*************************************************************************************************/
@@ -539,6 +542,11 @@ void lctrPeriodicAdvActStart(lctrAdvSet_t *pAdvSet)
     /* The Advertising DID is required to change when a SyncInfo field is added to or removed. */
     pAdvSet->advData.alt.ext.did = lctrCalcDID(pAdvSet->advData.pBuf, pAdvSet->advData.len);
     pAdvSet->didPerUpdate = TRUE;
+  }
+
+  if (pAdvSet->perParam.enableAdi)
+  {
+    pAdvSet->perParam.advDID = lctrCalcDID(pAdvSet->advData.pBuf, pAdvSet->advData.len);
   }
 
   LmgrSendPeriodicAdvEnableCnf(pAdvSet->handle, LL_SUCCESS);

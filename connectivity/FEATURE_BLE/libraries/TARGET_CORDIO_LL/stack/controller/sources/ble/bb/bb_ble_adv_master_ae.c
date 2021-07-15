@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -52,15 +52,16 @@ static uint8_t bbPerScanBuf[LL_EXT_ADVB_MAX_LEN];
  *  \brief      Tx completion for auxiliary scanning master operation.
  *
  *  \param      status      Completion status.
+ *  \param      pBod        Pointer to the BOD
  *
  *  Setup for next action in the operation or complete the operation.
+ *
+ *  \return     TRUE if BOD is complete, FALSE otherwise.
  */
 /*************************************************************************************************/
-static void bbMstAuxScanTxCompCback(uint8_t status)
+bool_t BbMstAuxScanTxCompHandler(BbOpDesc_t *pBod, uint8_t status)
 {
-  BB_ISR_START();
-
-  WSF_ASSERT(BbGetCurrentBod());
+  WSF_ASSERT(pBod);
 
   bool_t bodComplete = FALSE;
 
@@ -72,7 +73,6 @@ static void bbMstAuxScanTxCompCback(uint8_t status)
   {
     pPkt = bbSnifferCtx.snifferGetPktFn();
   }
-  BbOpDesc_t * const pCur = BbGetCurrentBod();
 #endif
 
   switch (bbBleCb.evtState++)
@@ -128,9 +128,29 @@ static void bbMstAuxScanTxCompCback(uint8_t status)
     pPkt->pktType.meta.status = status;
     pPkt->pktType.meta.state = evtState;
 
-    bbBleSnifferMstAuxScanPktHandler(pCur, pPkt);
+    bbBleSnifferMstAuxScanPktHandler(pBod, pPkt);
   }
+#else
+  (void)pBod;
 #endif
+
+  return bodComplete;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Tx completion for auxiliary scanning master operation.
+ *
+ *  \param      status      Completion status.
+ *
+ *  Setup for next action in the operation or complete the operation.
+ */
+/*************************************************************************************************/
+static void bbMstAuxScanTxCompCback(uint8_t status)
+{
+  BB_ISR_START();
+
+  (void)BbMstAuxScanTxCompHandler(BbGetCurrentBod(), status);
 
   BB_ISR_MARK(bbAuxScanStats.txIsrUsec);
 }
@@ -139,6 +159,7 @@ static void bbMstAuxScanTxCompCback(uint8_t status)
 /*!
  *  \brief      Rx completion for auxiliary scanning master operation.
  *
+ *  \param      pCur            Pointer to the BOD
  *  \param      status          Reception status.
  *  \param      rssi            RSSI value.
  *  \param      crc             CRC value.
@@ -146,15 +167,14 @@ static void bbMstAuxScanTxCompCback(uint8_t status)
  *  \param      rxPhyOptions    Rx PHY options.
  *
  *  Setup for next action in the operation or complete the operation.
+ *
+ *  \return     TRUE if BOD is complete, FALSE otherwise.
  */
 /*************************************************************************************************/
-static void bbMstAuxScanRxCompCback(uint8_t status, int8_t rssi, uint32_t crc, uint32_t timestamp, uint8_t rxPhyOptions)
+bool_t BbMstAuxScanRxCompHandler(BbOpDesc_t * const pCur, uint8_t status, int8_t rssi, uint32_t crc, uint32_t timestamp, uint8_t rxPhyOptions)
 {
-  BB_ISR_START();
+  WSF_ASSERT(pCur);
 
-  WSF_ASSERT(BbGetCurrentBod());
-
-  BbOpDesc_t * const pCur = BbGetCurrentBod();
   BbBleData_t * const pBle = pCur->prot.pBle;
   BbBleMstAuxAdvEvent_t * const pAuxScan = &pBle->op.mstAuxAdv;
 
@@ -195,54 +215,65 @@ static void bbMstAuxScanRxCompCback(uint8_t status, int8_t rssi, uint32_t crc, u
 #endif
 
           uint32_t auxOffsetUsec;
-          if (pAuxScan->rxAuxAdvCback(pCur, bbAuxAdvBuf))
+          bool_t txScanReq = pAuxScan->rxAuxAdvCback(pCur, bbAuxAdvBuf);
+          if ((txScanReq) && (pAuxScan->pTxAuxReqBuf))
           {
-            if (pAuxScan->pTxAuxReqBuf)
-            {
-              /* Tx response PDU. */
+            /* Tx response PDU. */
 
-              bbBleCb.evtState = BB_EVT_STATE_TX_SCAN_OR_CONN_INIT;
+            bbBleCb.evtState = BB_EVT_STATE_TX_SCAN_OR_CONN_INIT;
 
-              BB_ISR_MARK(bbAuxScanStats.txSetupUsec);
+            BB_ISR_MARK(bbAuxScanStats.txSetupUsec);
 
-              PalBbBleTxBufDesc_t desc = {.pBuf = pAuxScan->pTxAuxReqBuf, .len = pAuxScan->txAuxReqLen};
+            PalBbBleTxBufDesc_t desc = {.pBuf = pAuxScan->pTxAuxReqBuf, .len = pAuxScan->txAuxReqLen};
 
-              bbBleSetTifs();
-              PalBbBleTxTifsData(&desc, 1);
-            }
-          }
-          else if ((pAuxScan->rxAuxChainCback) &&
-                   ((auxOffsetUsec = pAuxScan->rxAuxChainCback(pCur, bbAuxAdvBuf)) > 0))
-          {
-            /* Rx chain indication PDU. */
-
-            bbBleCb.evtState = BB_EVT_STATE_RX_CHAIN_IND;
-
-            /* Cancel Tifs operation is needed for passive scan and non connectable/scannable adv with chain. */
-            PalBbBleCancelTifs();
-
-            PalBbBleSetChannelParam(&pBle->chan);
-            bbBleCb.bbParam.dueUsec = BbAdjustTime(timestamp + auxOffsetUsec);
-            PalBbBleSetDataParams(&bbBleCb.bbParam);
-
-            BB_ISR_MARK(bbAuxScanStats.rxSetupUsec);
-
-            bbBleClrIfs();        /* CHAIN_IND does not use TIFS. */
-            PalBbBleRxData(bbAuxAdvBuf, sizeof(bbAuxAdvBuf));
-
-            WSF_ASSERT(pAuxScan->rxAuxChainPostCback);
-            if (pAuxScan->rxAuxChainPostCback(pCur, bbAuxAdvBuf) == FALSE)
-            {
-              bodCont = TRUE;
-            }
+            bbBleSetTifs();
+            PalBbBleTxTifsData(&desc, 1);
           }
           else
           {
-            if (pAuxScan->rxAuxChainPostCback)
+            PalBbBleCancelTifs();
+          }
+
+          if (pAuxScan->rxAuxAdvPostCback)
+          {
+            pAuxScan->rxAuxAdvPostCback(pCur, bbAuxAdvBuf);
+          }
+
+          if (!txScanReq)
+          {
+            if ((pAuxScan->rxAuxChainCback) &&
+                ((auxOffsetUsec = pAuxScan->rxAuxChainCback(pCur, bbAuxAdvBuf)) > 0))
             {
-              pAuxScan->rxAuxChainPostCback(pCur, bbAuxAdvBuf);
+              /* Rx chain indication PDU. */
+
+              bbBleCb.evtState = BB_EVT_STATE_RX_CHAIN_IND;
+
+              /* Cancel Tifs operation is needed for passive scan and non connectable/scannable adv with chain. */
+              PalBbBleCancelTifs();
+
+              PalBbBleSetChannelParam(&pBle->chan);
+              bbBleCb.bbParam.dueUsec = BbAdjustTime(timestamp + auxOffsetUsec);
+              PalBbBleSetDataParams(&bbBleCb.bbParam);
+
+              BB_ISR_MARK(bbAuxScanStats.rxSetupUsec);
+
+              bbBleClrIfs();        /* CHAIN_IND does not use TIFS. */
+              PalBbBleRxData(bbAuxAdvBuf, sizeof(bbAuxAdvBuf));
+
+              WSF_ASSERT(pAuxScan->rxAuxChainPostCback);
+              if (pAuxScan->rxAuxChainPostCback(pCur, bbAuxAdvBuf) == FALSE)
+              {
+                bodCont = TRUE;
+              }
             }
-            bodCont = TRUE;
+            else
+            {
+              if (pAuxScan->rxAuxChainPostCback)
+              {
+                pAuxScan->rxAuxChainPostCback(pCur, bbAuxAdvBuf);
+              }
+              bodCont = TRUE;
+            }
           }
           break;
         }
@@ -494,8 +525,29 @@ static void bbMstAuxScanRxCompCback(uint8_t status, int8_t rssi, uint32_t crc, u
   }
 #endif
 
-  BB_ISR_MARK(bbAuxScanStats.rxIsrUsec);
+  return bodComplete;
+}
 
+/*************************************************************************************************/
+/*!
+ *  \brief      Rx completion for auxiliary scanning master operation.
+ *
+ *  \param      status          Reception status.
+ *  \param      rssi            RSSI value.
+ *  \param      crc             CRC value.
+ *  \param      timestamp       Start of packet timestamp in microseconds.
+ *  \param      rxPhyOptions    Rx PHY options.
+ *
+ *  Setup for next action in the operation or complete the operation.
+ */
+/*************************************************************************************************/
+static void bbMstAuxScanRxCompCback(uint8_t status, int8_t rssi, uint32_t crc, uint32_t timestamp, uint8_t rxPhyOptions)
+{
+  BB_ISR_START();
+
+  (void)BbMstAuxScanRxCompHandler(BbGetCurrentBod(), status, rssi, crc, timestamp, rxPhyOptions);
+
+  BB_ISR_MARK(bbAuxScanStats.rxIsrUsec);
 }
 
 /*************************************************************************************************/
@@ -856,3 +908,34 @@ void BbBleGetPerScanStats(BbBlePerScanPktStats_t *pStats)
   *pStats = bbPerScanStats;
 }
 
+/*************************************************************************************************/
+/*!
+ *  \brief      Execute auxiliary scanning master BOD.
+ *
+ *  \param      pBod    Pointer to the BOD to execute.
+ *  \param      pBle    BLE operation parameters.
+ */
+/*************************************************************************************************/
+void BbMstExecuteLinkedAuxScanOp(BbOpDesc_t *pBod, BbBleData_t *pBle)
+{
+  BbBleMstAuxAdvEvent_t * const pAuxScan = &pBod->prot.pBle->op.mstAuxAdv;
+
+  PalBbBleSetChannelParam(&pBle->chan);
+
+  bbBleCb.bbParam.rxTimeoutUsec = pAuxScan->rxSyncDelayUsec;
+  bbBleCb.bbParam.dueUsec       = BbAdjustTime(pBod->dueUsec);
+  pBod->dueUsec = bbBleCb.bbParam.dueUsec;
+  PalBbBleSetDataParams(&bbBleCb.bbParam);
+
+  bbBleCb.evtState = 0;
+
+  if (pAuxScan->pTxAuxReqBuf)
+  {
+    bbBleSetTifs();   /* active scan or initiating */
+  }
+  else
+  {
+    bbBleClrIfs();    /* passive scan */
+  }
+  PalBbBleRxData(bbAuxAdvBuf, sizeof(bbAuxAdvBuf));
+}

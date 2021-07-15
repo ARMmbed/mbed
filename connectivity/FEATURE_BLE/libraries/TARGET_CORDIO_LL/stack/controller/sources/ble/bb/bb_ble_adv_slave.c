@@ -119,7 +119,7 @@ static bool_t bbSetupAdvOp(BbOpDesc_t *pBod, BbBleSlvAdvEvent_t *pAdv, uint8_t s
     {
       /* Schedule with absolute frame gap. */
       uint32_t  advGap = SchBleCalcAdvPktDurationUsec(pBle->chan.txPhy, pBle->chan.initTxPhyOptions, pAdv->txAdvLen) +
-                         BbGetSchSetupDelayUs();
+                                                      BbGetSchSetupDelayUs();
       uint32_t auxOffsUsec = SchBleGetAlignedAuxOffsUsec(advGap);
       bbBleCb.bbParam.dueUsec = BbAdjustTime(bbBleCb.bbParam.dueUsec + auxOffsUsec);
     }

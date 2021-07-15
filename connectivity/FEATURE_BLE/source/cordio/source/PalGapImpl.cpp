@@ -1673,7 +1673,8 @@ ble_error_t PalGap::periodic_advertising_create_sync(
         peer_address_type.value(),
         peer_address.data(),
         allowed_skip,
-        sync_timeout
+        sync_timeout,
+        0
     );
 
     if (sync_id == DM_SYNC_ID_NONE) {

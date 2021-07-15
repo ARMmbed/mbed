@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@
 
 #include "lctr_int_conn.h"
 #include "lctr_int_conn_slave.h"
+#include "ll_init_api.h"
 #include "lmgr_api.h"
 #include "util/bstream.h"
 #include "wsf_trace.h"
@@ -142,6 +143,24 @@ const lctrLlcpEh_t lctrCmnProcTbl[LCTR_PROC_CMN_TOTAL][LCTR_PROC_CMN_ACT_TOTAL] 
     lctrStorePeerSca,           /* LCTR_PROC_CMN_ACT_RECV_REQ */
     lctrSendPeerScaRsp,         /* LCTR_PROC_CMN_ACT_SEND_RSP */
     lctrStorePeerSca,           /* LCTR_PROC_CMN_ACT_RECV_RSP */
+  },
+  /* LCTR_PROC_CMN_CH_CLASS_REPORTING */
+  {
+    NULL,                       /* LCTR_PROC_CMN_ACT_API_PARAM */
+    lctrSendChannelReportingInd,
+                                /* LCTR_PROC_CMN_ACT_SEND_REQ */
+    lctrStoreChannelReportingInd,
+                                /* LCTR_PROC_CMN_ACT_RECV_REQ */
+    NULL,                       /* LCTR_PROC_CMN_ACT_SEND_RSP */
+    NULL                        /* LCTR_PROC_CMN_ACT_RECV_RSP */
+  },
+  /* LCTR_PROC_CMN_CH_STATUS_REPORT */
+  {
+    NULL,                       /* LCTR_PROC_CMN_ACT_API_PARAM */
+    lctrSendChannelStatusInd,   /* LCTR_PROC_CMN_ACT_SEND_REQ */
+    lctrStoreChannelStatusInd,  /* LCTR_PROC_CMN_ACT_RECV_REQ */
+    NULL,                       /* LCTR_PROC_CMN_ACT_SEND_RSP */
+    NULL                        /* LCTR_PROC_CMN_ACT_RECV_RSP */
   }
 };
 
@@ -270,6 +289,12 @@ static uint8_t lctrGetCmnProcId(lctrConnCtx_t *pCtx, uint8_t event)
     case LCTR_CONN_LLCP_LENGTH_EXCH:
       return LCTR_PROC_CMN_DATA_LEN_UPD;
 
+    case LCTR_CONN_LLCP_CHANNEL_STATUS:
+      return LCTR_PROC_CMN_CH_STATUS_REPORT;
+
+    case LCTR_CONN_LLCP_CHANNEL_REPORTING:
+      return LCTR_PROC_CMN_CH_CLASS_REPORTING;
+
     case LCTR_CONN_LLCP_PROC_CMPL:
       return pCtx->llcpActiveProc;
 
@@ -304,6 +329,12 @@ static uint8_t lctrGetCmnProcId(lctrConnCtx_t *pCtx, uint8_t event)
         case LL_PDU_PEER_SCA_RSP:
           return LCTR_PROC_CMN_REQ_PEER_SCA;
 
+        case LL_PDU_CH_REPORTING_IND:
+          return LCTR_PROC_CMN_CH_CLASS_REPORTING;
+
+        case LL_PDU_CH_STATUS_IND:
+          return LCTR_PROC_CMN_CH_STATUS_REPORT;
+
         case LL_PDU_UNKNOWN_RSP:
           switch (lctrDataPdu.pld.unknownRsp.unknownType)
           {
@@ -324,6 +355,19 @@ static uint8_t lctrGetCmnProcId(lctrConnCtx_t *pCtx, uint8_t event)
             case LL_PDU_LENGTH_REQ:
             case LL_PDU_LENGTH_RSP:
               return LCTR_PROC_CMN_DATA_LEN_UPD;
+
+            case LL_PDU_PWR_CHANGE_IND:
+              return LCTR_PROC_PWR_IND;
+
+            case LL_PDU_PWR_CTRL_RSP:
+            case LL_PDU_PWR_CTRL_REQ:
+              return LCTR_PROC_PWR_CTRL;
+
+            case LL_PDU_CH_REPORTING_IND:
+              return LCTR_PROC_CMN_CH_CLASS_REPORTING;
+
+            case LL_PDU_CH_STATUS_IND:
+              return LCTR_PROC_CMN_CH_STATUS_REPORT;
 
             default:
               break;
@@ -381,6 +425,8 @@ static uint8_t lctrRemapCmnProcEvent(lctrConnCtx_t *pCtx, uint8_t event)
     case LCTR_CONN_LLCP_VERSION_EXCH:
     case LCTR_CONN_LLCP_LENGTH_EXCH:
     case LCTR_CONN_LLCP_TERM:
+    case LCTR_CONN_LLCP_CHANNEL_STATUS:
+    case LCTR_CONN_LLCP_CHANNEL_REPORTING:
       return LCTR_PROC_CMN_EVT_INT_START;
 
     case LCTR_CONN_LLCP_PROC_CMPL:
@@ -397,6 +443,8 @@ static uint8_t lctrRemapCmnProcEvent(lctrConnCtx_t *pCtx, uint8_t event)
         case LL_PDU_SLV_FEATURE_REQ:
         case LL_PDU_LENGTH_REQ:
         case LL_PDU_PEER_SCA_REQ:
+        case LL_PDU_CH_REPORTING_IND:
+        case LL_PDU_CH_STATUS_IND:
           return LCTR_PROC_CMN_EVT_RECV_REQ;
 
         case LL_PDU_TERMINATE_IND:
@@ -541,6 +589,14 @@ static bool_t lctrFeatureAvail(lctrConnCtx_t *pCtx, uint8_t proc, uint8_t event)
         result = FALSE;
       }
       break;
+    case LCTR_PROC_CMN_CH_CLASS_REPORTING:
+    case LCTR_PROC_CMN_CH_STATUS_REPORT:
+      if ((pCtx->usedFeatSet & LL_FEAT_CHANNEL_CLASSIFICATION) == 0)
+      {
+        LL_TRACE_WARN1("Requested LL_FEAT_CHANNEL_CLASSIFICATION not available, usedFeatSet=0x%08x", pCtx->usedFeatSet);
+        result = FALSE;
+      }
+      break;
     case LCTR_PROC_CMN_TERM:
     default:
       break;
@@ -575,7 +631,14 @@ static void lctrNotifyHostReadRemoteFeatCnf(lctrConnCtx_t *pCtx, uint8_t status)
   };
 
   uint8_t *pBuf = evt.features;
-  UINT64_TO_BSTREAM(pBuf, pCtx->usedFeatSet);
+  if (BT_VER < LL_VER_BT_CORE_SPEC_5_0)
+  {
+    UINT64_TO_BSTREAM(pBuf, pCtx->usedFeatSet);
+  }
+  else
+  {
+    UINT64_TO_BSTREAM(pBuf, pCtx->peerFeatures);
+  }
 
   LL_TRACE_INFO2("### LlEvent ###  LL_READ_REMOTE_FEAT_CNF, handle=%u, status=%u", handle, status);
 

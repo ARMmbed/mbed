@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2010-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -161,7 +161,7 @@ void smpiScActJwncCalcG2(smpCcb_t *pCcb, smpMsg_t *pMsg)
   /* Check the result of the F4 confirm calculation */
   if (memcmp(pCcb->pScCcb->pScratch->PeerCb, pCmac->pCiphertext, SMP_CONFIRM_LEN))
   {
-    smpScFailWithReattempt(pCcb);
+    smpScFailWithReattempt(pCcb, SMP_ERR_CONFIRM_VALUE);
   }
   else
   {
@@ -223,11 +223,19 @@ void smpiScActPkCalcCb(smpCcb_t *pCcb, smpMsg_t *pMsg)
   /* Record the Nbi */
   WStrReverseCpy(pCcb->pScCcb->pScratch->Nb_Eb, pNb, SMP_RAND_LEN);
 
-  /* Cb = f4(PKbx, PKax, Nbi, Rai) where f4(U, V, x, Z) = AES-CMACx (U || V || Z) */
-  SmpScCalcF4(pCcb, pMsg,
-              pCcb->pScCcb->pPeerPublicKey->pubKeyX,
-              pCcb->pScCcb->pLocalPublicKey->pubKeyX,
-              smpGetPkBit(pCcb), pCcb->pScCcb->pScratch->Nb_Eb);
+  /* Verify the random value was not reflected */
+  if (!memcmp(pCcb->pScCcb->pScratch->Na_Ea, pCcb->pScCcb->pScratch->Nb_Eb, SMP_RAND_LEN))
+  {
+    smpScFailWithReattempt(pCcb, SMP_ERR_UNSPECIFIED);
+  }
+  else
+  {
+    /* Cb = f4(PKbx, PKax, Nbi, Rai) where f4(U, V, x, Z) = AES-CMACx (U || V || Z) */
+    SmpScCalcF4(pCcb, pMsg,
+                pCcb->pScCcb->pPeerPublicKey->pubKeyX,
+                pCcb->pScCcb->pLocalPublicKey->pubKeyX,
+                smpGetPkBit(pCcb), pCcb->pScCcb->pScratch->Nb_Eb);
+  }
 }
 
 /*************************************************************************************************/
@@ -243,6 +251,9 @@ void smpiScActPkCalcCb(smpCcb_t *pCcb, smpMsg_t *pMsg)
 void smpiScActPkSendCnf(smpCcb_t *pCcb, smpMsg_t *pMsg)
 {
   SMP_TRACE_128("Cai", pMsg->aes.pCiphertext);
+  
+  /* Keep a copy of the confirm value we send to the peer */
+  memcpy(pCcb->pScCcb->pScratch->LocalCb, pMsg->aes.pCiphertext, SMP_RAND_LEN);
 
   /* Send the Cai to the peer */
   smpScSendPairCnf(pCcb, pMsg, pMsg->aes.pCiphertext);
@@ -264,12 +275,20 @@ void smpiScActPkSendRand(smpCcb_t *pCcb, smpMsg_t *pMsg)
 
   /* Record the Cbi from the responder */
   WStrReverseCpy(pCcb->pScCcb->pScratch->PeerCb, pCb, SMP_CONFIRM_LEN);
+  
+  /* Verify confirm value is not reflected */
+  if (!memcmp(pCcb->pScCcb->pScratch->PeerCb, pCcb->pScCcb->pScratch->LocalCb, SMP_RAND_LEN))
+  {
+    smpScFailWithReattempt(pCcb, SMP_ERR_UNSPECIFIED);
+  }
+  else
+  {
+    /* Next command is the Pair Random */
+    pCcb->nextCmdCode = SMP_CMD_PAIR_RAND;
 
-  /* Next command is the Pair Random */
-  pCcb->nextCmdCode = SMP_CMD_PAIR_RAND;
-
-  /* Send the Nai */
-  smpScSendRand(pCcb, pMsg, pCcb->pScCcb->pScratch->Na_Ea);
+    /* Send the Nai */
+    smpScSendRand(pCcb, pMsg, pCcb->pScCcb->pScratch->Na_Ea);
+  }
 }
 
 /*************************************************************************************************/
@@ -289,7 +308,7 @@ void smpiScActPkCheck(smpCcb_t *pCcb, smpMsg_t *pMsg)
   /* Verify the Calculated Cbi to previously received Cbi */
   if (memcmp(pCcb->pScCcb->pScratch->PeerCb, pMsg->aes.pCiphertext, SMP_RAND_LEN))
   {
-    smpScFailWithReattempt(pCcb);
+    smpScFailWithReattempt(pCcb, SMP_ERR_CONFIRM_VALUE);
   }
   else
   {
@@ -377,7 +396,7 @@ void smpiScActOobSendRand(smpCcb_t *pCcb, smpMsg_t *pMsg)
     /* Verify the Cb matches the value passed from the responder via OOB methods */
     if (memcmp(pCcb->pScCcb->pScratch->PeerCb, pMsg->aes.pCiphertext, SMP_CONFIRM_LEN))
     {
-      smpScFailWithReattempt(pCcb);
+      smpScFailWithReattempt(pCcb, SMP_ERR_CONFIRM_VALUE);
       return;
     }
   }
@@ -466,6 +485,8 @@ void smpiScActDHKeyCheckVerify(smpCcb_t *pCcb, smpMsg_t *pMsg)
     memcpy(buf, pCcb->pScCcb->pLtk->ltk_t, encKeyLen);
     memset((buf + encKeyLen), 0, (SMP_KEY_LEN - encKeyLen));
     pCcb->keyReady = TRUE;
+    
+    SMP_TRACE_128("LTK:", pCcb->pScCcb->pLtk->ltk_t);
 
     /* Initiate encryption */
     DmSmpEncryptReq(pCcb->connId, smpGetScSecLevel(pCcb), buf);

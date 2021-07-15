@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -50,6 +50,8 @@ extern "C" {
 /* --- Controller Group --- */
 #define LHCI_LEN_SET_EVENT_MASK_EVT             1       /*!< Set event mask command complete event length. */
 #define LHCI_LEN_RESET_EVT                      1       /*!< Reset command complete event length. */
+#define LHCI_LEN_READ_AFH_CHAN_ASSESMENT_MODE   2       /*!< Read AFH channel assessment mode command complete event length. */
+#define LHCI_LEN_WRITE_AFH_CHAN_ASSESMENT_MODE  1       /*!< Write AFH channel assesment mode command complete event length. */
 #define LHCI_LEN_READ_PWR_LVL_EVT               4       /*!< Read power level command complete event length. */
 #define LHCI_LEN_READ_AUTH_PAYLOAD_TO_EVT       5       /*!< Read authenticated payload timeout command complete event length. */
 #define LHCI_LEN_WRITE_AUTH_PAYLOAD_TO_EVT      3       /*!< Write authenticated payload timeout command complete event length. */
@@ -144,7 +146,7 @@ extern "C" {
 /* New in version 5.2 */
 #define LHCI_LEN_LE_READ_BUF_SIZE_V2            7       /*!< LE read ISO buffer size command complete event length. */
 #define LHCI_LEN_LE_READ_TX_SYNC                12      /*!< LE read ISO Tx sync. */
-#define LHCI_LEN_LE_REMOVE_CIG                  1       /*!< LE remove CIG. */
+#define LHCI_LEN_LE_REMOVE_CIG                  2       /*!< LE remove CIG. */
 #define LHCI_LEN_LE_REJECT_CIS_REQ              1       /*!< LE reject CIS request. */
 #define LHCI_LEN_LE_BIG_TERMINATE_SYNC          2       /*!< LE BIG terminate sync. */
 #define LHCI_LEN_LE_SETUP_ISO_DATA_PATH         3       /*!< LE setup ISO data path. */
@@ -218,6 +220,7 @@ extern "C" {
 
 #define LHCI_OPCODE_VS_GET_PDU_FILT_STATS        HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3F4)  /*!< Get PDU Filter Statistics opcode. */
 #define LHCI_OPCODE_VS_GET_SYS_STATS             HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3FA)  /*!< Get Memory Statistics opcode. */
+#define LHCI_OPCODE_VS_GET_CONTEXT_SIZES         HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3C0)  /*!< Get context sizes opcode. */
 #define LHCI_OPCODE_VS_GET_ADV_STATS             HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3FB)  /*!< Get Advertising Statistics opcode. */
 #define LHCI_OPCODE_VS_GET_SCAN_STATS            HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3FC)  /*!< Get Scan Statistics opcode. */
 #define LHCI_OPCODE_VS_GET_CONN_STATS            HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3FD)  /*!< Get Connection Statistics opcode. */
@@ -233,7 +236,8 @@ extern "C" {
 #define LHCI_OPCODE_VS_GET_ISO_TEST_REPORT       HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3D6)  /*!< Get ISO Test Report opcode. */
 #define LHCI_OPCODE_VS_ENA_ISO_SINK              HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3D7)  /*!< Enable ISO Packet Sink opcode. */
 #define LHCI_OPCODE_VS_ENA_AUTO_GEN_ISO          HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3D8)  /*!< Enable Auto Generate ISO Packets opcode. */
-#define LHCI_OPCODE_VS_GET_CIS_STATS             HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3D9)  /*!< Get ISO Connection Statistics opcode. */
+#define LHCI_OPCODE_VS_GET_CIS_STATS             HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3D9)  /*!< Get CIS Statistics opcode. */
+#define LHCI_OPCODE_VS_GET_BIS_STATS             HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3C1)  /*!< Get BIS Statistics opcode. */
 
 #define LHCI_OPCODE_VS_GET_AUX_ADV_STATS         HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3DA)  /*!< Get Auxiliary Advertising Statistics opcode. */
 #define LHCI_OPCODE_VS_GET_AUX_SCAN_STATS        HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3DB)  /*!< Get Auxiliary Scanning Statistics opcode. */
@@ -241,6 +245,8 @@ extern "C" {
 
 #define LHCI_OPCODE_VS_SET_CONN_PHY_TX_PWR       HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3DD)  /*!< Set Connection Phy Tx Power opcode. */
 
+#define LHCI_OPCODE_VS_SYSTEM_RESET              HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3A0)  /*!< System reset opcode. */
+#define LHCI_OPCODE_VS_ENTER_BOOTLOADER          HCI_OPCODE(HCI_OGF_VENDOR_SPEC, 0x3A1)  /*!< Enter bootloader opcode. */
 
 /* Vendor specific event masks. */
 #define LHCI_VS_EVT_MASK_SCAN_REPORT_EVT    0x01   /*!< (Byte 0) VS event bit, scan report. */
@@ -255,6 +261,7 @@ extern "C" {
 enum
 {
   LHCI_MSG_PRIV,                        /*!< Privacy command handler type.  Must be before CONN. */
+  LHCI_MSG_ECU,                         /*!< Enhanced connection update command handler type. */
   LHCI_MSG_CONN,                        /*!< Connection command handler type. */
   LHCI_MSG_CONN_CS2,                    /*!< Connection Channel Selection 2 command handler type. */
   LHCI_MSG_ENC,                         /*!< Encryption command handler type. */
@@ -306,6 +313,7 @@ typedef struct
   wsfQueue_t        cmdQ;               /*!< Command queue. */
   wsfQueue_t        evtQ;               /*!< Event queue. */
   wsfQueue_t        isoQ;               /*!< ISO queue. */
+  lhciCompHandler_t evtCompCback;       /*!< Event complete handler. */
   bool_t            evtTrPending;       /*!< Event transport in progress. */
 
   uint8_t           supCmds[HCI_SUP_CMD_LEN];
@@ -318,7 +326,6 @@ typedef struct
   uint64_t          evtMsk;             /*!< General event mask. */
   uint64_t          evtMskPg2;          /*!< General event mask page 2. */
   uint64_t          leEvtMsk;           /*!< LE specific event mask. */
-  lhciCompHandler_t evtCompCback;       /*!< Event complete handler. */
 
   uint8_t           numScanReqRcvd;     /*!< Number of scan request received. */
   uint8_t           hwErrorCode;        /*!< Hardware error code. */
@@ -333,6 +340,8 @@ typedef struct
   uint32_t          genOctetCnt;        /*!< Generate ACL octet count. */
 
   uint8_t           numAdvReport;       /*!< Number of pending advertising reports. */
+
+  uint8_t           chanAssesmentMode;  /*!< Channel assesment mode. */
 } lhciCb_t;
 
 /*! \brief      Control block for ISO data generator. */
@@ -425,6 +434,7 @@ bool_t lhciSlvBisDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf);
 bool_t lhciMstBisDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf);
 bool_t lhciIsoDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf);
 bool_t lhciPclDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf);
+bool_t lhciEcuDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf);
 
 bool_t lhciCommonVsStdDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf);
 bool_t lhciConnVsStdDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf);
@@ -458,7 +468,7 @@ bool_t lhciSlvBigEncodeEvtPkt(LlEvt_t *pEvt);
 bool_t lhciMstBisEncodeEvtPkt(LlEvt_t *pEvt);
 bool_t lhciIsoEncodeEvtPkt(LlEvt_t *pEvt);
 bool_t lhciPclEncodeEvtPkt(LlEvt_t *pEvt);
-
+bool_t lhciEcuEncodeEvtPkt(LlEvt_t *pEvt);
 
 bool_t lhciSlvVsStdEncodeEvtPkt(LlEvt_t *pEvt);
 
@@ -470,6 +480,20 @@ void lhciPclSendCmdCmplEvt(LhciHdr_t *pCmdHdr, uint8_t status, uint8_t paramLen,
 
 /* Command packet. */
 uint8_t lhciUnpackConnSpec(LlConnSpec_t *pConnSpec, const uint8_t *pBuf);
+
+/* Common events. */
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Pack a CIS established event packet.
+ *
+ *  \param  pBuf        Packed packet buffer.
+ *  \param  pEvt        CIS established event data.
+ *
+ *  \return Packet length.
+ */
+/*************************************************************************************************/
+uint8_t lhciPackCisEstEvt(uint8_t *pBuf, const LlCisEstInd_t *pEvt);
 
 /*************************************************************************************************/
 /*!

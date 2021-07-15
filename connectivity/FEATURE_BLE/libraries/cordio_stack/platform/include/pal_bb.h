@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2016-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -55,6 +55,7 @@ enum
   BB_STATUS_RX_TIMEOUT,                 /*!< Receive packet timeout. */
   BB_STATUS_CRC_FAILED,                 /*!< Receive packet with CRC verification failed. */
   BB_STATUS_FRAME_FAILED,               /*!< Receive packet with frame verification failed. */
+  BB_STATUS_MIC_FAILED,                 /*!< Receive packet with MIC verification failed. */
   BB_STATUS_ACK_FAILED,                 /*!< ACK packet failure. */
   BB_STATUS_ACK_TIMEOUT,                /*!< ACK packet timeout. */
   BB_STATUS_TX_CCA_FAILED,              /*!< Transmit CCA failure. */
@@ -221,22 +222,6 @@ void PalBbLoadCfg(PalBbCfg_t *pCfg);
  */
 /*************************************************************************************************/
 uint32_t PalBbGetCurrentTime(void);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Get the current FRC time.
- *
- *  \param      pTime   Pointer to return the current time.
- *
- *  \return     TRUE if time is valid, FALSE otherwise.
- *
- *  Get the current FRC time.
- *
- *  \note       FRC is limited to the same bit-width as the BB clock. Return value is available
- *              only when the BB is active.
- */
-/*************************************************************************************************/
-bool_t PalBbGetTimestamp(uint32_t *pTime);
 
 /*************************************************************************************************/
 /*!

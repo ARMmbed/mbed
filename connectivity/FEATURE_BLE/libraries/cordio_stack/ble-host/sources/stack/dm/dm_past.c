@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -332,7 +332,8 @@ void DmPastSetInfoTrsf(dmConnId_t connId, uint16_t serviceData, uint8_t advHandl
  *  \param  syncTimeout      Maximum permitted time between successful receives. If this time is
  *                           exceeded, synchronization is lost.
  *  \param  cteType          Whether to only synchronize to periodic advertising with certain
- *                           types of Constant Tone Extension.
+ *                           types of Constant Tone Extension (0 indicates that the presence or
+ *                           absence of a Constant Tone Extension is irrelevant).
  *
  *  \return None.
  */
@@ -365,7 +366,8 @@ void DmPastConfig(dmConnId_t connId, uint8_t mode, uint16_t skip, uint16_t syncT
  *  \param  syncTimeout      Maximum permitted time between successful receives. If this time is
  *                           exceeded, synchronization is lost.
  *  \param  cteType          Whether to only synchronize to periodic advertising with certain
- *                           types of Constant Tone Extension.
+ *                           types of Constant Tone Extension (0 indicates that the presence or
+ *                           absence of a Constant Tone Extension is irrelevant).
  *
  *  \return None.
  */

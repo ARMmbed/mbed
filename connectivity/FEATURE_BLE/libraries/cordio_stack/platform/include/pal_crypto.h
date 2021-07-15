@@ -116,8 +116,6 @@ void PalCryptoAesCmac(const uint8_t *pKey, uint8_t *pOut, const uint8_t *pIn, ui
 void PalCryptoAesEnable(PalCryptoEnc_t *pEnc, uint8_t id, uint8_t localDir);
 bool_t PalCryptoAesCcmEncrypt(PalCryptoEnc_t *pEnc, uint8_t *pHdr, uint8_t *pBuf, uint8_t *pMic);
 bool_t PalCryptoAesCcmDecrypt(PalCryptoEnc_t *pEnc, uint8_t *pBuf);
-void PalCryptoSetEncryptPacketCount(PalCryptoEnc_t *pEnc, uint64_t pktCnt);
-void PalCryptoSetDecryptPacketCount(PalCryptoEnc_t *pEnc, uint64_t pktCnt);
 
 /*! \} */    /* PAL_CRYPTO */
 

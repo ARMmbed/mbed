@@ -23,6 +23,7 @@
 /*************************************************************************************************/
 
 #include "lhci_int.h"
+#include "lctr_api.h"
 #include "ll_api.h"
 #include "util/bstream.h"
 
@@ -159,16 +160,27 @@ bool_t lhciMstBisEncodeEvtPkt(LlEvt_t *pEvt)
       break;
 
     case LL_BIG_INFO_ADV_REPORT_IND:
+    {
+      bool_t evtSent = FALSE;
+
       if ((lhciCb.leEvtMsk & ((uint64_t)(HCI_EVT_MASK_LE_BIG_INFO_ADV_RPT_EVT) << LHCI_BYTE_TO_BITS(4))) &&
          (lhciCb.evtMsk & ((uint64_t)(HCI_EVT_MASK_LE_META) << LHCI_BYTE_TO_BITS(7))))
       {
-        if ((pEvtBuf = lhciAllocEvt(HCI_LE_META_EVT, HCI_LEN_LE_BIG_INFO_ADV_REPORT)) != NULL)
+        if ((lhciCb.numAdvReport < pLctrRtCfg->maxAdvReports) &&
+            ((pEvtBuf = lhciAllocEvt(HCI_LE_META_EVT, HCI_LEN_LE_BIG_INFO_ADV_REPORT)) != NULL))
         {
           lhciPackBigBigInfoAdvReportEvt(pEvtBuf, &pEvt->bigInfoInd);
+          lhciCb.numAdvReport++;
+          evtSent = TRUE;
         }
       }
+      if (!evtSent)
+      {
+        /* Handle event here even if event cannot be sent. */
+        return TRUE;
+      }
       break;
-
+    }
     default:
       break;
   }

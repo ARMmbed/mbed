@@ -242,6 +242,9 @@ void lctrMstInitiateOpCommit(void)
 
   SchInsertNextAvailable(pOp);
   lctrMstInit.scanWinStartUsec = pOp->dueUsec;
+
+  LL_TRACE_INFO1("    >>> Initiate started, dueUsec=%u <<<", pOp->dueUsec);
+  LL_TRACE_INFO1("                          pBod=0x%08x", pOp);
 }
 
 /*************************************************************************************************/

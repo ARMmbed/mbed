@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ extern "C" {
 #endif
 
 /*! \brief  Version number. */
-#define LL_VER_NUM          1366
+#define LL_VER_NUM          21015
 
 /**************************************************************************************************
   Data Types
@@ -164,6 +164,11 @@ typedef struct
   bool_t    phyCodedSup;            /*!< Coded PHY supported. */
   bool_t    stableModIdxTxSup;      /*!< Tx stable modulation index supported. */
   bool_t    stableModIdxRxSup;      /*!< Rx stable modulation index supported. */
+  /* Power control */
+  int8_t   pcHighThreshold;         /*!< High RSSI threshold for power monitoring. */
+  int8_t   pcLowThreshold;          /*!< Low RSSI threshold for power monitoring. */
+  /* Channel classification reporting. */
+  uint8_t   chClassIntSpacing;      /*!< Interval spacing of channel classification reporting. */
 } LlRtCfg_t;
 
 /*! \} */    /* LL_API_INIT */
@@ -253,15 +258,23 @@ typedef struct
 #define LL_FEAT_CIS_MASTER_ROLE                     (UINT64_C(1) << 28)   /*!< Connected Isochronous Stream Master Role supported. */
 #define LL_FEAT_CIS_SLAVE_ROLE                      (UINT64_C(1) << 29)   /*!< Connected Isochronous Stream Slave Role supported. */
 #define LL_FEAT_ISO_BROADCASTER                     (UINT64_C(1) << 30)   /*!< Isochronous Broadcaster Role supported. */
-#define LL_FEAT_ISO_SYNC                            (UINT64_C(1) << 31)   /*!< Isochronous Synchronizer Role supported. */
+#define LL_FEAT_ISO_SYNC                            (UINT64_C(1) << 31)   /*!< Isochronous Synchronized Receiver Role supported. */
 #define LL_FEAT_ISO_HOST_SUPPORT                    (UINT64_C(1) << 32)   /*!< Host support for ISO Channels. */
 #define LL_FEAT_POWER_CONTROL_REQUEST               (UINT64_C(1) << 33)   /*!< Power control requests supported. */
 #define LL_FEAT_POWER_CHANGE_IND                    (UINT64_C(1) << 34)   /*!< Power control power change indication supported. */
 #define LL_FEAT_PATH_LOSS_MONITOR                   (UINT64_C(1) << 35)   /*!< Path loss monitoring supported. */
+/* --- Core Spec Sydney --- */
+#define LL_FEAT_PER_ADV_ADI_SUP                     (UINT64_C(1) << 36)   /*!< Periodic advertising ADI field supported. */
+#define LL_FEAT_CONN_SUBRATE                        (UINT64_C(1) << 37)   /*!< Connection subrating supported. */
+#define LL_FEAT_CONN_SUBRATE_HOST_SUPPORT           (UINT64_C(1) << 38)   /*!< Host support for connection subrating. */
+#define LL_FEAT_CHANNEL_CLASSIFICATION              (UINT64_C(1) << 39)   /*!< Channel classification supported. */
+/* Bits 56 - 62 are RFU for testing. */
 
-#define LL_HOST_CONTROLLED_FEAT                     LL_FEAT_ISO_HOST_SUPPORT  /*!< Feature bits controlled by the host. */
+/*! \brief      Feature bits controlled by the host. */
+#define LL_HOST_CONTROLLED_FEAT                     (LL_FEAT_ISO_HOST_SUPPORT | LL_FEAT_CONN_SUBRATE_HOST_SUPPORT)
 
-#define LL_FEAT_ALL_MASK                            (UINT64_C(0x0000000FFF01FFFF))  /*!< All feature mask, need to be updated when new features are added. */
+/*! \brief      All feature mask. */
+#define LL_FEAT_ALL_MASK                            (UINT64_C(0x000000FFFFFFFFFF))
 
 /*! \brief      This parameter identifies the device role. */
 typedef enum
@@ -289,14 +302,19 @@ enum
   LL_OP_MODE_FLAG_ENA_MST_CIS_NULL_PDU        = (1 << 12),  /*!< Enable CIS master sends additional NULL PDU for acknowledge scheme. */
   LL_OP_MODE_FLAG_ENA_SLV_AUX_IND_ADVA        = (1 << 13),  /*!< AdvA will be included in AUX_ADV_IND instead of ADV_EXT_IND. */
   LL_OP_MODE_FLAG_ENA_ADV_CHAN_RAND           = (1 << 14),  /*!< Enable advertising channel randomization. */
-  LL_OP_MODE_DISABLE_POWER_MONITOR            = (1 << 15),  /*!< Disable power monitoring. */
+  LL_OP_MODE_FLAG_DIS_POWER_MONITOR           = (1 << 15),  /*!< Disable power monitoring. */
+  LL_OP_MODE_FLAG_ENA_BIS_RECV_DUP            = (1 << 16),  /*!< Enable BIS receive duplicates. */
+  LL_OP_MODE_FLAG_ENA_ISO_LOST_NOTIFY         = (1 << 17),  /*!< Enable HCI ISO lost SDU notification. */
+  LL_OP_MODE_FLAG_ENA_CH_RPT_LLCP_AFTER_FEAT  = (1 << 18),  /*!< Perform channel report LLCP after feature exchange. */
+  LL_OP_MODE_FLAG_IGNORE_CRC_ERR_TS           = (1 << 19),  /*!< Ignore timestamp of Rx packet with CRC error. */
+  LL_OP_MODE_FLAG_FORCE_CIS_CODED_PHY_S2      = (1 << 20),  /*!< Force CIS to use Coded PHY with S2 option. */
   /* diagnostics only */
-  LL_OP_MODE_FLAG_ENA_ADV_DLY                 = (1 << 16),  /*!< Enable advertising delay. */
-  LL_OP_MODE_FLAG_ENA_SCAN_BACKOFF            = (1 << 17),  /*!< Enable scan backoff. */
-  LL_OP_MODE_FLAG_ENA_WW                      = (1 << 18),  /*!< Enable window widening. */
-  LL_OP_MODE_FLAG_ENA_SLV_LATENCY             = (1 << 19),  /*!< Enable slave latency. */
-  LL_OP_MODE_FLAG_ENA_LLCP_TIMER              = (1 << 20),  /*!< Enable LLCP timer. */
-  LL_OP_MODE_FLAG_IGNORE_CRC_ERR_TS           = (1 << 21)   /*!< Ignore timestamp of RX packet with CRC error. */
+  LL_OP_MODE_FLAG_ENA_ADV_DLY                 = (1 << 24),  /*!< Enable advertising delay. */
+  LL_OP_MODE_FLAG_ENA_SCAN_BACKOFF            = (1 << 25),  /*!< Enable scan backoff. */
+  LL_OP_MODE_FLAG_ENA_WW                      = (1 << 26),  /*!< Enable window widening. */
+  LL_OP_MODE_FLAG_ENA_SLV_LATENCY             = (1 << 27),  /*!< Enable slave latency. */
+  LL_OP_MODE_FLAG_ENA_LLCP_TIMER              = (1 << 28),  /*!< Enable LLCP timer. */
+  LL_OP_MODE_FLAG_ENA_SUBRATE_CE              = (1 << 29)   /*!< Enable subrating connection events. */
 };
 
 /*! \} */    /* LL_API_DEVICE */
@@ -485,7 +503,14 @@ enum
 };
 
 /*! \brief      Periodic advertising create sync options valid bits. */
-#define LL_PER_ADV_CREATE_SYNC_OPTIONS_BITS   0x03
+#define LL_PER_ADV_CREATE_SYNC_OPTIONS_BITS   0x07
+
+/*! \brief      Periodic advertising enable bits. */
+enum
+{
+  LL_PER_ADV_ENABLE_ADV_ENABLE_BIT      = (1 << 0),   /*!< Enable bit for periodic advertising enable command. */
+  LL_PER_ADV_ENABLE_ADI_ENABLE_BIT      = (1 << 1)    /*!< Enable bit for periodic advertising ADI inclusion. */
+};
 
 /*! \brief      Periodic advertising create sync command. */
 typedef struct
@@ -732,8 +757,8 @@ typedef enum
 /*! \brief       ISO data path. */
 typedef enum
 {
-  LL_ISO_DATA_PATH_HCI          = 0x00,
-  LL_ISO_DATA_PATH_VS           = 0x01,         /*!< Vendor Specific. */
+  LL_ISO_DATA_PATH_HCI          = 0x00,         /*!< HCI data path. */
+  LL_ISO_DATA_PATH_VS           = 0x01,         /*!< Vendor Specific data path. */
 
   LL_ISO_DATA_PATH_TOTAL,                       /*!< Total number of data path methods. */
 
@@ -750,24 +775,34 @@ enum
 /*! \brief      LE setup ISO Data Path command. */
 typedef struct
 {
+  LlIsoDataPathDir_t dpDir:8;       /*!< Data path direction. */
+  uint8_t       dpId;               /*!< Data path ID. */
+  uint8_t       vsCfgLen;           /*!< Length of \a pVsCfg. */
+  const uint8_t *pVsCfg;            /*!< VS configuration buffer. */
+} LlIsoConfigDataPath_t;
+
+/*! \brief      LE setup ISO Data Path command. */
+typedef struct
+{
   uint16_t      handle;             /*!< Handle of CIS or BIS. */
   LlIsoDataPathDir_t dpDir:8;       /*!< Data path direction. */
   uint8_t       dpId;               /*!< Data path ID. */
   uint8_t       codecFormat;        /*!< Codec Format. */
   uint16_t      codecCompId;        /*!< Codec Company ID. */
   uint16_t      codecId;            /*!< Codec ID. */
-  uint32_t      ctrDly;             /*!< Codec ID. */
+  uint32_t      ctrDly;             /*!< Controller delay. */
   uint8_t       codecConfigLen;     /*!< Codec configuration length. */
-  uint8_t       *pCodecConfig;      /*!< Codec configuration. */
+  const uint8_t *pCodecConfig;      /*!< Codec configuration. */
 } LlIsoSetupDataPath_t;
 
-/*! \brief      BIG Create BIG message. */
+/*! \brief      BIG Create BIG command. */
 typedef struct
 {
   uint8_t       bigHandle;          /*!< Used to identify the BIG. */
   uint8_t       advHandle;          /*!< Used to identify the periodic advertising train. */
   uint8_t       numBis;             /*!< Total number of BISes in the BIG. */
   uint32_t      sduInterUsec;       /*!< Interval, in microseconds, of BIG SDUs. */
+  uint8_t       bcstCode[LL_BC_LEN];/*!< Session key used to encrypt and decrypt BIS payloads. */
   uint16_t      maxSdu;             /*!< Maximum size of an SDU. */
   uint16_t      mtlMs;              /*!< Maximum time in milliseconds. */
   uint8_t       rtn;                /*!< Retransmitted number. */
@@ -775,16 +810,16 @@ typedef struct
   uint8_t       packing;            /*!< Sequential or Interleaved packing. */
   LlFraming_t   framing:8;          /*!< Unframed or Framed. */
   uint8_t       encrypt;            /*!< Unencrypted or Encrypted. */
-  uint8_t       bcstCode[LL_BC_LEN];/*!< Session key used to encrypt and decrypt BIS payloads. */
 } LlCreateBig_t;
 
-/*! \brief      BIG Create BIG Test message. */
+/*! \brief      BIG Create BIG Test command. */
 typedef struct
 {
   uint8_t       bigHandle;          /*!< Used to identify the BIG. */
   uint8_t       advHandle;          /*!< Used to identify the periodic advertising train. */
   uint8_t       numBis;             /*!< Total number of BISes in the BIG. */
   uint32_t      sduInterUsec;       /*!< Interval in microseconds of BIG SDUs. */
+  uint8_t       bcstCode[LL_BC_LEN];/*!< Code used to derive the session key. */
   uint16_t      isoInter;           /*!< Duration of an isochronous interval for BIG PDUs in 1.25ms unit. */
   uint8_t       nse;                /*!< Total number of subevents in each interval of each BIS in the BIG. */
   uint16_t      maxSdu;             /*!< Maximum size of a SDU. */
@@ -796,10 +831,9 @@ typedef struct
   uint8_t       irc;                /*!< Number of times the scheduled payload(s) are transmitted in a given event. */
   uint8_t       pto;                /*!< Offset used for pre-transmissions. */
   uint8_t       encrypt;            /*!< Unencrypted or Encrypted. */
-  uint8_t       bcstCode[LL_BC_LEN];/*!< Code used to derive the session key. */
 } LlCreateBigTest_t;
 
-/*! \brief      BIG Create Sync message. */
+/*! \brief      BIG Create Sync command. */
 typedef struct
 {
   uint8_t       bigHandle;          /*!< Used to identify the BIG. */
@@ -813,6 +847,21 @@ typedef struct
 } LlBigCreateSync_t;
 
 /*! \} */    /* LL_API_ISO */
+
+/*! \addtogroup LL_API_ECU
+ *  \{ */
+
+/*! \brief      Subrate parameter. */
+typedef struct
+{
+  uint16_t      srMin;              /*!< Subrate minimum value. */
+  uint16_t      srMax;              /*!< Subrate maximum value. */
+  uint16_t      maxLatency;         /*!< Maximum latency. */
+  uint16_t      contNum;            /*!< Continuation number. */
+  uint16_t      svt;                /*!< Supervision timeout in 10ms units. */
+} LlSubrateParam_t;
+
+/*! \} */    /* LL_API_ECU */
 
 /*! \addtogroup LL_API_ENCRYPT
  *  \{ */
@@ -903,7 +952,6 @@ typedef struct
   uint32_t duplicatePkt;        /*!< Retransmitted CIS data PDUs. */
 } LlIsoLinkQual_t;
 
-
 /*! \} */    /* LL_API_TEST */
 
 /*! \addtogroup LL_API_EVENT
@@ -966,7 +1014,9 @@ enum
   LL_TX_POWER_REPORTING_IND,    /*!< LL txPower change report received. */
   LL_PATH_LOSS_REPORTING_IND,   /*!< Path loss reporting event. */
   LL_ISO_EVT_CMPL_IND,          /*!< ISO Event complete event. */
-  LL_BIG_INFO_ADV_REPORT_IND    /*!< BIG Info advertising report event. */
+  LL_BIG_INFO_ADV_REPORT_IND,   /*!< BIG Info advertising report event. */
+  /* --- Core Spec Sydney --- */
+  LL_SUBRATE_CHANGE_IND         /*!< Enhanced connection update complete. */
 };
 
 /*! \brief      Advertising report indication */
@@ -1069,6 +1119,7 @@ typedef struct
   uint8_t       status;         /*!< Status. */
   uint16_t      handle;         /*!< Connection handle. */
   bool_t        enabled;        /*!< Encryption enabled. */
+  uint8_t       encKeySize;     /*!< Encryption key size. */
 } LlEncChangeInd_t;
 
 /*! \brief      Key refresh indication */
@@ -1456,7 +1507,19 @@ typedef struct
   uint16_t      connHandle;     /*!< Connection handle. */
   uint8_t       curPathLoss;    /*!< Current path loss. */
   uint8_t       zoneEntered;    /*!< Zone entered. */
-} LlPathLossThresholdEvt_t;
+} LlPathLossThresholdInd_t;
+
+/*! \brief      Subrate change event. */
+typedef struct
+{
+  wsfMsgHdr_t   hdr;            /*!< Event header. */
+  uint8_t       status;         /*!< Status. */
+  uint16_t      handle;         /*!< Connection handle. */
+  uint16_t      srFactor;       /*!< Subrate factor. */
+  uint16_t      perLatency;     /*!< Peripheral latency. */
+  uint16_t      contNum;        /*!< Continuation number. */
+  uint16_t      svt;            /*!< Supervision timeout in 10ms units. */
+} LlSubrateChangeInd_t;
 
 /*! \brief      Union of all event types */
 typedef union
@@ -1507,9 +1570,11 @@ typedef union
   LlBigSyncLostInd_t        bigSyncLostInd;         /*!< LE BIG sync lost. */
   LlPeerScaCnf_t            peerScaCnf;             /*!< LE request peer SCA complete. */
   LlPowerReportInd_t        powerRptInd;            /*!< LE transmit power reporting indication. */
-  LlIsoEventCmplInd_t       isoEvtCmplInd;          /*!< VS ISO Event complete. */
+  LlIsoEventCmplInd_t       isoEvtCmplInd;          /*!< ISO Event complete. */
   LlBigInfoAdvRptInd_t      bigInfoInd;             /*!< LE Big Info indication. */
-  LlPathLossThresholdEvt_t  pathLossEvt;            /*!< LE Path loss threshold reporting event. */
+  LlPathLossThresholdInd_t  pathLossInd;            /*!< LE Path loss threshold reporting indication. */
+  /* --- Core Spec Sydney --- */
+  LlSubrateChangeInd_t      subrateChangeInd;       /*!< Subrate change event. */
 } LlEvt_t;
 
 /*! \brief      Event callback */
@@ -3841,27 +3906,31 @@ void LlGetPerScanContextSize(uint8_t *pMaxPerScan, uint16_t *pPerScanCtxSize);
 
 /*************************************************************************************************/
 /*!
- *  \brief      Get CIG context size.
+ *  \brief      Get CIS context size.
  *
  *  \param      pMaxCig         Buffer to return the maximum number of CIG.
  *  \param      pCigCtxSize     Buffer to return the size in bytes of the CIG context.
- *
- *  Return the connection context sizes.
- */
-/*************************************************************************************************/
-void LlGetCigContextSize(uint8_t *pMaxCig, uint16_t *pCigCtxSize);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Get CIS context size.
- *
  *  \param      pMaxCis         Buffer to return the maximum number of CIS.
  *  \param      pCisCtxSize     Buffer to return the size in bytes of the CIS context.
  *
  *  Return the connection context sizes.
  */
 /*************************************************************************************************/
-void LlGetCisContextSize(uint8_t *pMaxCis, uint16_t *pCisCtxSize);
+void LlGetCisContextSize(uint8_t *pMaxCig, uint16_t *pCigCtxSize, uint8_t *pMaxCis, uint16_t *pCisCtxSize);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Get BIS context size.
+ *
+ *  \param      pMaxBig         Buffer to return the maximum number of BIG.
+ *  \param      pBigCtxSize     Buffer to return the size in bytes of the BIG context.
+ *  \param      pMaxBis         Buffer to return the maximum number of BIS.
+ *  \param      pBisCtxSize     Buffer to return the size in bytes of the BIS context.
+ *
+ *  Return the connection context sizes.
+ */
+/*************************************************************************************************/
+void LlGetBisContextSize(uint8_t *pMaxBig, uint16_t *pBigCtxSize, uint8_t *pMaxBis, uint16_t *pBisCtxSize);
 
 /*************************************************************************************************/
 /*!
@@ -3874,8 +3943,66 @@ uint16_t LlStatsGetHandlerWatermarkUsec(void);
 
 /*! \} */    /* LL_API_DIAG */
 
-/*! \addtogroup LL_API_CIS
+/*! \addtogroup LL_API_ISO
  *  \{ */
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Used by a broadcaster host to command is used to create one or more BISes of a BIG
+ *              in the controller.
+ *
+ *  \param      pCreateBig      Create BIG parameters.
+ *
+ *  \return     Status error code.
+ */
+/*************************************************************************************************/
+uint8_t LlCreateBig(LlCreateBig_t *pCreateBig);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Used by a broadcaster host to command is used to create one or more BISes of a BIG
+ *              in the ISO test mode.
+ *
+ *  \param      pCreateBigTest  Create BIG Test parameters.
+ *
+ *  \return     Status error code.
+ */
+/*************************************************************************************************/
+uint8_t LlCreateBigTest(LlCreateBigTest_t *pCreateBigTest);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Used to terminate the transmission of all BISes of a BIG, or to cancel the process
+ *              of creating a BIG using the HCI_LE_Create_BIG command from the Isochronous Broadcaster.
+ *
+ *  \param      bigHandle     Used to identify the BIG.
+ *  \param      reason        Termination reason.
+ *
+ *  \return     Status error code.
+ */
+/*************************************************************************************************/
+uint8_t LlTerminateBig(uint8_t bigHandle, uint8_t reason);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Used to synchronize and receive PDUs from one or more BISes within a BIG.
+ *
+ *  \param      pCreateSync     BIG Create Sync parameters.
+ *
+ *  \return     Status error code.
+ */
+/*************************************************************************************************/
+uint8_t LlBigCreateSync(LlBigCreateSync_t *pCreateSync);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Used to stop synchronization with the BIG or to cancel the process of synchronizing
+ *              to BISes invoked by the HCI_LE_BIG_Create_Sync command
+ *
+ *  \param      bigHandle     Used to identify the BIG.
+ */
+/*************************************************************************************************/
+void LlBigTerminateSync(uint8_t bigHandle);
 
 /*************************************************************************************************/
 /*!
@@ -3953,64 +4080,6 @@ uint8_t LlRejectCisReq(uint16_t cisHandle, uint8_t reason);
 
 /*************************************************************************************************/
 /*!
- *  \brief      Used by a broadcaster host to command is used to create one or more BISes of a BIG
- *              in the controller.
- *
- *  \param      pCreateBig      Create BIG parameters.
- *
- *  \return     Status error code.
- */
-/*************************************************************************************************/
-uint8_t LlCreateBig(LlCreateBig_t *pCreateBig);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Used by a broadcaster host to command is used to create one or more BISes of a BIG
- *              in the ISO test mode.
- *
- *  \param      pCreateBigTest  Create BIG Test parameters.
- *
- *  \return     Status error code.
- */
-/*************************************************************************************************/
-uint8_t LlCreateBigTest(LlCreateBigTest_t *pCreateBigTest);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Used to terminate the transmission of all BISes of a BIG, or to cancel the process
- *              of creating a BIG using the HCI_LE_Create_BIG command from the Isochronous Broadcaster.
- *
- *  \param      bigHandle     Used to identify the BIG.
- *  \param      reason        Termination reason.
- *
- *  \return     Status error code.
- */
-/*************************************************************************************************/
-uint8_t LlTerminateBig(uint8_t bigHandle, uint8_t reason);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Used to synchronize and receive PDUs from one or more BISes within a BIG.
- *
- *  \param      pCreateSync     BIG Create Sync parameters.
- *
- *  \return     Status error code.
- */
-/*************************************************************************************************/
-uint8_t LlBigCreateSync(LlBigCreateSync_t *pCreateSync);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Used to stop synchronization with the BIG or to cancel the process of synchronizing
- *              to BISes invoked by the HCI_LE_BIG_Create_Sync command
- *
- *  \param      bigHandle     Used to identify the BIG.
- */
-/*************************************************************************************************/
-void LlBigTerminateSync(uint8_t bigHandle);
-
-/*************************************************************************************************/
-/*!
  *  \brief      Read the Time_Stamp and Time_Offset of a transmitted ISO_SDU identified by the
  *              Packet_Sequence_Number on a CIS or BIS identified by the Connection_Handle.
  *
@@ -4023,6 +4092,18 @@ void LlBigTerminateSync(uint8_t bigHandle);
  */
 /*************************************************************************************************/
 uint8_t LlReadIsoTxSync(uint16_t handle, uint16_t *pPktSn, uint32_t *pTs, uint32_t *pTimeOffs);
+
+/*************************************************************************************************/
+/*!
+ * \brief       Used to request the Controller to configure the data transport path in a given
+ *              direction between the Controller and the Host.
+ *
+ * \param       pConfigDataPath  Parameters for configure data path.
+ *
+ *  \return     Status error code.
+ */
+/*************************************************************************************************/
+uint8_t LlConfigureDataPath(LlIsoConfigDataPath_t *pConfigDataPath);
 
 /*************************************************************************************************/
 /*!
@@ -4182,7 +4263,49 @@ uint8_t *LlRecvIsoData(void);
 /*************************************************************************************************/
 void LlRecvIsoDataComplete(uint8_t numBufs);
 
-/*! \} */    /* LL_API_CIS */
+/*! \} */    /* LL_API_ISO */
+
+/*! \addtogroup LL_API_ECU
+ *  \{ */
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Initialize LL subsystem for enhanced connection update.
+ *
+ *  This function initializes the LL subsystem for use with enhanced connection updates.
+ */
+/*************************************************************************************************/
+void LlEnhConnUpdateInit(void);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Set the initial values for subrating requests.
+ *
+ *  \param      pSubrate        Subrate parameter.
+ *
+ *  \return     Status error code.
+ *
+ *  Set the initial values for the acceptable parameters for subrating requests for all future ACL
+ *  connections where the Controller is the Central. This command does not affect any existing
+ *  connection.
+ */
+/*************************************************************************************************/
+uint8_t LlSetDefaultSubrate(LlSubrateParam_t *pSubrate);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Request subrate change.
+ *
+ *  \param      handle          Connection handle.
+ *  \param      pSubrate        Subrate parameter.
+ *
+ *  Used by a Central or a Peripheral to request a change to the subrating factor and/or other
+ *  parameters applied to an existing connection using the Connection Subrate Update procedure.
+ */
+/*************************************************************************************************/
+void LlSubrateReq(uint16_t handle, LlSubrateParam_t *pSubrate);
+
+/*! \} */    /* LL_API_ECU */
 
 #ifdef __cplusplus
 };

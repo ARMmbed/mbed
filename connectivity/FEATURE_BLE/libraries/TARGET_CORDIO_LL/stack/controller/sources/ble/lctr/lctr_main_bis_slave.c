@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -124,8 +124,8 @@ static void lctrSlvSetupBigContext(lctrBigCtx_t *pBigCtx, LlCreateBig_t *pCreate
     case LL_PACKING_INTERLEAVED:
     {
       pBigCtx->bisSpaceUsec = lctrBisCalcMaxPduTimeUsec(pBigCtx->phy, pBigCtx->maxPdu, pCreateBig->encrypt);
-      pBigCtx->subInterUsec = pBigCtx->bisSpaceUsec * pBigCtx->nse;
-      pBigCtx->syncDelayUsec = pCreateBig->numBis * pBigCtx->subInterUsec;
+      pBigCtx->subInterUsec = pBigCtx->bisSpaceUsec * pCreateBig->numBis;
+      pBigCtx->syncDelayUsec = (pCreateBig->numBis * pBigCtx->subInterUsec) - LL_BLE_TMSS_US;
       break;
     }
 
@@ -134,7 +134,7 @@ static void lctrSlvSetupBigContext(lctrBigCtx_t *pBigCtx, LlCreateBig_t *pCreate
     {
       pBigCtx->subInterUsec = lctrBisCalcMaxPduTimeUsec(pBigCtx->phy, pBigCtx->maxPdu, pCreateBig->encrypt);
       pBigCtx->bisSpaceUsec = pBigCtx->subInterUsec * pBigCtx->nse;
-      pBigCtx->syncDelayUsec = pCreateBig->numBis * pBigCtx->bisSpaceUsec;
+      pBigCtx->syncDelayUsec = (pCreateBig->numBis * pBigCtx->bisSpaceUsec) - LL_BLE_TMSS_US;
       break;
     }
   }
@@ -142,9 +142,18 @@ static void lctrSlvSetupBigContext(lctrBigCtx_t *pBigCtx, LlCreateBig_t *pCreate
   /* Ensure successful divide. */
   if (pBigCtx->bn || pBigCtx->sduInterUsec)
   {
-    pBigCtx->transLatUsec = pBigCtx->syncDelayUsec +
-      pBigCtx->pto * (pBigCtx->nse / pBigCtx->bn - pBigCtx->irc) * pBigCtx->isoInterUsec +
-      ((pBigCtx->isoInterUsec / pBigCtx->sduInterUsec) - 1) * pBigCtx->sduInterUsec;
+    if (pBigCtx->framing == LL_ISO_PDU_TYPE_FRAMED)
+    {
+      pBigCtx->transLatUsec = pBigCtx->syncDelayUsec +
+        pBigCtx->pto * (pBigCtx->nse / pBigCtx->bn - pBigCtx->irc) * pBigCtx->isoInterUsec +
+        pBigCtx->isoInterUsec + pBigCtx->sduInterUsec;
+    }
+    else
+    {
+      pBigCtx->transLatUsec = pBigCtx->syncDelayUsec +
+        pBigCtx->pto * (pBigCtx->nse / pBigCtx->bn - pBigCtx->irc) * pBigCtx->isoInterUsec +
+        ((pBigCtx->isoInterUsec / pBigCtx->sduInterUsec) - 1) * pBigCtx->sduInterUsec;
+    }
   }
   else
   {
@@ -188,15 +197,15 @@ static void lctrSlvSetupBigTestContext(lctrBigCtx_t *pBigCtx, LlCreateBigTest_t 
   pBigCtx->bn           = pCreateBigTest->bn;
   pBigCtx->irc          = pCreateBigTest->irc;
   pBigCtx->pto          = pCreateBigTest->pto;
-  pBigCtx->nse          = (pBigCtx->bn + pBigCtx->pto) * pBigCtx->irc;
+  pBigCtx->nse          = pCreateBigTest->nse;
 
   switch (pBigCtx->packing)
   {
     case LL_PACKING_INTERLEAVED:
     {
       pBigCtx->bisSpaceUsec = lctrBisCalcMaxPduTimeUsec(pBigCtx->phy, pBigCtx->maxPdu, pCreateBigTest->encrypt);
-      pBigCtx->subInterUsec = pBigCtx->bisSpaceUsec * pBigCtx->nse;
-      pBigCtx->syncDelayUsec = pCreateBigTest->numBis * pBigCtx->subInterUsec;
+      pBigCtx->subInterUsec = pBigCtx->bisSpaceUsec * pCreateBigTest->numBis;
+      pBigCtx->syncDelayUsec = (pCreateBigTest->numBis * pBigCtx->subInterUsec) - LL_BLE_TMSS_US;
       break;
     }
 
@@ -205,7 +214,7 @@ static void lctrSlvSetupBigTestContext(lctrBigCtx_t *pBigCtx, LlCreateBigTest_t 
     {
       pBigCtx->subInterUsec = lctrBisCalcMaxPduTimeUsec(pBigCtx->phy, pBigCtx->maxPdu, pCreateBigTest->encrypt);
       pBigCtx->bisSpaceUsec = pBigCtx->subInterUsec * pBigCtx->nse;
-      pBigCtx->syncDelayUsec = pCreateBigTest->numBis * pBigCtx->bisSpaceUsec;
+      pBigCtx->syncDelayUsec = (pCreateBigTest->numBis * pBigCtx->bisSpaceUsec) - LL_BLE_TMSS_US;
       break;
     }
   }
@@ -213,9 +222,18 @@ static void lctrSlvSetupBigTestContext(lctrBigCtx_t *pBigCtx, LlCreateBigTest_t 
   /* Ensure successful divide. */
   if (pBigCtx->bn || pBigCtx->sduInterUsec)
   {
-    pBigCtx->transLatUsec = pBigCtx->syncDelayUsec +
-      pBigCtx->pto * (pBigCtx->nse / pBigCtx->bn - pBigCtx->irc) * pBigCtx->isoInterUsec +
-      ((pBigCtx->isoInterUsec / pBigCtx->sduInterUsec) - 1) * pBigCtx->sduInterUsec;
+    if (pBigCtx->framing == LL_ISO_PDU_TYPE_FRAMED)
+    {
+      pBigCtx->transLatUsec = pBigCtx->syncDelayUsec +
+        pBigCtx->pto * (pBigCtx->nse / pBigCtx->bn - pBigCtx->irc) * pBigCtx->isoInterUsec +
+        pBigCtx->isoInterUsec + pBigCtx->sduInterUsec;
+    }
+    else
+    {
+      pBigCtx->transLatUsec = pBigCtx->syncDelayUsec +
+        pBigCtx->pto * (pBigCtx->nse / pBigCtx->bn - pBigCtx->irc) * pBigCtx->isoInterUsec +
+        ((pBigCtx->isoInterUsec / pBigCtx->sduInterUsec) - 1) * pBigCtx->sduInterUsec;
+    }
   }
   else
   {
@@ -236,14 +254,14 @@ static void lctrSlvSetupBigChannel(lctrBigCtx_t *pBigCtx)
   pBigCtx->seedAccAddr = lctrComputeSeedAccessAddr();
   pBigCtx->baseCrcInit = lctrComputeCrcInit() >> 8;
 
-  pBigCtx->ctrChSelInfo.chanMask = lmgrCb.chanClass;
-  pBigCtx->ctrChSelInfo.usedChSel = LL_CH_SEL_2;
-  pBigCtx->ctrChSelInfo.chIdentifier = (uint16_t)(LL_BIG_CONTROL_ACCESS_ADDR >> 16) ^
-                                       (uint16_t)(LL_BIG_CONTROL_ACCESS_ADDR >> 0);
-  LmgrBuildRemapTable(&pBigCtx->ctrChSelInfo);
-
   pBigCtx->ctrChan.opType = BB_BLE_OP_SLV_BIS_EVENT;
   pBigCtx->ctrChan.accAddr = lctrComputeBisAccessAddr(pBigCtx->seedAccAddr, 0);
+
+  pBigCtx->ctrChSelInfo.chanMask = lmgrCb.chanClass;
+  pBigCtx->ctrChSelInfo.usedChSel = LL_CH_SEL_2;
+  pBigCtx->ctrChSelInfo.chIdentifier = (uint16_t)(pBigCtx->ctrChan.accAddr >> 16) ^
+                                       (uint16_t)(pBigCtx->ctrChan.accAddr >> 0);
+  LmgrBuildRemapTable(&pBigCtx->ctrChSelInfo);
 
   pBigCtx->ctrChan.crcInit = (pBigCtx->baseCrcInit << 8) | 0;
   pBigCtx->ctrChan.txPower = lmgrCb.advTxPwr;
@@ -266,10 +284,10 @@ static void lctrSlvSetupBigChannel(lctrBigCtx_t *pBigCtx)
     pBigCtx->ctrChan.enc.nonceMode = PAL_BB_NONCE_MODE_EXT64_CNTR;
 
     memcpy(pBigCtx->ctrChan.enc.iv, pBigCtx->giv, LL_IV_LEN);
-    pBigCtx->ctrChan.enc.iv[0] ^= LL_BIG_CONTROL_ACCESS_ADDR >>  0;
-    pBigCtx->ctrChan.enc.iv[1] ^= LL_BIG_CONTROL_ACCESS_ADDR >>  8;
-    pBigCtx->ctrChan.enc.iv[2] ^= LL_BIG_CONTROL_ACCESS_ADDR >> 16;
-    pBigCtx->ctrChan.enc.iv[3] ^= LL_BIG_CONTROL_ACCESS_ADDR >> 24;
+    pBigCtx->ctrChan.enc.iv[0] ^= pBigCtx->ctrChan.accAddr >>  0;
+    pBigCtx->ctrChan.enc.iv[1] ^= pBigCtx->ctrChan.accAddr >>  8;
+    pBigCtx->ctrChan.enc.iv[2] ^= pBigCtx->ctrChan.accAddr >> 16;
+    pBigCtx->ctrChan.enc.iv[3] ^= pBigCtx->ctrChan.accAddr >> 24;
 
     memcpy(pBigCtx->ctrChan.enc.sk, pBigCtx->bleData.chan.enc.sk, PAL_CRYPTO_LL_KEY_LEN);
 
@@ -277,7 +295,10 @@ static void lctrSlvSetupBigChannel(lctrBigCtx_t *pBigCtx)
     pBigCtx->ctrChan.enc.dir = 1;
     pBigCtx->ctrChan.enc.type = PAL_BB_TYPE_BIS;
 
-    lctrInitCipherBlkHdlr(&pBigCtx->ctrChan.enc, LCTR_BIG_CTRL_ENC_ID(pBigCtx), 1);
+    if (lctrInitCipherBlkHdlr)
+    {
+      lctrInitCipherBlkHdlr(&pBigCtx->ctrChan.enc, LCTR_BIG_CTRL_ENC_ID(pBigCtx), 1);
+    }
   }
 }
 
@@ -508,7 +529,7 @@ void LctrSlvBisInit(void)
   /* Set supported features. */
   if (pLctrRtCfg->btVer >= LL_VER_BT_CORE_SPEC_5_1)
   {
-    lmgrPersistCb.featuresDefault |= LL_FEAT_ISO_BROADCASTER;
+    lmgrPersistCb.featuresDefault |= LL_FEAT_ISO_SYNC;
   }
 }
 
@@ -574,7 +595,8 @@ uint8_t LctrSlvBisCreateBig(LlCreateBig_t *pCreateBig)
 
     if (pBisCtx)
     {
-      lctrSetupBisContext(pBisCtx, pBigCtx->seedAccAddr, pBigCtx->baseCrcInit, lmgrCb.chanClass, pBigCtx->phy);
+      lctrSetupBisContext(pBisCtx, pBigCtx->seedAccAddr, pBigCtx->baseCrcInit, lmgrCb.chanClass,
+                          (LlPhy_t)pBigCtx->phy);
     }
     else
     {
@@ -663,7 +685,8 @@ uint8_t LctrSlvBisCreateBigTest(LlCreateBigTest_t *pCreateBigTest)
 
     if (pBisCtx)
     {
-      lctrSetupBisContext(pBisCtx, pBigCtx->seedAccAddr, pBigCtx->baseCrcInit, lmgrCb.chanClass, pBigCtx->phy);
+      lctrSetupBisContext(pBisCtx, pBigCtx->seedAccAddr, pBigCtx->baseCrcInit, lmgrCb.chanClass,
+                          (LlPhy_t)pBigCtx->phy);
     }
     else
     {
@@ -932,10 +955,10 @@ uint8_t lctrSlvBigBuildOp(lctrBigCtx_t *pBigCtx)
     return LL_ERROR_CODE_CONN_REJ_LIMITED_RESOURCES;
   }
 
-  const uint32_t curTime = PalBbGetCurrentTime();
-  uint32_t offsetUsec = SchRmGetOffsetUsec(pOp->minDurUsec,
-                                           LCTR_BIG_TO_RM_HANDLE(pBigCtx), curTime);
-  pOp->dueUsec = curTime + offsetUsec;
+  const uint32_t refTime = pBigCtx->roleData.slv.pAdvSet->advBod.dueUsec;
+  uint32_t offsetUsec = SchRmGetOffsetUsec(pBigCtx->isoInterUsec,
+                                           LCTR_BIG_TO_RM_HANDLE(pBigCtx), refTime);
+  pOp->dueUsec = refTime + offsetUsec;
 
   while (TRUE)
   {

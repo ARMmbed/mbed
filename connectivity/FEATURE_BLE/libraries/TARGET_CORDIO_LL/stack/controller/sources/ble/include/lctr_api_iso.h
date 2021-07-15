@@ -45,6 +45,7 @@ void LctrTxIso(uint8_t *pIsoBuf);
 uint8_t *LctrRxIso(void);
 void LctrRxIsoComplete(uint8_t numBufs);
 uint8_t LctrReadIsoTxSync(uint16_t handle, uint16_t *pPktSn, uint32_t *pTs, uint32_t *pTimeOffs);
+uint8_t LctrConfigureDataPath(LlIsoConfigDataPath_t *pConfigDataPath);
 uint8_t LctrSetupIsoDataPath(LlIsoSetupDataPath_t *pSetupDataPath);
 uint8_t LctrRemoveIsoDataPath(uint16_t handle, uint8_t dpDir);
 uint8_t LctrIsoTxTest(uint16_t handle, uint8_t pldType);

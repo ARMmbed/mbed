@@ -151,6 +151,9 @@ void smprActSendPairRsp(smpCcb_t *pCcb, smpMsg_t *pMsg)
   /* process pairing request and response data */
   if (smpCb.procPairing(pCcb, &oob, &display))
   {
+    /* clear key ready */
+    pCcb->keyReady = FALSE;
+
     /* set next expected packet */
     if ((pCcb->pairReq[SMP_AUTHREQ_POS] & pMsg->dm.pair.auth & SMP_AUTH_SC_FLAG) == SMP_AUTH_SC_FLAG)
     {

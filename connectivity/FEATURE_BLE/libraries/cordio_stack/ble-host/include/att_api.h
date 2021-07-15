@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2009-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -162,7 +162,7 @@ typedef struct
   uint8_t           authoriz;         /*!< \brief Authorization required */
   uint8_t           secLevel;         /*!< \brief Security level required */
   uint8_t           numChans;         /*!< \brief Number of enhanced l2cap channels per connection */
-  uint8_t           *pPriorityTbl;    /*!< \brief Min priority required for each channel */
+  const uint8_t     *pPriorityTbl;    /*!< \brief Min channel priority table. Set NULL to map priority to L2CAP channel index. */
 } eattCfg_t;
 
 /*!
@@ -760,6 +760,19 @@ uint16_t AttsCccEnabled(dmConnId_t connId, uint8_t idx);
 
 /*************************************************************************************************/
 /*!
+ *  \brief  Check if a client characteristic configuration descriptor is enabled and if
+ *          the characteristic's security level has been met.
+ *
+ *  \param  connId      DM connection ID.
+ *  \param  handle      Attribute handle of CCC descriptor.
+ *
+ *  \return Value of the descriptor if security level is met, otherwise zero.
+ */
+/*************************************************************************************************/
+uint16_t AttsCccEnabledByHandle(dmConnId_t connId, uint16_t handle);
+
+/*************************************************************************************************/
+/*!
  *  \brief   Get number of CCC entries in table.
  *
  *  \return  Number of CCC entries in table.
@@ -793,12 +806,12 @@ void AttsContinueWriteReq(dmConnId_t connId, uint16_t handle, uint8_t status);
  *
  *  \param  connId      DM connection ID.
  *  \param  pCsrk       Pointer to data signing key (CSRK).
- *  \param  authenticated True if CSRK is authenticated and false otherwise.
+ *  \param  authen      Whether CSRK was received on authenticated connection.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-void AttsSetCsrk(dmConnId_t connId, uint8_t *pCsrk, bool_t authenticated);
+void AttsSetCsrk(dmConnId_t connId, uint8_t *pCsrk, bool_t authen);
 
 /*************************************************************************************************/
 /*!

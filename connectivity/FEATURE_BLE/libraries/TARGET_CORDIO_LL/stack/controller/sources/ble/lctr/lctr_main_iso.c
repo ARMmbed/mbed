@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ static void lctrIsoProcessRxTestData(lctrCisCtx_t *pCisCtx, uint8_t *pDataBuf, u
   uint16_t pldType = 0;
   uint64_t plTestCounter = pCisCtx->rxPktCounter;
 
-  if (pCisCtx->rxPendInit)
+  if (pCisCtx->rxPendInit && (dataLen >= LL_ISO_TEST_VAR_MIN_LEN))
   {
     memcpy(&pCisCtx->expectedPkt, pDataBuf, 4);
     pCisCtx->rxPendInit = FALSE;
@@ -94,12 +94,15 @@ static void lctrIsoProcessRxTestData(lctrCisCtx_t *pCisCtx, uint8_t *pDataBuf, u
       if ((dataLen == pldType) &&
           (pktNum == pCisCtx->expectedPkt))
       {
+        pCisCtx->expectedPkt++;
         pCisCtx->numRxSuccess++;
+
       }
       else
       {
         pCisCtx->expectedPkt = pktNum + 1;
         pCisCtx->numRxFailed++;
+
       }
       break;
 
@@ -107,7 +110,8 @@ static void lctrIsoProcessRxTestData(lctrCisCtx_t *pCisCtx, uint8_t *pDataBuf, u
       if ((dataLen >= LL_ISO_TEST_VAR_MIN_LEN) &&
           (pktNum == pCisCtx->expectedPkt))
       {
-          pCisCtx->numRxSuccess++;
+        pCisCtx->numRxSuccess++;
+        pCisCtx->expectedPkt++;
       }
       else
       {
@@ -224,7 +228,7 @@ void LctrInitCodec(void)
   /* Add codec. */
   lctrCodecHdlr.start = PalCodecDataStartStream;
   lctrCodecHdlr.stop  = PalCodecDataStopStream;
-  lctrCodecHdlr.in    = PalCodecDataStreamIn;
+  lctrCodecHdlr.inReq = PalCodecDataStreamIn;
   lctrCodecHdlr.out   = PalCodecDataStreamOut;
 }
 
@@ -269,9 +273,8 @@ void lctrIsoTxCompletedHandler(void)
 
   WSF_CS_EXIT(cs);
 
-  if (numHandles)
+  if (lmgrPersistCb.sendIsoCompCback && numHandles)
   {
-    /* Notify host. */
     lmgrPersistCb.sendIsoCompCback(numHandles, handle, numSdu);
   }
 }
@@ -285,14 +288,14 @@ void lctrCisRxPendingHandler(void)
 {
   uint16_t cisHandle = 0;
   uint8_t *pRxBuf;
+  lctrCisCtx_t *pCisCtx;
 
   /* Route and demux received Data PDUs. */
-
   while ((pRxBuf = lctrCisRxDeq(&cisHandle)) != NULL)
   {
     WSF_ASSERT(pRxBuf);
 
-    lctrCisCtx_t *pCisCtx = lctrFindCisByHandle(cisHandle);
+    pCisCtx = lctrFindCisByHandle(cisHandle);
     lctrIsoalRxCtx_t *pRxCtx = &pCisCtx->isoalRxCtx;
 
     if (!pCisCtx->enabled)
@@ -317,10 +320,9 @@ void lctrCisRxPendingHandler(void)
         lctrSendCisMsg(pCisCtx, LCTR_CIS_MSG_CIS_TERM_MIC_FAILED);
         continue;
       }
+      /* Increase packet counter after decryption. */
+      lctrCisIncPacketCounterRx(pCisCtx);
     }
-
-    /* Increase packet counter after decryption. */
-    lctrCisIncPacketCounterRx(pCisCtx);
 
     lctrCisDataPduHdr_t cisDataHdr;
     lctrCisUnpackDataPduHdr(&cisDataHdr, pRxBuf);
@@ -328,7 +330,21 @@ void lctrCisRxPendingHandler(void)
     /* Demux PDU. */
     if (pCisCtx->framing == LL_ISO_PDU_TYPE_UNFRAMED)
     {
-      lctrIsoHdr_t isoHdr = { 0 };
+      lctrIsoHdr_t isoHdr =
+      {
+        /* ISO header */
+        .handle = cisHandle,
+        .len    = pRxBuf[LCTR_ISO_DATA_PDU_LEN_OFFSET],
+        /* .pb  = 0, */  /* assigned below */
+        .tsFlag = FALSE,
+
+        /* Data load */
+        .ts     = 0,
+        /* .pktSn = 0, */ /* assigned below */
+        .sduLen = pRxBuf[LCTR_ISO_DATA_PDU_LEN_OFFSET],
+        .ps     = LCTR_PS_VALID
+      };
+
       switch (rxHdr.llid)
       {
         /* Received a end/complete PDU. */
@@ -346,6 +362,7 @@ void lctrCisRxPendingHandler(void)
             lctrCisRxPduFree(pRxBuf);
             LL_TRACE_ERR2("!!! Invalid rxState; dropping Rx data PDU, connHandle=%u, rxState=%u", cisHandle, pRxCtx->rxState);
             pRxCtx->rxState = LL_ISO_SDU_STATE_NEW;
+            continue;
           }
           break;
 
@@ -359,24 +376,7 @@ void lctrCisRxPendingHandler(void)
         default:
           lctrCisRxPduFree(pRxBuf);
           LL_TRACE_ERR2("!!! Invalid LLID; dropping Rx data PDU, connHandle=%u llid=%u", cisHandle, rxHdr.llid);
-          break;
-      }
-
-      /* If the packet was flushed, change the packet status flag to warn host of errors. */
-      if (pRxCtx->pduFlushed)
-      {
-        switch (pRxCtx->rxState)
-        {
-          case LL_ISO_SDU_STATE_CONT:
-            /* Lost data since last transfer; invalidate packet. */
-            pRxCtx->data.unframed.ps = LCTR_PS_INVALID;
-            break;
-          case LL_ISO_SDU_STATE_NEW:
-            /* This may be a fragmented packet with the end fragment, but no way to tell, so process as normal. */
-            pRxCtx->data.unframed.ps = (rxHdr.llid == LL_LLID_ISO_UNF_END_PDU) ? LCTR_PS_INVALID : LCTR_PS_LOST;
-            break;
-        }
-        pRxCtx->pduFlushed = FALSE;
+          continue;
       }
 
       /* Pack isoHdr and queue PDU. */
@@ -384,34 +384,34 @@ void lctrCisRxPendingHandler(void)
       {
         uint8_t * pSduBuf = pRxBuf - LCTR_CIS_DATA_PDU_START_OFFSET - HCI_ISO_DL_MAX_LEN;
 
-        /* Pack current packet. */
-        isoHdr.handle = cisHandle;
-        isoHdr.tsFlag = ((isoHdr.pb == LCTR_PB_COMP) || (isoHdr.pb == LCTR_PB_FIRST)) ? 1 : 0;
-        if (isoHdr.tsFlag)
+        if ((isoHdr.pb == LCTR_PB_COMP) || (isoHdr.pb == LCTR_PB_FIRST))
         {
-          isoHdr.ts = 0xFF;
-        }
-        isoHdr.len = pRxBuf[LCTR_ISO_DATA_PDU_LEN_OFFSET];
-        /* isoHdr.pktSn = 0; */
+          isoHdr.tsFlag = TRUE;
+          isoHdr.ts = PalBbGetCurrentTime();
 
-        /* LCTR_PB_COMP and LCTR_PB_FIRST will have their headers re-packed in lctrIsoUnframedRxSduPendQueue. */
+          pRxCtx->packetSequence++;
+        }
+        isoHdr.pktSn = pRxCtx->packetSequence;
+
+        /* LCTR_PB_COMP and LCTR_PB_FIRST will have their headers re-packed in lctrRecombineRxUnframedSdu(). */
         uint8_t headerOffset = lctrIsoPackHdr(pSduBuf, &isoHdr);
 
         /* Process received buffer for Rx testing purpose. */
+        /* TODO: Optimize test packet dataflow. */
         if (pCisCtx->rxTestEnabled == TRUE)
         {
           lctrIsoProcessRxTestData(pCisCtx, pRxBuf + LL_DATA_HDR_LEN, rxHdr.len);
         }
 
-        /* TODO optimize memory layout */
         /* Move payload next to header. */
-        if (LCTR_CIS_DATA_PDU_START_OFFSET + LL_ISO_DATA_HDR_LEN > HCI_ISO_HDR_LEN)
+        if ((LCTR_CIS_DATA_PDU_START_OFFSET + LL_ISO_DATA_HDR_LEN) > HCI_ISO_HDR_LEN)
         {
+          /* TODO optimize memory layout */
           memmove(pSduBuf + headerOffset , pRxBuf + LL_DATA_HDR_LEN, rxHdr.len);
         }
 
         /* Put onto pending queue until whole SDU is ready to be sent. */
-        if (!lctrIsoUnframedRxSduPendQueue(pRxCtx, pSduBuf, cisHandle, rxHdr.len, rxHdr.llid))
+        if (!lctrRecombineRxUnframedSdu(pRxCtx, pSduBuf))
         {
           break;
         }
@@ -421,7 +421,8 @@ void lctrCisRxPendingHandler(void)
         while ((pSduBuf = WsfMsgDeq(&pRxCtx->data.unframed.pendSduQ, &handlerId)) != NULL)
         {
           /* Enqueue SDU for processing. */
-          if (!lctrIsoRxConnEnq(&pCisCtx->dataPathOutCtx, pCisCtx->cisHandle, pSduBuf))
+          if (!lctrIsoRxConnEnq(&pCisCtx->dataPathOutCtx, pCisCtx->cisHandle,
+                                pCisCtx->rxPktCounter - 1, pSduBuf))
           {
             /* The buffer was not freed, so free it now. */
             WsfMsgFree(pSduBuf);
@@ -437,12 +438,13 @@ void lctrCisRxPendingHandler(void)
         {
           pCisCtx->dataPathOutCtx.cfg.hci.numRxPend += lctrAssembleRxFramedSdu(pRxCtx, &pCisCtx->dataPathOutCtx.cfg.hci.rxDataQ, pCisCtx->cisHandle, pRxBuf, cisDataHdr.len);
 
-          /* Consume and process packets for iso test mode */
+          /* Consume packets if needed */
+          lctrIsoHdr_t isoHdr;
+          /* ISO test mode. */
           if (pCisCtx->rxTestEnabled == TRUE)
           {
             while (pCisCtx->dataPathOutCtx.cfg.hci.numRxPend)
             {
-              lctrIsoHdr_t isoHdr;
               uint8_t *pTestRxBuf = lctrIsoRxConnDeq(&pCisCtx->dataPathOutCtx);
               lctrIsoUnpackHdr(&isoHdr, pTestRxBuf);
               lctrIsoProcessRxTestData(pCisCtx, pTestRxBuf+ HCI_ISO_HDR_LEN + HCI_ISO_DL_MAX_LEN, isoHdr.sduLen);
@@ -451,6 +453,19 @@ void lctrCisRxPendingHandler(void)
               pCisCtx->dataPathOutCtx.cfg.hci.numRxPend--;
             }
           }
+          /* Codec output */
+          else if (pCisCtx->dataPathOutCtx.id == LL_ISO_DATA_PATH_VS)
+          {
+            while (pCisCtx->dataPathOutCtx.cfg.hci.numRxPend)
+            {
+              uint8_t *pSduBuf = lctrIsoRxConnDeq(&pCisCtx->dataPathOutCtx);
+              lctrIsoUnpackHdr(&isoHdr, pSduBuf);
+              lctrCodecHdlr.out(pCisCtx->dataPathOutCtx.cfg.codec.streamId, isoHdr.pSdu, isoHdr.sduLen, isoHdr.ts);
+              WsfMsgFree(pSduBuf);
+              LctrRxIsoComplete(1);
+            }
+          }
+
           lctrCisRxPduFree(pRxBuf);
           break;
         }
@@ -473,23 +488,21 @@ void lctrCisRxPendingHandler(void)
   WSF_CS_ENTER(cs);
   for (unsigned int i = 0; i < pLctrRtCfg->maxCis; i++)
   {
-    lctrCisCtx_t *pCisCtx = &pLctrCisTbl[i];
+    pCisCtx = &pLctrCisTbl[i];
 
     if (pCisCtx->enabled &&
+        (pCisCtx->dataPathOutCtx.id == LL_ISO_DATA_PATH_HCI) &&
         pCisCtx->dataPathOutCtx.cfg.hci.numRxPend)
     {
-      if (pCisCtx->dataPathOutCtx.id == LL_ISO_DATA_PATH_HCI)
-      {
-        handle[numHandles] = pCisCtx->cisHandle;
-        numSdu[numHandles] = pCisCtx->dataPathOutCtx.cfg.hci.numRxPend;
-        pCisCtx->dataPathOutCtx.cfg.hci.numRxPend = 0;
-        numHandles++;
-      }
+      handle[numHandles] = pCisCtx->cisHandle;
+      numSdu[numHandles] = pCisCtx->dataPathOutCtx.cfg.hci.numRxPend;
+      pCisCtx->dataPathOutCtx.cfg.hci.numRxPend = 0;
+      numHandles++;
     }
   }
   WSF_CS_EXIT(cs);
 
-  if (numHandles)
+  if (lmgrPersistCb.recvIsoPendCback && numHandles)
   {
     /* Notify host. */
     lmgrPersistCb.recvIsoPendCback(numHandles, handle, numSdu);
@@ -551,7 +564,10 @@ void LctrTxIso(uint8_t *pIsoBuf)
   {
     LL_TRACE_ERR2("Invalid ISO header: invalid packet length, actLen=%u, maxLen=%u", isoHdr.sduLen, pLctrRtCfg->maxIsoSduLen);
     WsfMsgFree(pIsoBuf);
-    lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+    if (lmgrPersistCb.sendCompCback)
+    {
+      lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+    }
     return;
   }
 
@@ -559,16 +575,22 @@ void LctrTxIso(uint8_t *pIsoBuf)
   {
     LL_TRACE_ERR1("ISO Tx path flow controlled, handle=%u", isoHdr.handle);
     WsfMsgFree(pIsoBuf);
-    lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+    if (lmgrPersistCb.sendCompCback)
+    {
+      lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+    }
     return;
   }
 
-  uint16_t expIsoLen = isoHdr.len - HCI_ISO_DL_MIN_LEN + ((isoHdr.tsFlag) ? HCI_ISO_TS_LEN : 0);
+  uint16_t expIsoLen = isoHdr.len - HCI_ISO_DL_MIN_LEN - ((isoHdr.tsFlag) ? HCI_ISO_TS_LEN : 0);
   if (isoHdr.sduLen != expIsoLen)
   {
     LL_TRACE_ERR2("Invalid ISO header: packet length mismatch, expSduLen=%u, actSduLen=%u", expIsoLen, isoHdr.sduLen);
     WsfMsgFree(pIsoBuf);
-    lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+    if (lmgrPersistCb.sendCompCback)
+    {
+      lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+    }
     return;
   }
 
@@ -582,7 +604,10 @@ void LctrTxIso(uint8_t *pIsoBuf)
     if (!lctrCheckIsCisEstCis(pCisCtx->cisHandle))
     {
       LL_TRACE_ERR1("Invalid ISO handle: link not established cisHandle=%u; dropping packet", isoHdr.handle);
-      lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+      if (lmgrPersistCb.sendCompCback)
+      {
+        lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+      }
       WsfMsgFree(pIsoBuf);
       return;
     }
@@ -593,7 +618,10 @@ void LctrTxIso(uint8_t *pIsoBuf)
     {
       LL_TRACE_ERR1("Invalid CIS state: handle=%u does not accept transmissions; dropping packet", isoHdr.handle);
       WsfMsgFree(pIsoBuf);
-      lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+      if (lmgrPersistCb.sendCompCback)
+      {
+        lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+      }
       return;
     }
 
@@ -620,7 +648,10 @@ void LctrTxIso(uint8_t *pIsoBuf)
     {
       LL_TRACE_ERR2("Invalid ISO header: invalid packet length, actLen=%u, maxSdu=%u", isoHdr.sduLen, pBisCtx->pBigCtx->maxSdu);
       WsfMsgFree(pIsoBuf);
-      lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+      if (lmgrPersistCb.sendCompCback)
+      {
+        lmgrPersistCb.sendCompCback(isoHdr.handle, 1);
+      }
       return;
     }
 
@@ -662,7 +693,7 @@ uint8_t *LctrRxIso(void)
   {
     lctrCisCtx_t *pCisCtx = &pLctrCisTbl[i];
 
-    if ((pCisCtx->enabled) &&
+    if ((pCisCtx->enabled) && (pCisCtx->dataPathOutCtx.id ==  LL_ISO_DATA_PATH_HCI) &&
         ((pBuf = lctrIsoRxConnDeq(&pCisCtx->dataPathOutCtx)) != NULL))
     {
       return pBuf;
@@ -677,6 +708,7 @@ uint8_t *LctrRxIso(void)
         (pBisCtx->pBigCtx->role == LL_ROLE_MASTER) &&
         ((pBuf = lctrBisRxIsoSduDeq(pBisCtx)) != NULL))
     {
+      /* Postpone lctrIsoDataRxIncAvailBuf() until client consumes buffer, cf. LctrRxIsoComplete(). */
       return pBuf;
     }
   }
@@ -742,7 +774,37 @@ uint8_t LctrReadIsoTxSync(uint16_t handle, uint16_t *pPktSn, uint32_t *pTs, uint
 
 /*************************************************************************************************/
 /*!
- *  \brief      Used to identify and enable the isochronous data path between the host and the controller for each connected isochronous stream or broadcast isochronous stream.
+ * \brief       Used to request the Controller to configure the data transport path in a given
+ *              direction between the Controller and the Host.
+ *
+ * \param       pConfigDataPath  Parameters for configure data path.
+ *
+ *  \return     Status error code.
+ */
+/*************************************************************************************************/
+uint8_t LctrConfigureDataPath(LlIsoConfigDataPath_t *pConfigDataPath)
+{
+  switch (pConfigDataPath->dpId)
+  {
+  case LL_ISO_DATA_PATH_DISABLED:
+  case LL_ISO_DATA_PATH_HCI:
+    /* No action required. */
+    break;
+  case LL_ISO_DATA_PATH_VS:
+    /* No action required. */
+    break;
+  default:
+    LL_TRACE_WARN2("LlConfigureDataPath: unknown data path, dpDir=%u, dpId=%u", pConfigDataPath->dpDir, pConfigDataPath->dpId);
+    return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
+  }
+
+  return LL_SUCCESS;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Used to identify and enable the isochronous data path between the host and the
+ *              controller for each connected isochronous stream or broadcast isochronous stream.
  *
  *  \param      pSetupDataPath   Parameters for setup ISO data path.
  *
@@ -751,65 +813,76 @@ uint8_t LctrReadIsoTxSync(uint16_t handle, uint16_t *pPktSn, uint32_t *pTs, uint
 /*************************************************************************************************/
 uint8_t LctrSetupIsoDataPath(LlIsoSetupDataPath_t *pSetupDataPath)
 {
-  uint8_t status = LL_SUCCESS;
   lctrCisCtx_t *pCisCtx;
   lctrBisCtx_t *pBisCtx;
-  lctrDataPathCtx_t *pDataPathDir;
+  lctrDpParams_t dpParam;
 
   if ((pCisCtx = lctrFindCisByHandle(pSetupDataPath->handle)) != NULL)
   {
+    dpParam.handle = pCisCtx->cisHandle;
+    dpParam.isoInt = (pCisCtx->role == LL_ROLE_SLAVE) ? pCisCtx->sduIntervalSToM : pCisCtx->sduIntervalMToS;
+    dpParam.pktCtr = pCisCtx->txPktCounter + 1;
+    dpParam.dpDir = pSetupDataPath->dpDir;
+
     switch (pSetupDataPath->dpDir)
     {
     case LL_ISO_DATA_DIR_INPUT:
-      pDataPathDir = (lctrDataPathCtx_t *) (&pCisCtx->dataPathInCtx);
+      dpParam.pDataPathCtx = (lctrDataPathCtx_t *) (&pCisCtx->dataPathInCtx);
       break;
     case LL_ISO_DATA_DIR_OUTPUT:
-      pDataPathDir = (lctrDataPathCtx_t *) (&pCisCtx->dataPathOutCtx);
+      dpParam.pDataPathCtx = (lctrDataPathCtx_t *) (&pCisCtx->dataPathOutCtx);
       break;
     default:
       LL_TRACE_WARN2("LctrSetupIsoDataPath: handle=%u invalid direction dpDir=%u", pSetupDataPath->handle, pSetupDataPath->dpDir);
       return LL_ERROR_CODE_CMD_DISALLOWED;
     }
-    return lctrSetupIsoDataPath(pSetupDataPath, pDataPathDir);
   }
 
   else if ((pBisCtx = lctrFindBisByHandle(pSetupDataPath->handle)) != NULL)
   {
+    dpParam.handle = pBisCtx->handle;
+    dpParam.isoInt = pBisCtx->pBigCtx->isoInterUsec;
+    dpParam.pktCtr = (pBisCtx->pBigCtx->eventCounter + 1) * pBisCtx->pBigCtx->bn;
+    dpParam.dpDir  = pSetupDataPath->dpDir;
+
     switch (pSetupDataPath->dpDir)
     {
     case LL_ISO_DATA_DIR_INPUT:
       if (pBisCtx->pBigCtx->role == LL_ROLE_SLAVE)
       {
-        status = lctrBisSetDataPath(pBisCtx, pSetupDataPath->dpDir, pSetupDataPath->dpId);
+        dpParam.pDataPathCtx = (lctrDataPathCtx_t *) (&pBisCtx->roleData.slv.dataPathInCtx);
       }
       else
       {
         LL_TRACE_WARN1("LctrSetupIsoDataPath: handle=%u invalid input direction for master", pSetupDataPath->handle);
-        status = LL_ERROR_CODE_CMD_DISALLOWED;
+        return LL_ERROR_CODE_CMD_DISALLOWED;
       }
       break;
     case LL_ISO_DATA_DIR_OUTPUT:
       if (pBisCtx->pBigCtx->role == LL_ROLE_MASTER)
       {
-        status = lctrBisSetDataPath(pBisCtx, pSetupDataPath->dpDir, pSetupDataPath->dpId);
+        dpParam.pDataPathCtx = (lctrDataPathCtx_t *) (&pBisCtx->roleData.mst.dataPathOutCtx);
       }
       else
       {
         LL_TRACE_WARN1("LctrSetupIsoDataPath: handle=%u invalid output direction for slave", pSetupDataPath->handle);
-        status = LL_ERROR_CODE_CMD_DISALLOWED;
+        return LL_ERROR_CODE_CMD_DISALLOWED;
       }
       break;
     default:
+      LL_TRACE_WARN2("LctrSetupIsoDataPath: handle=%u invalid direction dpDir=%u", pSetupDataPath->handle, pSetupDataPath->dpDir);
+      return LL_ERROR_CODE_CMD_DISALLOWED;
       break;
     }
   }
+
   else
   {
     LL_TRACE_WARN1("LctrSetupIsoDataPath: handle=%u not found", pSetupDataPath->handle);
-    status = LL_ERROR_CODE_UNKNOWN_CONN_ID;
+    return LL_ERROR_CODE_UNKNOWN_CONN_ID;
   }
 
-  return status;
+  return lctrIsoSetupDataPath(&dpParam, pSetupDataPath);
 }
 
 /*************************************************************************************************/
@@ -828,18 +901,27 @@ uint8_t LctrRemoveIsoDataPath(uint16_t handle, uint8_t dpDir)
   uint8_t status = LL_SUCCESS;
   lctrCisCtx_t *pCisCtx;
   lctrBisCtx_t *pBisCtx;
+  lctrDpParams_t dpParam;
 
   if ((pCisCtx = lctrFindCisByHandle(handle)) != NULL)
   {
+    /* Check to make sure parameters are valid. */
+    if ((dpDir & ~(LL_ISO_DATA_PATH_INPUT_BIT | LL_ISO_DATA_PATH_OUTPUT_BIT)) ||
+        (dpDir == 0))
+    {
+      LL_TRACE_WARN2("LctrRemoveIsoDataPath: handle=%u invalid direction dpDir=0x%08x", handle, dpDir);
+      return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
+    }
+
     /* Check for validity of parameters before operating on them. */
-    if (dpDir | LL_ISO_DATA_PATH_INPUT_BIT)
+    if (dpDir & LL_ISO_DATA_PATH_INPUT_BIT)
     {
       if (pCisCtx->dataPathInCtx.id == LL_ISO_DATA_PATH_DISABLED)
       {
         return LL_ERROR_CODE_CMD_DISALLOWED;
       }
     }
-    if (dpDir | LL_ISO_DATA_PATH_OUTPUT_BIT)
+    if (dpDir & LL_ISO_DATA_PATH_OUTPUT_BIT)
     {
       if (pCisCtx->dataPathOutCtx.id == LL_ISO_DATA_PATH_DISABLED)
       {
@@ -847,18 +929,70 @@ uint8_t LctrRemoveIsoDataPath(uint16_t handle, uint8_t dpDir)
       }
     }
 
-    if (dpDir | LL_ISO_DATA_PATH_INPUT_BIT)
+    if (dpDir & LL_ISO_DATA_PATH_INPUT_BIT)
     {
+      /* Stop input data path. */
+      dpParam.handle = pCisCtx->cisHandle;
+      dpParam.pDataPathCtx = (lctrDataPathCtx_t *)&pCisCtx->dataPathInCtx;
+      /* Other parameters are unused in data path clearing. */
+      lctrIsoInDataPathClear(&dpParam);
+
       pCisCtx->dataPathInCtx.id = LL_ISO_DATA_PATH_DISABLED;
     }
-    if (dpDir | LL_ISO_DATA_PATH_OUTPUT_BIT)
+    if (dpDir & LL_ISO_DATA_PATH_OUTPUT_BIT)
     {
+      /* Stop output data path. */
+      dpParam.handle = pCisCtx->cisHandle;
+      dpParam.pDataPathCtx = (lctrDataPathCtx_t *)&pCisCtx->dataPathOutCtx;
+      /* Other parameters are unused in data path clearing. */
+      lctrIsoOutDataPathClear(&dpParam);
+
       pCisCtx->dataPathOutCtx.id = LL_ISO_DATA_PATH_DISABLED;
     }
   }
   else if ((pBisCtx = lctrFindBisByHandle(handle)) != NULL)
   {
-    pBisCtx->path = LL_ISO_DATA_PATH_DISABLED;
+    if (dpDir & LL_ISO_DATA_PATH_INPUT_BIT)
+    {
+      if (pBisCtx->roleData.slv.dataPathInCtx.id == LL_ISO_DATA_PATH_DISABLED)
+      {
+        return LL_ERROR_CODE_CMD_DISALLOWED;
+      }
+    }
+    if (dpDir & LL_ISO_DATA_PATH_OUTPUT_BIT)
+    {
+      if (pBisCtx->roleData.mst.dataPathOutCtx.id == LL_ISO_DATA_PATH_DISABLED)
+      {
+        return LL_ERROR_CODE_CMD_DISALLOWED;
+      }
+    }
+
+    dpParam.handle = pBisCtx->handle;
+
+    if (pBisCtx->pBigCtx->role == LL_ROLE_MASTER)
+    {
+      if (pBisCtx->roleData.mst.dataPathOutCtx.id == LL_ISO_DATA_PATH_DISABLED)
+      {
+        return LL_ERROR_CODE_CMD_DISALLOWED;
+      }
+
+      dpParam.pDataPathCtx = (lctrDataPathCtx_t *)&pBisCtx->roleData.mst.dataPathOutCtx;
+      /* Other parameters are unused in data path clearing. */
+      lctrIsoOutDataPathClear(&dpParam);
+      pBisCtx->roleData.mst.dataPathOutCtx.id = LL_ISO_DATA_PATH_DISABLED;
+    }
+    else
+    {
+      if (pBisCtx->roleData.slv.dataPathInCtx.id == LL_ISO_DATA_PATH_DISABLED)
+      {
+        return LL_ERROR_CODE_CMD_DISALLOWED;
+      }
+
+      dpParam.pDataPathCtx = (lctrDataPathCtx_t *)&pBisCtx->roleData.slv.dataPathInCtx;
+      /* Other parameters are unused in data path clearing. */
+      lctrIsoInDataPathClear(&dpParam);
+      pBisCtx->roleData.slv.dataPathInCtx.id = LL_ISO_DATA_PATH_DISABLED;
+    }
   }
   else
   {
@@ -1100,48 +1234,23 @@ void lctrNotifyHostIsoEventComplete(uint8_t handle, uint32_t evtCtr)
 /*!
  *  \brief      Send Codec SDU data.
  *
- *  \param      handle          Stream ID.
+ *  \param      handle          ISO Handle.
  */
 /*************************************************************************************************/
-void lctrIsoSendCodecSdu(uint16_t handle)
+void lctrIsoSendCodecSdu(uint16_t id, uint32_t pktCtr, uint32_t ts, uint8_t *pData, uint16_t actLen)
 {
-  lctrBisCtx_t *pBisCtx;
-
-  if ((pBisCtx = lctrFindBisByHandle(handle)) == NULL)
-  {
-    LL_TRACE_WARN1("lctrIsoSendCodecSdu: handle=%u not found", handle);
-    return;
-  }
-
-  uint8_t *pSduBuf;
-
-  if ((pSduBuf = WsfMsgAlloc(pLctrRtCfg->maxIsoSduLen + HCI_ISO_DL_MAX_LEN)) == NULL)
-  {
-    LL_TRACE_ERR1("!!! Out of memory; dropping input SDU, stream=%u", handle);
-    return;
-  }
-
-  uint16_t len;
-  uint32_t pktCtr;
-
-  WSF_ASSERT(lctrCodecHdlr.in);
-  if ((len = lctrCodecHdlr.in(handle, pSduBuf + HCI_ISO_HDR_LEN + HCI_ISO_DL_MAX_LEN,
-                              pBisCtx->pBigCtx->maxSdu, &pktCtr)) == 0)
-  {
-    LL_TRACE_WARN1("ISO audio stream data not available, stream=%u", handle);
-    WsfMsgFree(pSduBuf);
-    return;
-  }
+  /* Recover SDU buffer. */
+  uint8_t *pSduBuf = pData - HCI_ISO_HDR_LEN - HCI_ISO_DL_MAX_LEN;
 
   lctrIsoHdr_t hdr =
   {
-    .handle = handle,
+    .handle = id,
     .pb = LCTR_PB_COMP,
     .tsFlag = TRUE,
-    .len = len,
+    .len = actLen,
     .ts = 0,
     .pktSn = pktCtr,
-    .sduLen = len,
+    .sduLen = actLen,
     .ps = LCTR_PS_VALID
   };
 
@@ -1153,37 +1262,42 @@ void lctrIsoSendCodecSdu(uint16_t handle)
 /*!
  *  \brief      Setup ISO data path.
  *
+ *  \param      pDpParam           Parameters to set up data path.
  *  \param      pSetupDataPath     Data path setup parameters.
- *  \param      pDataPathCtx       Generic data path context.
  */
 /*************************************************************************************************/
-uint8_t lctrSetupIsoDataPath(LlIsoSetupDataPath_t *pSetupDataPath, lctrDataPathCtx_t *pDataPathCtx)
+uint8_t lctrIsoSetupDataPath(lctrDpParams_t *pDpParam, LlIsoSetupDataPath_t *pSetupDataPath)
 {
+  uint8_t status = LL_SUCCESS;
+
   switch (pSetupDataPath->dpDir)
   {
     case LL_ISO_DATA_DIR_INPUT:
     {
-      if (pSetupDataPath->dpId == pDataPathCtx->in.id)
+      if (pSetupDataPath->dpId == pDpParam->pDataPathCtx->in.id)
       {
+        /* No change. */
         return LL_SUCCESS;
       }
 
-      /* No teardown needed. */
-      pDataPathCtx->in.id = pSetupDataPath->dpId;
-      /* No setup needed. */
+      lctrIsoInDataPathClear(pDpParam);
+      pDpParam->pDataPathCtx->in.id = pSetupDataPath->dpId;
+      status = lctrIsoInDataPathSetup(pDpParam, pSetupDataPath);
       break;
     }
 
     case LL_ISO_DATA_DIR_OUTPUT:
     {
-      if (pSetupDataPath->dpId == pDataPathCtx->out.id)
+      if (pSetupDataPath->dpId == pDpParam->pDataPathCtx->out.id)
       {
+        /* No change. */
         return LL_SUCCESS;
       }
 
-      lctrIsoOutDataPathClear(&pDataPathCtx->out);
-      pDataPathCtx->out.id = pSetupDataPath->dpId;
-      lctrIsoOutDataPathSetup(&pDataPathCtx->out);
+      lctrIsoOutDataPathClear(pDpParam);
+      pDpParam->pDataPathCtx->out.id = pSetupDataPath->dpId;
+      status = lctrIsoOutDataPathSetup(pDpParam, pSetupDataPath);
+
       break;
     }
 
@@ -1192,5 +1306,5 @@ uint8_t lctrSetupIsoDataPath(LlIsoSetupDataPath_t *pSetupDataPath, lctrDataPathC
       break;
   }
 
-  return LL_SUCCESS;
+  return status;
 }

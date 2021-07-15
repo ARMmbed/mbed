@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -160,6 +160,8 @@ typedef struct
   uint32_t    cigSyncDelayUsec; /*!< CIG synchronous delay in microsecond. */
   bool_t      cisDone;          /*!< CIS transfer is done, no more subevent for the CIS. Used for interleaved CIS only. */
   bool_t      isClosing;        /*!< TRUE if the context is closing. */
+  bool_t      termPend;         /*!< The CIS has pended a termination. */
+  bool_t      hostInitTerm;     /*!< The host has initiated the termination. */
 
   uint8_t     subEvtCounter;    /*!< Sub event counter. */
   bool_t      isTxDone;         /*!< TRUE if all the Tx are done, start sending NULL packet. */
@@ -172,9 +174,10 @@ typedef struct
   uint64_t    rxPktCounter;     /*!< Receive packet counter. */
 
   /* Buffers */
-  uint8_t     dataHdrBuf[LL_DATA_HDR_LEN];  /*!< Data header buffer */
-  uint8_t     dataBuf[10];                  /*!< Data header buffer */
+  uint8_t     dataHdrBuf[LL_DATA_HDR_LEN];  /*!< Data header buffer. */
+  uint8_t     dataBuf[10];                  /*!< Data header buffer. */
   uint16_t    dataCounter;      /*!< Data counter. */
+  uint8_t     dataSn;           /*!< Data sequence number. */
 
   /* LLCP */
   bool_t      isCisReqPend;     /*!< True if CIS_REQ is sent and response is not received yet. */
@@ -196,6 +199,7 @@ typedef struct
       uint32_t      firstRxStartTsUsec; /*!< Timestamp of the first received frame regardless of CRC error in microseconds. */
       uint8_t       consCrcFailed;      /*!< Number of consecutive CRC failures. */
       uint8_t       rxStatus;           /*!< Rx status. */
+      bool_t        lastTxNull;         /*!< Last packet sent was a null. */
     } slv;                              /*!< Slave connection specific data. */
 
     struct
@@ -220,7 +224,6 @@ typedef struct
   uint8_t           numTxComp;          /*!< Number of completed Tx buffers. */
   uint32_t          delayUsec;          /*!< Time between the start of subevent to the start of next subevent in microsecond.
                                              Same as subEvtInter for sequential scheme, different for interleaved scheme. */
-  uint8_t           *pRxBuf;            /*!< Pointer to the RX buffer later to be cleaned. */
   bool_t            validRx;            /*!< TRUE if the RX buffer is valid and shall be processed. */
   bool_t            txPduIsAcked;       /*!< TRUE if the TX PDU is acked. */
   bool_t            txBufPendAck;       /*!< A transmit buffer is pending acknowledgement. */
@@ -410,6 +413,7 @@ bool_t lctrCisIsListEmpty(lctrCisList_t *pList);
 uint8_t lctrCisGetListCount(lctrCisList_t *pList);
 lctrCisCtx_t * lctrCisGetHeadCis(lctrCisList_t *pList);
 bool_t lctrCisIsHeadCis(lctrCisList_t *pList, lctrCisCtx_t *pCisCtx);
+bool_t lctrCisIsTailCis(lctrCisList_t *pList, lctrCisCtx_t *pCisCtx);
 lctrCisCtx_t * lctrCisGetNextCis(lctrCisList_t *pList, lctrCisCtx_t *pCurCis);
 lctrCisCtx_t * lctrCisGetPreCis(lctrCisList_t *pList, lctrCisCtx_t *pCurCis);
 bool_t lctrCisAreCisCtxDone(lctrCisList_t *pList);
@@ -466,7 +470,7 @@ void lctrCisTxQueuePopCleanup(lctrCisCtx_t *pCisCtx);
 uint8_t lctrCisTxQueueClear(lctrCisCtx_t *pCisCtx);
 
 /* CIS Rx data path */
-uint8_t *lctrCisRxPduAlloc(uint16_t maxRxLen);
+uint8_t *lctrCisRxPduAlloc();
 void lctrCisRxPduFree(uint8_t *pBuf);
 void lctrCisRxEnq(uint8_t *pBuf, uint16_t eventCounter, uint16_t cisHandle);
 uint8_t *lctrCisRxDeq(uint16_t *pConnHandle);
@@ -487,7 +491,8 @@ void lctrCisTxPduAck(lctrCisCtx_t *pCisCtx);
 void lctrCisProcessTxAckCleanup(lctrCisCtx_t *pCisCtx);
 void lctrCisRxPostProcessing(lctrCisCtx_t *pCisCtx, uint8_t *pRxBuf);
 void lctrCisTxTestPayloadHandler(lctrCisCtx_t * pCisCtx);
-void lctrCisPowerMonitorCheckRssi(int8_t rssi, uint8_t status, uint8_t phy, lctrConnCtx_t *pConnCtx);
+void lctrCisCheckUnframedFlush(lctrCisCtx_t *pCisCtx);
+void lctrCisServicePowerMonitor(lctrConnCtx_t *pConnCtx);
 
 /* Scheduler */
 BbOpDesc_t *lctrCisResolveConflict(BbOpDesc_t *pNewOp, BbOpDesc_t *pExistOp);
@@ -506,7 +511,7 @@ static inline void lctrCisIncPacketCounterTx(lctrCisCtx_t *pCisCtx)
   /* Set the new packet counter for inline encryption. */
   if (lctrSetEncryptPktCountHdlr)
   {
-    lctrSetEncryptPktCountHdlr(&pCisCtx->bleData.chan.enc, pCisCtx->txPktCounter);
+    lctrSetEncryptPktCountHdlr(pCisCtx->txPktCounter);
   }
 }
 
@@ -520,11 +525,47 @@ static inline void lctrCisIncPacketCounterTx(lctrCisCtx_t *pCisCtx)
 static inline void lctrCisIncPacketCounterRx(lctrCisCtx_t *pCisCtx)
 {
   pCisCtx->rxPktCounter++;
+}
 
-  /* Set the new packet counter for inline encryption. */
+/*************************************************************************************************/
+/*!
+ *  \brief  Set the CIS Tx packet counter value in the BB.
+ *
+ *  \param  pCisCtx    Connection context.
+ */
+/*************************************************************************************************/
+static inline void lctrSetBbCisPacketCounterTx(lctrCisCtx_t *pCisCtx)
+{
+  if (lctrSetEncryptPktCountHdlr)
+  {
+    PalCryptoEnc_t * const pEnc = &pCisCtx->bleData.chan.enc;
+
+    if (!pEnc->enaEncrypt)
+    {
+      return;
+    }
+    lctrSetEncryptPktCountHdlr(pCisCtx->txPktCounter);
+  }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Set the CIS Rx packet counter value in the BB.
+ *
+ *  \param  pCisCtx    Connection context.
+ */
+/*************************************************************************************************/
+static inline void lctrSetBbCisPacketCounterRx(lctrCisCtx_t *pCisCtx)
+{
   if (lctrSetDecryptPktCountHdlr)
   {
-    /* lctrSetDecryptPktCountHdlr(&pCisCtx->bleData.chan.enc, pCisCtx->rxPktCounter); */ /* Not necessary. */
+    PalCryptoEnc_t * const pEnc = &pCisCtx->bleData.chan.enc;
+
+    if (!pEnc->enaDecrypt)
+    {
+      return;
+    }
+    lctrSetDecryptPktCountHdlr(pCisCtx->rxPktCounter);
   }
 }
 

@@ -154,7 +154,6 @@ void LlInitLlInit(void)
       #if (BT_VER >= LL_VER_BT_CORE_SPEC_5_2)
         LlCisMasterInit();
         LlBisMasterInit();
-        LlPowerControlInit();
       #endif
     #else
       #ifdef INIT_OBSERVER
@@ -171,7 +170,6 @@ void LlInitLlInit(void)
       #if (BT_VER >= LL_VER_BT_CORE_SPEC_5_2)
         LlCisSlaveInit();
         LlBisSlaveInit();
-        LlPowerControlInit();
       #endif
     #else
       #ifdef INIT_BROADCASTER
@@ -186,6 +184,12 @@ void LlInitLlInit(void)
       LlChannelSelection2Init();
       #if (BT_VER >= LL_VER_BT_CORE_SPEC_5_1)
         LlPastInit();
+      #endif
+      #if (BT_VER >= LL_VER_BT_CORE_SPEC_5_2)
+        LlPowerControlInit();
+      #endif
+      #if (BT_VER >= LL_VER_BT_CORE_SPEC_SYDNEY)
+        LlEnhConnUpdateInit();
       #endif
     #endif
   #endif
@@ -263,10 +267,13 @@ uint32_t LlInitSetLlRtCfg(const LlRtCfg_t *pLlRtCfg, uint8_t *pFreeMem, uint32_t
   LlInitRunTimeCfg(pLlRtCfg);
 
   #if defined (INIT_PERIPHERAL) || defined (INIT_CENTRAL)
-    memUsed = LlInitConnMem(pFreeMem, freeMemAvail);
-    pFreeMem += memUsed;
-    freeMemAvail -= memUsed;
-    totalMemUsed += memUsed;
+    if (pLlRtCfg->maxConn)
+    {
+      memUsed = LlInitConnMem(pFreeMem, freeMemAvail);
+      pFreeMem += memUsed;
+      freeMemAvail -= memUsed;
+      totalMemUsed += memUsed;
+    }
   #endif
 
   #if (BT_VER >= LL_VER_BT_CORE_SPEC_5_0)

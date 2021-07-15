@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ extern const BbRtCfg_t *pBbRtCfg;
  *
  *  \return     Scan duration in microseconds.
  *
- *  This function is calculates the duration of the scan examining:
+ *  This function calculates the duration of the scan examining:
  *      - total elapsed scan time
  *      - neighboring BOD
  *      - maximum scan period
@@ -98,7 +98,6 @@ static uint32_t bbBleCalcScanDurationUsec(BbOpDesc_t *pBod, BbBleMstAdvEvent_t *
 
   if (pBod->pNext)
   {
-
     uint32_t timeToNextOpUsec = BbGetTargetTimeDelta(pBod->pNext->dueUsec, refTime);
 
     /* Limit scanning to the edge of neighboring BOD. */
@@ -151,6 +150,13 @@ static bool_t bbContScanOp(BbOpDesc_t *pBod, BbBleMstAdvEvent_t *pScan)
     return TRUE;
   }
 
+  /* Check if an Aux Scan needs to be started ASAP because of a short auxOffset. */
+  if (pScan->auxScanCheckCback && pScan->auxScanCheckCback(pBod, curTime, scanDurUsec))
+  {
+    pBod->prot.pBle->op.mstAdv.auxScanOpRunning = TRUE;
+    return FALSE;
+  }
+
   bbBleCb.bbParam.dueUsec = BbAdjustTime(bbBleCb.lastScanStartUsec + BbGetSchSetupDelayUs());
   bbBleCb.bbParam.rxTimeoutUsec = scanDurUsec;
   PalBbBleSetDataParams(&bbBleCb.bbParam);
@@ -190,6 +196,18 @@ static void bbMstScanTxCompCback(uint8_t status)
 
   bool_t bodComplete = FALSE;
   bool_t bodCont = FALSE;
+
+  if (pScan->auxScanTxCompCback && (pScan->auxScanOpRunning == TRUE))
+  {
+    /* This is a linked operation. Call the Aux Scan callback. */
+    if (pScan->auxScanTxCompCback(pScan->auxScanBod, status) == TRUE)
+    {
+      /* BOD complete. Clear the linked BOD. */
+      pScan->auxScanBod = NULL;
+      pScan->auxScanOpRunning = FALSE;
+    }
+    return;
+  }
 
 #if (BB_SNIFFER_ENABLED == TRUE)
   /* Save evtState to be used later in packet forwarding. */
@@ -317,6 +335,19 @@ static void bbMstScanRxCompCback(uint8_t status, int8_t rssi, uint32_t crc, uint
 
   bool_t bodComplete = FALSE;
   bool_t bodCont = FALSE;
+
+  if (pScan->auxScanRxCompCback && pScan->auxScanOpRunning == TRUE)
+  {
+    /* This is a linked operation. Call the Aux Scan callback. */
+    if (pScan->auxScanRxCompCback(pScan->auxScanBod, status, rssi, crc, timestamp, rxPhyOptions) == TRUE)
+    {
+      /* BOD complete. Clear the linked BOD. */
+      pScan->auxScanBod = NULL;
+      pScan->auxScanOpRunning = FALSE;
+    }
+
+    return;
+  }
 
 #if (BB_SNIFFER_ENABLED == TRUE)
   /* Save evtState to be used later in packet forwarding. */
@@ -521,6 +552,16 @@ static void bbMstScanRxCompCback(uint8_t status, int8_t rssi, uint32_t crc, uint
 static void bbMstExecuteScanOp(BbOpDesc_t *pBod, BbBleData_t *pBle)
 {
   BbBleMstAdvEvent_t * const pScan = &pBod->prot.pBle->op.mstAdv;
+  uint32_t curTime = PalBbGetCurrentTime();
+
+  /* Check if dueUsec time is in the past. */
+  if (BbGetTargetTimeDelta(pBod->dueUsec, curTime) == 0)
+  {
+    /* Update dueUsec time and start Scan for the remaining duration. */
+    bbBleCb.lastScanStartUsec = pBod->dueUsec;
+    pBod->dueUsec = curTime + BbGetSchSetupDelayUs();
+    pScan->elapsedUsec = BbGetTargetTimeDelta(curTime, bbBleCb.lastScanStartUsec);
+  }
 
   if (pScan->preExecCback)
   {

@@ -56,11 +56,6 @@ extern "C" {
 #define LL_TRACE_ENABLED          FALSE
 #endif
 
-#ifndef AUD_TRACE_ENABLED
-/*! \brief     Trace enabled for audio subsystem */
-#define AUD_TRACE_ENABLED         FALSE
-#endif
-
 /**************************************************************************************************
   Data Types
 **************************************************************************************************/
@@ -143,7 +138,7 @@ bool_t WsfTokenService(void);
 #ifdef TOKEN_GENERATION
 
 #define WSF_TOKEN(subsys, stat, msg)                    \
-  __WSF_TOKEN_DEFINE_(                                 \
+  __WSF_TOKEN_DEFINE__(                                 \
     /* token:   */     MODULE_ID, __LINE__,             \
     /* origin:  */     __FILE__, subsys,                \
     /* message: */     stat, msg)
@@ -292,21 +287,6 @@ bool_t WsfTokenService(void);
 #define HCI_TRACE_ERR2(msg, var1, var2)             WSF_TRACE2("HCI", "ERR",  msg, var1, var2)
 /*! \brief 3 argument HCI error trace. */
 #define HCI_TRACE_ERR3(msg, var1, var2, var3)       WSF_TRACE3("HCI", "ERR",  msg, var1, var2, var3)
-
-#if !MBED_CONF_CORDIO_TRACE_HCI_PACKETS
-/*! \brief HCI PDUMP on command. */
-#define HCI_PDUMP_CMD(len, pBuf)
-/*! \brief HCI PDUMP on event. */
-#define HCI_PDUMP_EVT(len, pBuf)
-/*! \brief HCI PDUMP on transmitted ACL message. */
-#define HCI_PDUMP_TX_ACL(len, pBuf)
-/*! \brief HCI PDUMP on Received ACL message. */
-#define HCI_PDUMP_RX_ACL(len, pBuf)
-/*! \brief HCI PDUMP on transmitted ISO message. */
-#define HCI_PDUMP_TX_ISO(len, pBuf)
-/*! \brief HCI PDUMP on Received ISO message. */
-#define HCI_PDUMP_RX_ISO(len, pBuf)
-#endif // !MBED_CONF_CORDIO_TRACE_HCI_PACKETS
 
 /*! \brief 0 argument DM info trace. */
 #define DM_TRACE_INFO0(msg)                         WSF_TRACE0("DM", "INFO", msg)
@@ -495,8 +475,8 @@ bool_t WsfTokenService(void);
 /*! \brief 3 argument App error trace. */
 #define APP_TRACE_ERR3(msg, var1, var2, var3)       WSF_TRACE3("APP", "ERR",   msg, var1, var2, var3)
 
-/*! \brief 0 argument LL info trace. */
 #if (LL_TRACE_ENABLED == TRUE)
+/*! \brief 0 argument LL info trace. */
 #define LL_TRACE_INFO0(msg)                         WSF_TRACE0("LL", "INFO", msg)
 /*! \brief 1 argument LL info trace. */
 #define LL_TRACE_INFO1(msg, var1)                   WSF_TRACE1("LL", "INFO", msg, var1)
@@ -520,31 +500,6 @@ bool_t WsfTokenService(void);
 #define LL_TRACE_ERR2(msg, var1, var2)              WSF_TRACE2("LL", "ERR",  msg, var1, var2)
 /*! \brief 3 argument LL error trace. */
 #define LL_TRACE_ERR3(msg, var1, var2, var3)        WSF_TRACE3("LL", "ERR",  msg, var1, var2, var3)
-
-/*! \brief 0 argument BBP warning trace. */
-#define BBP_TRACE_INFO0(msg)                        WSF_TRACE0("BBP", "INFO", msg)
-/*! \brief 1 argument BBP warning trace. */
-#define BBP_TRACE_INFO1(msg, var1)                  WSF_TRACE1("BBP", "INFO", msg, var1)
-/*! \brief 2 argument BBP warning trace. */
-#define BBP_TRACE_INFO2(msg, var1, var2)            WSF_TRACE2("BBP", "INFO", msg, var1, var2)
-/*! \brief 3 argument BBP info trace. */
-#define BBP_TRACE_INFO3(msg, var1, var2, var3)      WSF_TRACE3("BBP", "INFO", msg, var1, var2, var3)
-/*! \brief 0 argument BBP warning trace. */
-#define BBP_TRACE_WARN0(msg)                        WSF_TRACE0("BBP", "WARN", msg)
-/*! \brief 1 argument BBP warning trace. */
-#define BBP_TRACE_WARN1(msg, var1)                  WSF_TRACE1("BBP", "WARN", msg, var1)
-/*! \brief 2 argument BBP warning trace. */
-#define BBP_TRACE_WARN2(msg, var1, var2)            WSF_TRACE2("BBP", "WARN", msg, var1, var2)
-/*! \brief 3 argument BBP warning trace. */
-#define BBP_TRACE_WARN3(msg, var1, var2, var3)      WSF_TRACE3("BBP", "WARN", msg, var1, var2, var3)
-/*! \brief 0 argument BBP error trace. */
-#define BBP_TRACE_ERR0(msg)                         WSF_TRACE0("BBP", "ERR",  msg)
-/*! \brief 1 argument BBP error trace. */
-#define BBP_TRACE_ERR1(msg, var1)                   WSF_TRACE1("BBP", "ERR",  msg, var1)
-/*! \brief 2 argument BBP error trace. */
-#define BBP_TRACE_ERR2(msg, var1, var2)             WSF_TRACE2("BBP", "ERR",  msg, var1, var2)
-/*! \brief 3 argument BBP error trace. */
-#define BBP_TRACE_ERR3(msg, var1, var2, var3)       WSF_TRACE3("BBP", "ERR",  msg, var1, var2, var3)
 #else   /* LL_TRACE_ENABLED */
 #define LL_TRACE_INFO0(msg)
 /*! \brief 1 argument LL info trace. */
@@ -569,82 +524,57 @@ bool_t WsfTokenService(void);
 #define LL_TRACE_ERR2(msg, var1, var2)
 /*! \brief 3 argument LL error trace. */
 #define LL_TRACE_ERR3(msg, var1, var2, var3)
-
-/*! \brief 0 argument BBP warning trace. */
-#define BBP_TRACE_INFO0(msg)
-/*! \brief 1 argument BBP warning trace. */
-#define BBP_TRACE_INFO1(msg, var1)
-/*! \brief 2 argument BBP warning trace. */
-#define BBP_TRACE_INFO2(msg, var1, var2)
-/*! \brief 3 argument BBP info trace. */
-#define BBP_TRACE_INFO3(msg, var1, var2, var3)
-/*! \brief 0 argument BBP warning trace. */
-#define BBP_TRACE_WARN0(msg)
-/*! \brief 1 argument BBP warning trace. */
-#define BBP_TRACE_WARN1(msg, var1)
-/*! \brief 2 argument BBP warning trace. */
-#define BBP_TRACE_WARN2(msg, var1, var2)
-/*! \brief 3 argument BBP warning trace. */
-#define BBP_TRACE_WARN3(msg, var1, var2, var3)
-/*! \brief 0 argument BBP error trace. */
-#define BBP_TRACE_ERR0(msg)
-/*! \brief 1 argument BBP error trace. */
-#define BBP_TRACE_ERR1(msg, var1)
-/*! \brief 2 argument BBP error trace. */
-#define BBP_TRACE_ERR2(msg, var1, var2)
-/*! \brief 3 argument BBP error trace. */
-#define BBP_TRACE_ERR3(msg, var1, var2, var3)
 #endif  /* LL_TRACE_ENABLED */
 
 #if (AUD_TRACE_ENABLED == TRUE)
-/*! \brief 0 argument AUD info trace. */
+/*! \brief 0 argument audio info trace. */
 #define AUD_TRACE_INFO0(msg)                        WSF_TRACE0("AUD", "INFO", msg)
-/*! \brief 1 argument AUD info trace. */
+/*! \brief 1 argument audio info trace. */
 #define AUD_TRACE_INFO1(msg, var1)                  WSF_TRACE1("AUD", "INFO", msg, var1)
-/*! \brief 2 argument AUD info trace. */
+/*! \brief 2 argument audio info trace. */
 #define AUD_TRACE_INFO2(msg, var1, var2)            WSF_TRACE2("AUD", "INFO", msg, var1, var2)
-/*! \brief 3 argument AUD info trace. */
+/*! \brief 3 argument audio info trace. */
 #define AUD_TRACE_INFO3(msg, var1, var2, var3)      WSF_TRACE3("AUD", "INFO", msg, var1, var2, var3)
-/*! \brief 0 argument AUD warning trace. */
+/*! \brief 0 argument audio warning trace. */
 #define AUD_TRACE_WARN0(msg)                        WSF_TRACE0("AUD", "WARN", msg)
-/*! \brief 1 argument AUD warning trace. */
+/*! \brief 1 argument audio warning trace. */
 #define AUD_TRACE_WARN1(msg, var1)                  WSF_TRACE1("AUD", "WARN", msg, var1)
-/*! \brief 2 argument AUD warning trace. */
+/*! \brief 2 argument audio warning trace. */
 #define AUD_TRACE_WARN2(msg, var1, var2)            WSF_TRACE2("AUD", "WARN", msg, var1, var2)
-/*! \brief 3 argument AUD warning trace. */
+/*! \brief 3 argument audio warning trace. */
 #define AUD_TRACE_WARN3(msg, var1, var2, var3)      WSF_TRACE3("AUD", "WARN", msg, var1, var2, var3)
-/*! \brief 0 argument AUD error trace. */
+/*! \brief 0 argument audio error trace. */
 #define AUD_TRACE_ERR0(msg)                         WSF_TRACE0("AUD", "ERR",  msg)
-/*! \brief 1 argument AUD error trace. */
+/*! \brief 1 argument audio error trace. */
 #define AUD_TRACE_ERR1(msg, var1)                   WSF_TRACE1("AUD", "ERR",  msg, var1)
-/*! \brief 2 argument AUD error trace. */
+/*! \brief 2 argument audio error trace. */
 #define AUD_TRACE_ERR2(msg, var1, var2)             WSF_TRACE2("AUD", "ERR",  msg, var1, var2)
-/*! \brief 3 argument AUD error trace. */
+/*! \brief 3 argument audio error trace. */
 #define AUD_TRACE_ERR3(msg, var1, var2, var3)       WSF_TRACE3("AUD", "ERR",  msg, var1, var2, var3)
-#else   /* AUD_TRACE_ENABLED */
-/*! \brief 0 argument AUD info trace. */
+#else
+/*! \brief 0 argument audio info trace. */
 #define AUD_TRACE_INFO0(msg)
-/*! \brief 1 argument AUD info trace. */
+/*! \brief 1 argument audio info trace. */
 #define AUD_TRACE_INFO1(msg, var1)
-/*! \brief 2 argument AUD info trace. */
+/*! \brief 2 argument audio info trace. */
 #define AUD_TRACE_INFO2(msg, var1, var2)
-/*! \brief 3 argument AUD info trace. */
+/*! \brief 3 argument audio info trace. */
 #define AUD_TRACE_INFO3(msg, var1, var2, var3)
-/*! \brief 0 argument AUD warning trace. */
+/*! \brief 0 argument audio warning trace. */
 #define AUD_TRACE_WARN0(msg)
-/*! \brief 1 argument AUD warning trace. */
+/*! \brief 1 argument audio warning trace. */
 #define AUD_TRACE_WARN1(msg, var1)
-/*! \brief 2 argument AUD warning trace. */
+/*! \brief 2 argument audio warning trace. */
 #define AUD_TRACE_WARN2(msg, var1, var2)
-/*! \brief 3 argument AUD warning trace. */
+/*! \brief 3 argument audio warning trace. */
 #define AUD_TRACE_WARN3(msg, var1, var2, var3)
-/*! \brief 0 argument AUD error trace. */
+/*! \brief 0 argument audio error trace. */
 #define AUD_TRACE_ERR0(msg)
-/*! \brief 1 argument AUD error trace. */
+/*! \brief 1 argument audio error trace. */
 #define AUD_TRACE_ERR1(msg, var1)
-/*! \brief 2 argument AUD error trace. */
+/*! \brief 2 argument audio error trace. */
 #define AUD_TRACE_ERR2(msg, var1, var2)
-/*! \brief 3 argument AUD error trace. */
+/*! \brief 3 argument audio error trace. */
 #define AUD_TRACE_ERR3(msg, var1, var2, var3)
 #endif  /* AUD_TRACE_ENABLED */
 

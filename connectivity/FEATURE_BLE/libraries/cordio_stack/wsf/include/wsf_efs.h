@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2014-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -52,6 +52,7 @@ extern "C" {
 /**@{*/
 #define WSF_EFS_SUCCESS                     0             /*!< \brief Success */
 #define WSF_EFS_FAILURE                     1             /*!< \brief Failure */
+#define WSF_EFS_CBACK_REQUIRED              2             /*!< \brief File sytem callback required */
 #define WSF_EFS_GET_FAILED                  0xFFFF        /*!< \brief Get operation failure */
 #define WSF_EFS_PUT_FAILED                  0xFFFF        /*!< \brief PUT operation failure */
 /**@}*/
@@ -105,6 +106,9 @@ extern "C" {
 /**@{*/
 #define WSF_EFS_WDXS_PUT_COMPLETE_CMD       0x00          /*!< \brief Put Complete */
 #define WSF_EFS_VALIDATE_CMD                0x01          /*!< \brief Validate Req for the file */
+#define WSF_EFS_RESTORE_ATTRS_CMD           0x02          /*!< \brief Restore file attributes */
+#define WSF_EFS_GET_FS_CBACK_MODE_CMD       0x03          /*!< \brief Filesystem callback check */
+#define WSF_EFS_CFG_FOTA_CMD                0x04          /*!< \brief Configure FOTA and reboot */
 /**@}*/
 
 /*! \brief Media Specific Command Identifiers reserved for applications begin at 0x80 */
@@ -113,6 +117,13 @@ extern "C" {
 /**************************************************************************************************
   Data Types
 **************************************************************************************************/
+
+/* EFS address data type */
+#if (defined CPU_64BIT) && (CPU_64BIT == 1)
+typedef uint64_t efsAddr_t;
+#else
+typedef uint32_t efsAddr_t;
+#endif
 
 /*! \brief File handle data type */
 typedef uint16_t wsfEfsHandle_t;
@@ -130,7 +141,7 @@ typedef struct
 typedef struct
 {
   uint32_t           maxSize;    /*!< \brief File maximum size. */
-  uint32_t           address;    /*!< \brief File storage address. */
+  efsAddr_t          address;    /*!< \brief File storage address. */
   uint8_t            media;      /*!< \brief File media. */
   uint32_t           size;       /*!< \brief File size. */
   wsfEsfAttributes_t attributes; /*!< \brief File attributes. */
@@ -163,7 +174,7 @@ typedef uint8_t wsfMediaInitFunc_t(void);
  *  \return Status of the operation.
  */
 /*************************************************************************************************/
-typedef uint8_t wsfMediaEraseFunc_t(uint8_t *pAddress, uint32_t size);
+typedef uint8_t wsfMediaEraseFunc_t(efsAddr_t pAddress, uint32_t size);
 
 /*************************************************************************************************/
 /*!
@@ -176,7 +187,7 @@ typedef uint8_t wsfMediaEraseFunc_t(uint8_t *pAddress, uint32_t size);
  *  \return Status of the operation.
  */
 /*************************************************************************************************/
-typedef uint8_t wsfMediaReadFunc_t(uint8_t *pBuf, uint8_t *pAddress, uint32_t size);
+typedef uint8_t wsfMediaReadFunc_t(uint8_t *pBuf, efsAddr_t pAddress, uint32_t size);
 
 /*************************************************************************************************/
 /*!
@@ -189,7 +200,7 @@ typedef uint8_t wsfMediaReadFunc_t(uint8_t *pBuf, uint8_t *pAddress, uint32_t si
  *  \return Status of the operation.
  */
 /*************************************************************************************************/
-typedef uint8_t wsfMediaWriteFunc_t(const uint8_t *pBuf, uint8_t *pAddress, uint32_t size);
+typedef uint8_t wsfMediaWriteFunc_t(const uint8_t *pBuf, efsAddr_t pAddress, uint32_t size);
 
 /*************************************************************************************************/
 /*!
@@ -206,9 +217,9 @@ typedef uint8_t wsfMediaHandleCmdFunc_t(uint8_t cmd, uint32_t param);
 /*! \brief Media Control data type */
 typedef struct
 {
-  uint32_t                startAddress;  /*!< \brief Start address. */
-  uint32_t                endAddress;    /*!< \brief End address. */
-  uint32_t                pageSize;      /*!< \brief Page size. */
+  efsAddr_t               startAddress;  /*!< \brief Start address. */
+  efsAddr_t               endAddress;    /*!< \brief End address. */
+  efsAddr_t               pageSize;      /*!< \brief Page size. */
   wsfMediaInitFunc_t      *init;         /*!< \brief Media intialization callback. */
   wsfMediaEraseFunc_t     *erase;        /*!< \brief Media erase callback. */
   wsfMediaReadFunc_t      *read;         /*!< \brief Media read callback. */

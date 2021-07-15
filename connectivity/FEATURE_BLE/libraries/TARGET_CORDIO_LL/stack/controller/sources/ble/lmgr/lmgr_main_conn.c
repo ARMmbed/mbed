@@ -56,4 +56,10 @@ void LmgrConnInit(void)
   lmgrConnCb.syncMode = LL_SYNC_TRSF_MODE_OFF;
   lmgrConnCb.syncSkip = 0;
   lmgrConnCb.syncTimeout = LL_SYNC_MIN_TIMEOUT;
+
+  lmgrConnCb.defSrMin = 1;
+  lmgrConnCb.defSrMax = 1;
+  lmgrConnCb.defMaxLatency = 0;
+  lmgrConnCb.defContNum = 0;
+  lmgrConnCb.defSvt = LL_MAX_SUP_TIMEOUT;
 }

@@ -754,6 +754,9 @@ void BLEInstanceBase::callDispatcher()
         timestamp_t nextTimestamp = (timestamp_t) (WsfTimerNextExpiration(&pTimerRunning) * WSF_MS_PER_TICK);
         if (pTimerRunning) {
             nextTimeout.attach(timeoutCallback, milliseconds(nextTimestamp));
+            #if PAL_ALLOW_DEEP_SLEEP
+                _hci_driver->on_deep_sleep(nextTimestamp);
+            #endif
         } else {
             critical_section.disable();
             _hci_driver->on_host_stack_inactivity();

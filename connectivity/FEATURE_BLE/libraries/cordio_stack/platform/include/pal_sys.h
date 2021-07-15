@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2016-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,16 +38,14 @@ extern "C" {
   Macros
 **************************************************************************************************/
 
-/* Common error handling routines; for use with PAL implementation only. */
-
 #ifdef DEBUG
 
-/*! \brief      Parameter check. */
+/*! \brief      Error check routines; for use with PAL implementation only. */
 #define PAL_SYS_ASSERT(expr)    { if (!(expr)) { PalSysAssertTrap(); } }
 
 #else
 
-/*! \brief      Parameter check (disabled). */
+/*! \brief      Error check routines (disabled). */
 #define PAL_SYS_ASSERT(expr)
 
 #endif
@@ -64,16 +62,15 @@ void PalSysAssertTrap(void);
 void PalSysSetTrap(bool_t enable);
 uint32_t PalSysGetAssertCount(void);
 uint32_t PalSysGetStackUsage(void);
+bool_t PalSysDiagTraceWrite(const uint8_t *pBuf, uint32_t len);
 
 /* Power Management */
-void PalSysSleep(void);
-bool_t PalSysIsBusy(void);
-void PalSysSetBusy(void);
-void PalSysSetIdle(void);
+void PalSysSleep(uint32_t nextWakeMs);
+void PalSysWakeFromDeepSleep(void);
 
 /* Critical Section */
-void PalEnterCs(void);
-void PalExitCs(void);
+void PalSysCsEnter(void);
+void PalSysCsExit(void);
 
 /*! \} */    /* PAL_SYS */
 

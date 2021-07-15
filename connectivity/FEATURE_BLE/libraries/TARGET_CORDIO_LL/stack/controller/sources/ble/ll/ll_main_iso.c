@@ -173,7 +173,25 @@ void LlRecvIsoDataComplete(uint8_t numBufs)
 uint8_t LlReadIsoTxSync(uint16_t handle, uint16_t *pPktSn, uint32_t *pTs, uint32_t *pTimeOffs)
 {
   LL_TRACE_INFO1("### LlApi ###  LlReadIsoTxSync, handle=%u", handle);
+
   return LctrReadIsoTxSync(handle, pPktSn, pTs, pTimeOffs);
+}
+
+/*************************************************************************************************/
+/*!
+ * \brief       Used to request the Controller to configure the data transport path in a given
+ *              direction between the Controller and the Host.
+ *
+ * \param       pConfigDataPath  Parameters for configure data path.
+ *
+ *  \return     Status error code.
+ */
+/*************************************************************************************************/
+uint8_t LlConfigureDataPath(LlIsoConfigDataPath_t *pConfigDataPath)
+{
+  LL_TRACE_INFO2("### LlApi ###  LlConfigureDataPath, dpDir=%u, dpId=%u", pConfigDataPath->dpDir, pConfigDataPath->dpId);
+
+  return LctrConfigureDataPath(pConfigDataPath);
 }
 
 /*************************************************************************************************/

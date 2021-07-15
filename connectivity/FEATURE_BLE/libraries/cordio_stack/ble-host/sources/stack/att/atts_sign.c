@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2011-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -57,9 +57,9 @@ typedef struct attsSignBuf_tag
 typedef struct
 {
   uint32_t                signCounter;        /* sign counter for this connection */
-  uint8_t                 *pCsrk;             /* signing key for this connection */
+  uint8_t                 *pCsrk;             /* signing key (CSRK) for this connection */
+  bool_t                  authen;             /* TRUE if CSRK was received on authenticated connection */
   attsSignBuf_t           *pBuf;              /* current data being processed */
-  bool_t                  authenticated;      /* Indicate if the CSRK is authenticated or not */
 } attsSignCcb_t;
 
 /* ATTS signed PDU control block */
@@ -91,6 +91,54 @@ static attsSignCcb_t *attsSignCcbByConnId(dmConnId_t connId)
   WSF_ASSERT((connId > 0) && (connId <= DM_CONN_MAX));
 
   return &attsSignCb.ccb[connId - 1];
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Perform required permission and security checks for a signed write command.
+ *
+ *  \param  connId      Connection ID.
+ *  \param  handle      Attribute handle.
+ *  \param  permissions Attribute permissions.
+ *  \param  pSignCcb    Pointer to ATTS signed PDU connection control block.
+ *
+ *  \return ATT_SUCCESS if successful or error code on failure.
+ */
+/*************************************************************************************************/
+static uint8_t attsSignedWritePermissions(dmConnId_t connId, uint16_t handle, uint8_t permissions,
+                                          attsSignCcb_t *pSignCcb)
+{
+  /* verify write permissions */
+  if ((permissions & (ATTS_PERMIT_WRITE | ATTS_PERMIT_WRITE_ENC)) != 
+      (ATTS_PERMIT_WRITE | ATTS_PERMIT_WRITE_ENC))
+  {
+    return ATT_ERR_WRITE;
+  }
+
+  /* if peer CSRK not present */
+  if (pSignCcb->pCsrk == NULL)
+  {
+    return ATT_ERR_AUTH;
+  }
+
+  /* check if signed write required with authenticated key but key not authenticated */
+  if ((permissions & ATTS_PERMIT_WRITE_AUTH) && (pSignCcb->authen == FALSE))
+  {
+    return ATT_ERR_AUTH;
+  }
+
+  /* authorization check */
+  if (permissions & ATTS_PERMIT_WRITE_AUTHORIZ)
+  {
+    if (attsCb.authorCback == NULL)
+    {
+      return ATT_ERR_AUTHOR;
+    }
+
+    return (*attsCb.authorCback)(connId, ATTS_PERMIT_WRITE, handle);
+  }
+
+  return ATT_SUCCESS;
 }
 
 /*************************************************************************************************/
@@ -159,6 +207,12 @@ static void attsProcSignedWrite(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
   uint16_t      handle;
   uint16_t      writeLen;
 
+  /* signed write should not be received on encrypted link */
+  if (DmConnSecLevel(pCcb->connId) > DM_SEC_LEVEL_NONE)
+  {
+    return;
+  }
+
   /* parse handle, calculate write length */
   p = pPacket + L2C_PAYLOAD_START + ATT_HDR_LEN;
   BSTREAM_TO_UINT16(handle, p);
@@ -169,9 +223,9 @@ static void attsProcSignedWrite(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
   {
     /* verify signed write is permitted */
     if ((pAttr->settings & ATTS_SET_ALLOW_SIGNED) == 0)
-    {
-      return;
-    }
+     {
+       return;
+     }
 
     /* verify that csrk is present */
     if (attsSignCcbByConnId(pCcb->pMainCcb->connId)->pCsrk == NULL) {
@@ -180,13 +234,13 @@ static void attsProcSignedWrite(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
 
     /* verify basic permissions */
     if ((pAttr->permissions & (ATTS_PERMIT_WRITE | ATTS_PERMIT_WRITE_ENC)) == 0)
-    {
-      return;
-    }
+     {
+       return;
+     }
 
     /* verify authentication */
     if ((pAttr->permissions & ATTS_PERMIT_WRITE_AUTH) &&
-        (attsSignCcbByConnId(pCcb->pMainCcb->connId)->authenticated == 0))
+        (attsSignCcbByConnId(pCcb->pMainCcb->connId)->authen == 0))
     {
       return;
     }
@@ -194,33 +248,33 @@ static void attsProcSignedWrite(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
     /* Note: authorization not verified at this stage as it is reserved for lesc
        writes; authorization occurs latter when the write cb is called */
 
-    /* verify write length, fixed length */
+     /* verify write length, fixed length */
     if (((pAttr->settings & ATTS_SET_VARIABLE_LEN) == 0) &&
-             (writeLen != pAttr->maxLen))
-    {
-      return;
-    }
+              (writeLen != pAttr->maxLen))
+     {
+       return;
+     }
 
-    /* verify write length, variable length */
+     /* verify write length, variable length */
     if (((pAttr->settings & ATTS_SET_VARIABLE_LEN) != 0) &&
-             (writeLen > pAttr->maxLen))
-    {
-      return;
-    }
+              (writeLen > pAttr->maxLen))
+     {
+       return;
+     }
 
     /* allocate buffer to store packet and parameters */
     if ((pBuf = WsfBufAlloc(sizeof(attsSignBuf_t) - 1 + len)) != NULL)
-    {
+     {
       /* initialize buffer */
       pBuf->pCcb = pCcb->pMainCcb;
       pBuf->handle = handle;
       pBuf->writeLen = writeLen;
       pBuf->connId = pCcb->connId;
       memcpy(pBuf->packet, (pPacket + L2C_PAYLOAD_START), len);
-
+ 
       /* check if a signed write is already in progress */
       pSignCcb = attsSignCcbByConnId(pCcb->connId);
-
+ 
       if (pSignCcb->pBuf != NULL)
       {
         /* signed write in progress; queue packet */
@@ -230,9 +284,9 @@ static void attsProcSignedWrite(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
       {
         /* start signed data processing */
         attsSignedWriteStart(pSignCcb, pBuf);
-      }
-    }
-  }
+       }
+     }
+   }
 }
 
 /*************************************************************************************************/
@@ -359,15 +413,17 @@ void AttsSignInit(void)
  *
  *  \param  connId      DM connection ID.
  *  \param  pCsrk       Pointer to data signing key (CSRK).
- *  \param  authenticated True if CSRK is authenticated and false otherwise.
+ *  \param  authen      Whether CSRK was received on authenticated connection.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-void AttsSetCsrk(dmConnId_t connId, uint8_t *pCsrk, bool_t authenticated)
+void AttsSetCsrk(dmConnId_t connId, uint8_t *pCsrk, bool_t authen)
 {
-  attsSignCcbByConnId(connId)->pCsrk = pCsrk;
-  attsSignCcbByConnId(connId)->authenticated = authenticated;
+  attsSignCcb_t *pSignCcb = attsSignCcbByConnId(connId);
+
+  pSignCcb->pCsrk = pCsrk;
+  pSignCcb->authen = authen;
 }
 
 /*************************************************************************************************/

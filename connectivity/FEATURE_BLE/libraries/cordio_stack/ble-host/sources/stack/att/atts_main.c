@@ -196,7 +196,7 @@ static void attsDataCback(uint16_t handle, uint16_t len, uint8_t *pPacket)
   if (attCb.errTest != ATT_SUCCESS)
   {
     BYTES_TO_UINT16(attHandle, pPacket + L2C_PAYLOAD_START + ATT_HDR_LEN);
-    attsErrRsp(pCcb->pMainCcb, ATT_BEARER_SLOT_ID, opcode, attHandle, attCb.errTest);
+    attErrRsp(pCcb->pMainCcb, ATT_BEARER_SLOT_ID, opcode, attHandle, attCb.errTest);
     return;
   }
 #endif
@@ -234,7 +234,7 @@ static void attsDataCback(uint16_t handle, uint16_t len, uint8_t *pPacket)
   if (err && (opcode != ATT_PDU_MTU_REQ) && (opcode != ATT_PDU_VALUE_CNF) &&
       ((opcode & ATT_PDU_MASK_COMMAND) == 0))
   {
-    attsErrRsp(pCcb->pMainCcb, ATT_BEARER_SLOT_ID, opcode, attHandle, err);
+    attErrRsp(pCcb->pMainCcb, ATT_BEARER_SLOT_ID, opcode, attHandle, err);
   }
 }
 
@@ -267,6 +267,8 @@ static void attsConnCback(attCcb_t *pCcb, dmEvt_t *pDmEvt)
       {
         WsfTimerStop(&pAttsCb->idleTimer);
       }
+
+      pCcb->sccb[i].control &= ~ATT_CCB_STATUS_CONTEXT_LOCK;
     }
   }
 
@@ -325,36 +327,6 @@ static void attsL2cCtrlCback(wsfMsgHdr_t *pMsg)
 
 /*************************************************************************************************/
 /*!
- *  \brief  Send an error response PDU.
- *
- *  \param  handle    The connection handle.
- *  \param  opcode    Opcode of the request that generated this error.
- *  \param  attHandle Attribute handle in request, if applicable.
- *  \param  reason    Error reason.
- *
- *  \return None.
- */
-/*************************************************************************************************/
-void attsErrRsp(attCcb_t *pCcb, uint8_t slot, uint8_t opcode, uint16_t attHandle, uint8_t reason)
-{
-  uint8_t *pBuf;
-  uint8_t *p;
-
-  /* allocate buffer */
-  if ((pBuf = attMsgAlloc(L2C_PAYLOAD_START + ATT_ERR_RSP_LEN)) != NULL)
-  {
-    p = pBuf + L2C_PAYLOAD_START;
-    UINT8_TO_BSTREAM(p, ATT_PDU_ERR_RSP);
-    UINT8_TO_BSTREAM(p, opcode);
-    UINT16_TO_BSTREAM(p, attHandle);
-    UINT8_TO_BSTREAM(p, reason);
-
-    attL2cDataReq(pCcb, slot, ATT_ERR_RSP_LEN, pBuf);
-  }
-}
-
-/*************************************************************************************************/
-/*!
  *  \brief  Clear the prepared write queue.
  *
  *  \param  pCcb    ATT control block.
@@ -366,7 +338,7 @@ void attsClearPrepWrites(attsCcb_t *pCcb)
 {
   void *pBuf;
 
-  while ((pBuf = WsfQueueDeq(&attsCb.prepWriteQueue[pCcb->connId - 1])) != NULL)
+  while ((pBuf = WsfQueueDeq(&attsCb.prepWriteQueue[pCcb->connId-1])) != NULL)
   {
     WsfBufFree(pBuf);
   }
@@ -492,12 +464,12 @@ void attsCheckPendDbHashReadRsp(void)
         }
         else
         {
-          attsErrRsp(pCcb, ATT_BEARER_SLOT_ID, ATT_PDU_READ_TYPE_REQ, pCcb->pPendDbHashRsp->startHandle, ATT_ERR_NOT_FOUND);
+          attErrRsp(pCcb, ATT_BEARER_SLOT_ID, ATT_PDU_READ_TYPE_REQ, pCcb->pPendDbHashRsp->startHandle, ATT_ERR_NOT_FOUND);
         }
       }
       else
       {
-        attsErrRsp(pCcb, ATT_BEARER_SLOT_ID, ATT_PDU_READ_TYPE_REQ, pCcb->pPendDbHashRsp->startHandle, ATT_ERR_RESOURCES);
+        attErrRsp(pCcb, ATT_BEARER_SLOT_ID, ATT_PDU_READ_TYPE_REQ, pCcb->pPendDbHashRsp->startHandle, ATT_ERR_RESOURCES);
       }
 
       /* Free pending state information. */

@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2011-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ const uint8_t attNwaSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_NET
 const uint8_t attWdsSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_WATCHDOG_SERVICE)};
 const uint8_t attHrsSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_HEART_RATE_SERVICE)};
 const uint8_t attPassSvcUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_PHONE_ALERT_SERVICE)};
-const uint8_t attBasSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_BATTERY_SERVICE)};
+const uint8_t attBattSvcUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_BATTERY_SERVICE)};
 const uint8_t attBpsSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_BLOOD_PRESSURE_SERVICE)};
 const uint8_t attAnsSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_ALERT_NOTIF_SERVICE)};
 const uint8_t attHidSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_HID_SERVICE)};
@@ -57,6 +57,15 @@ const uint8_t attMprvSvcUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_MES
 const uint8_t attMprxSvcUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_MESH_PROXY_SERVICE)};
 const uint8_t attWssSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_WEIGHT_SCALE_SERVICE)};
 const uint8_t attCteSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_CONSTANT_TONE_SERVICE)};
+const uint8_t attAicsSvcUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_AUDIO_INPUT_CTRL_SERVICE)};
+const uint8_t attMicsSvcUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_MICROPHONE_CTRL_SERVICE)};
+const uint8_t attVcsSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_VOLUME_CTRL_SERVICE)};
+const uint8_t attVocsSvcUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_VOLUME_OFFSET_CTRL_SERVICE)};
+const uint8_t attPacSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_PUB_AUDIO_CAP_SERVICE)};
+const uint8_t attAscSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_AUDIO_STRM_CTRL_SERVICE)};
+const uint8_t attBasSvcUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_BCAST_AUDIO_SCAN_SERVICE)};
+const uint8_t attBscAaSvcUuid[ATT_16_UUID_LEN] =   {UINT16_TO_BYTES(ATT_UUID_BASIC_AUDIO_ANNC_SERVICE)};
+const uint8_t attBcstAaSvcUuid[ATT_16_UUID_LEN] =  {UINT16_TO_BYTES(ATT_UUID_BCAST_AUDIO_ANNC_SERVICE)};
 
 /*! GATT UUIDs */
 const uint8_t attPrimSvcUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_PRIMARY_SERVICE)};
@@ -100,7 +109,7 @@ const uint8_t attRtiChUuid[ATT_16_UUID_LEN] =      {UINT16_TO_BYTES(ATT_UUID_REF
 const uint8_t attTbChUuid[ATT_16_UUID_LEN] =       {UINT16_TO_BYTES(ATT_UUID_TIME_BROADCAST)};
 const uint8_t attTucpChUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_TIME_UPDATE_CP)};
 const uint8_t attTusChUuid[ATT_16_UUID_LEN] =      {UINT16_TO_BYTES(ATT_UUID_TIME_UPDATE_STATE)};
-const uint8_t attGlmChUuid[ATT_16_UUID_LEN] =     {UINT16_TO_BYTES(ATT_UUID_GLUCOSE_MEAS)};
+const uint8_t attGlmChUuid[ATT_16_UUID_LEN] =      {UINT16_TO_BYTES(ATT_UUID_GLUCOSE_MEAS)};
 const uint8_t attBlChUuid[ATT_16_UUID_LEN] =       {UINT16_TO_BYTES(ATT_UUID_BATTERY_LEVEL)};
 const uint8_t attBpsChUuid[ATT_16_UUID_LEN] =      {UINT16_TO_BYTES(ATT_UUID_BATTERY_POWER_STATE)};
 const uint8_t attBlsChUuid[ATT_16_UUID_LEN] =      {UINT16_TO_BYTES(ATT_UUID_BATTERY_LEVEL_STATE)};
@@ -189,3 +198,27 @@ const uint8_t attCteTxDurChUuid[ATT_16_UUID_LEN] = {UINT16_TO_BYTES(ATT_UUID_CTE
 const uint8_t attCteIntChUuid[ATT_16_UUID_LEN] =   {UINT16_TO_BYTES(ATT_UUID_CTE_INTERVAL)};
 const uint8_t attCtePhyChUuid[ATT_16_UUID_LEN] =   {UINT16_TO_BYTES(ATT_UUID_CTE_PHY)};
 const uint8_t attSsfChUuid[ATT_16_UUID_LEN] =      {UINT16_TO_BYTES(ATT_UUID_SERVER_SUPPORTED_FEATURES)};
+const uint8_t attAicsStChUuid[ATT_16_UUID_LEN] =   {UINT16_TO_BYTES(ATT_UUID_AIC_INPUT_STATE)};
+const uint8_t attAicsGsaChUuid[ATT_16_UUID_LEN] =  {UINT16_TO_BYTES(ATT_UUID_AIC_GAIN_SETTING_ATTR)};
+const uint8_t attAicsItChUuid[ATT_16_UUID_LEN] =   {UINT16_TO_BYTES(ATT_UUID_AIC_INPUT_TYPE)};
+const uint8_t attAicsStatChUuid[ATT_16_UUID_LEN] = {UINT16_TO_BYTES(ATT_UUID_AIC_INPUT_STATUS)};
+const uint8_t attAicsAicChUuid[ATT_16_UUID_LEN] =  {UINT16_TO_BYTES(ATT_UUID_AIC_AUDIO_INPUT_CTRL)};
+const uint8_t attAicsAidhUuid[ATT_16_UUID_LEN] =   {UINT16_TO_BYTES(ATT_UUID_AIC_AUDIO_INPUT_DESC)};
+const uint8_t attMicsMuteChUuid[ATT_16_UUID_LEN] = {UINT16_TO_BYTES(ATT_UUID_MC_MUTE)};
+const uint8_t attVcsStateChUuid[ATT_16_UUID_LEN] = {UINT16_TO_BYTES(ATT_UUID_VOLUME_STATE)};
+const uint8_t attVcsCpChUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_VOLUME_CONTROL_POINT)};
+const uint8_t attVcsFlagsChUuid[ATT_16_UUID_LEN] = {UINT16_TO_BYTES(ATT_UUID_VOLUME_FLAGS)};
+const uint8_t attVocsStateChUuid[ATT_16_UUID_LEN] ={UINT16_TO_BYTES(ATT_UUID_VOLUME_OFFSET_STATE)};
+const uint8_t attVocsLocChUuid[ATT_16_UUID_LEN] =  {UINT16_TO_BYTES(ATT_UUID_AUDIO_LOCATION)};
+const uint8_t attVocsCpChUuid[ATT_16_UUID_LEN] =   {UINT16_TO_BYTES(ATT_UUID_VOLUME_OFFSET_CONTROL_PT)};
+const uint8_t attVocsDescChUuid[ATT_16_UUID_LEN] = {UINT16_TO_BYTES(ATT_UUID_AUDIO_OUT_DESC)};
+const uint8_t attSnkPacChUuid[ATT_16_UUID_LEN] =   {UINT16_TO_BYTES(ATT_UUID_SNK_PAC)};
+const uint8_t attSnkAudLocChUuid[ATT_16_UUID_LEN] ={UINT16_TO_BYTES(ATT_UUID_SNK_AUDIO_LOC)};
+const uint8_t attSrcPacChUuid[ATT_16_UUID_LEN] =   {UINT16_TO_BYTES(ATT_UUID_SRC_PAC)};
+const uint8_t attSrcAudLocChUuid[ATT_16_UUID_LEN] ={UINT16_TO_BYTES(ATT_UUID_SRC_AUDIO_LOC)};
+const uint8_t attAudCntAvChUuid[ATT_16_UUID_LEN] = {UINT16_TO_BYTES(ATT_UUID_AUDIO_CONT_AVAIL)};
+const uint8_t attSupAudCntChUuid[ATT_16_UUID_LEN] ={UINT16_TO_BYTES(ATT_UUID_SUP_AUDIO_CONT)};
+const uint8_t attAseChUuid[ATT_16_UUID_LEN] =      {UINT16_TO_BYTES(ATT_UUID_ASE)};
+const uint8_t attAseCpChUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_ASE_CP)};
+const uint8_t attBasCpChUuid[ATT_16_UUID_LEN] =    {UINT16_TO_BYTES(ATT_UUID_BAS_CP)};
+const uint8_t attBcRxStateChUuid[ATT_16_UUID_LEN] ={UINT16_TO_BYTES(ATT_UUID_BCAST_RX_STATE)};

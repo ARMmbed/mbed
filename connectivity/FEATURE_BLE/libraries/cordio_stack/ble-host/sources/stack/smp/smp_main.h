@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2010-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -278,6 +278,7 @@ typedef struct
   uint8_t         Ra[SMP_RAND_LEN];               /* Initiator Ra */
   uint8_t         Rb[SMP_RAND_LEN];               /* Responder Nb */
   uint8_t         PeerCb[SMP_RAND_LEN];           /* Peer Responder Confirm */
+  uint8_t         LocalCb[SMP_RAND_LEN];          /* Local Confirm */
   uint8_t         PeerCa_Ea[SMP_RAND_LEN];        /* Peer Responder Confirm or DH Key Check */
 } smpScScratch_t;
 

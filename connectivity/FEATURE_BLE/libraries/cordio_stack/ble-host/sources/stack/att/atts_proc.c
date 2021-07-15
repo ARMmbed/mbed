@@ -251,7 +251,7 @@ void attsProcMtuReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
   if (features & ATTS_CSF_EATT_BEARER)
   {
     /* Client set the EATT supported feature.  MTU Exchange not permitted */
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_MTU_REQ, 0, ATT_ERR_NOT_SUP);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_MTU_REQ, 0, ATT_ERR_NOT_SUP);
   }
   else
   {
@@ -404,7 +404,7 @@ void attsProcFindInfoReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
   }
   else
   {
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_FIND_INFO_REQ, startHandle, err);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_FIND_INFO_REQ, startHandle, err);
   }
 }
 
@@ -480,7 +480,7 @@ void attsProcReadReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
 
   if (err)
   {
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_REQ, handle, err);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_REQ, handle, err);
   }
 }
 
@@ -584,6 +584,6 @@ void attsProcReadMultiVarReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
 
   if (err)
   {
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_MULT_VAR_REQ, handle, err);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_READ_MULT_VAR_REQ, handle, err);
   }
 }

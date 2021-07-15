@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -190,15 +190,17 @@ void lctrChooseAdvA(BbBleData_t * const pBle, lctrAdvbPduHdr_t *pPduHdr,
 void lctrChoosePeerAddr(BbBleData_t * const pBle, uint8_t ownAddrType,
                         uint8_t peerAddrType, uint64_t peerAddr, uint64_t *pPeerRpa)
 {
+  /* Attempt to generate RPA for peer. */
+  BbBleResListGeneratePeer(peerAddrType, peerAddr, pPeerRpa);
+
+  /* Resolve peer RPAs whether or not a RPA was generated for peer, unless address resolution is disabled. */
   if (lmgrCb.addrResEna)
   {
-    /* Attempt to generate RPA for peer. */
-    if (ownAddrType & LL_ADDR_IDENTITY_BIT)
-    {
-      BbBleResListGeneratePeer(peerAddrType, peerAddr, pPeerRpa);
-    }
-    /* Resolve peer RPAs whether or not a RPA was generated for peer. */
     BB_BLE_PDU_FILT_SET_FLAG(&pBle->pduFilt, PEER_ADDR_RES_ENA);
+  }
+  else
+  {
+    BB_BLE_PDU_FILT_CLR_FLAG(&pBle->pduFilt, PEER_ADDR_RES_ENA);
   }
 }
 

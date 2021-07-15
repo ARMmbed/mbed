@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2009-2019 ARM Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -47,10 +47,21 @@ extern "C" {
 #define HCI_PB_START_C2H                             0x2000  /*!< Packet boundary flag, start, controller-to-host */
 #define HCI_HANDLE_MASK                              0x0FFF  /*!< Mask for handle bits in ACL packet */
 #define HCI_HANDLE_NONE                              0xFFFF  /*!< Value for invalid handle */
+#define HCI_ISO_GROUP_ID_NONE                        0xFF    /*!< Value for invalid CIG/BIG ID */
 
+
+/* ISO Header. */
+#define HCI_TS_FLAG_MASK                             (1 << 14)
+                                                             /*!< Timestamp flag mask for ISO packets. */
+#define HCI_DATA_LOAD_LEN_MASK                       0x3FFF  /*!< HCI Data load length. */
+
+/* ISO Data load. */
 #define HCI_ISO_DL_MIN_LEN                           4       /*!< ISO Data Load header minimum length */
 #define HCI_ISO_DL_MAX_LEN                           8       /*!< ISO Data Load header maximum length */
 #define HCI_ISO_TS_LEN                               4       /*!< ISO Data Load timestamp length */
+#define HCI_ISO_DL_SDU_LEN_MASK                      0x0FFF  /*!< HCI SDU Length mask. */
+#define HCI_ISO_DL_PS_MASK                           0xC000  /*!< HCI Packet status mask. */
+
 /**@}*/
 
 /** \name Packet types
@@ -176,11 +187,12 @@ extern "C" {
 #define HCI_OCF_SET_CONTROLLER_TO_HOST_FC            0x31
 #define HCI_OCF_HOST_BUFFER_SIZE                     0x33
 #define HCI_OCF_HOST_NUM_CMPL_PKTS                   0x35
+#define HCI_OCF_READ_AFH_CHAN_ASSESMENT_MODE         0x48
+#define HCI_OCF_WRITE_AFH_CHAN_ASSESSMENT_MODE       0x49
 /* Version 4.1 */
 #define HCI_OCF_SET_EVENT_MASK_PAGE2                 0x63
 #define HCI_OCF_READ_AUTH_PAYLOAD_TO                 0x7B
 #define HCI_OCF_WRITE_AUTH_PAYLOAD_TO                0x7C
-
 /* Version 5.2 */
 #define HCI_OCF_CONFIG_DATA_PATH                     0x83
 /**@}*/
@@ -338,6 +350,9 @@ extern "C" {
 #define HCI_OCF_LE_SET_PATH_LOSS_REPORTING_PARAMS    0x78
 #define HCI_OCF_LE_SET_PATH_LOSS_REPORTING_ENABLE    0x79
 #define HCI_OCF_LE_SET_TX_POWER_REPORT_ENABLE        0x7A
+/* Version Sydney */
+#define HCI_OCF_LE_SET_DEF_SUBRATE                   0x7D
+#define HCI_OCF_LE_SUBRATE_REQ                       0x7E
 /**@}*/
 
 /** \name Opcode manipulation macros
@@ -360,6 +375,8 @@ extern "C" {
 
 #define HCI_OPCODE_SET_EVENT_MASK                    HCI_OPCODE(HCI_OGF_CONTROLLER, HCI_OCF_SET_EVENT_MASK)
 #define HCI_OPCODE_RESET                             HCI_OPCODE(HCI_OGF_CONTROLLER, HCI_OCF_RESET)
+#define HCI_OPCODE_READ_AFH_CHAN_ASSESMENT_MODE      HCI_OPCODE(HCI_OGF_CONTROLLER, HCI_OCF_READ_AFH_CHAN_ASSESMENT_MODE)
+#define HCI_OPCODE_WRITE_AFH_CHAN_ASSESSMENT_MODE    HCI_OPCODE(HCI_OGF_CONTROLLER, HCI_OCF_WRITE_AFH_CHAN_ASSESSMENT_MODE)
 #define HCI_OPCODE_READ_TX_PWR_LVL                   HCI_OPCODE(HCI_OGF_CONTROLLER, HCI_OCF_READ_TX_PWR_LVL)
 #define HCI_OPCODE_SET_EVENT_MASK_PAGE2              HCI_OPCODE(HCI_OGF_CONTROLLER, HCI_OCF_SET_EVENT_MASK_PAGE2)
 #define HCI_OPCODE_READ_AUTH_PAYLOAD_TO              HCI_OPCODE(HCI_OGF_CONTROLLER, HCI_OCF_READ_AUTH_PAYLOAD_TO)
@@ -503,6 +520,10 @@ extern "C" {
 #define HCI_OPCODE_LE_SET_PATH_LOSS_REPORTING_PARAMS HCI_OPCODE(HCI_OGF_LE_CONTROLLER, HCI_OCF_LE_SET_PATH_LOSS_REPORTING_PARAMS)
 #define HCI_OPCODE_LE_SET_PATH_LOSS_REPORTING_ENABLE HCI_OPCODE(HCI_OGF_LE_CONTROLLER, HCI_OCF_LE_SET_PATH_LOSS_REPORTING_ENABLE)
 #define HCI_OPCODE_LE_SET_TX_POWER_REPORT_ENABLE     HCI_OPCODE(HCI_OGF_LE_CONTROLLER, HCI_OCF_LE_SET_TX_POWER_REPORT_ENABLE)
+/* Version Sydney */
+#define HCI_OPCODE_LE_SET_DEF_SUBRATE                HCI_OPCODE(HCI_OGF_LE_CONTROLLER, HCI_OCF_LE_SET_DEF_SUBRATE)
+#define HCI_OPCODE_LE_SUBRATE_REQ                    HCI_OPCODE(HCI_OGF_LE_CONTROLLER, HCI_OCF_LE_SUBRATE_REQ)
+
 /**@}*/
 
 /** \name Packetcraft Vendor Specific
@@ -635,8 +656,7 @@ extern "C" {
 #define HCI_LEN_LE_SET_PAST_PARAM                    8
 #define HCI_LEN_LE_SET_DEFAULT_PAST_PARAM            6
 #define HCI_LEN_LE_GENERATE_DHKEY_V2                 65
-
-/* Version Milan */
+/* Version 5.2 */
 #define HCI_LEN_LE_SET_CIG_PARAMS(numCis)            (15 + (9 * (numCis)))
 #define HCI_LEN_LE_CREATE_CIS(numCis)                (1 + (4 * (numCis)))
 #define HCI_LEN_LE_REMOVE_CIG                        1
@@ -654,6 +674,8 @@ extern "C" {
 #define HCI_LEN_LE_ISO_READ_TEST_COUNTERS            2
 #define HCI_LEN_LE_ISO_TEST_END                      2
 #define HCI_LEN_LE_SET_HOST_FEATURE                  2
+/* Version Sydney */
+#define HCI_LEN_LE_SET_DEF_SUBRATE                   1
 /**@}*/
 
 /** \name Events
@@ -671,6 +693,7 @@ extern "C" {
 #define HCI_ENC_KEY_REFRESH_CMPL_EVT                 0x30
 #define HCI_LE_META_EVT                              0x3E
 #define HCI_AUTH_PAYLOAD_TIMEOUT_EVT                 0x57
+#define HCI_ENC_CHANGE_V2_EVT                        0x59
 #define HCI_VENDOR_SPEC_EVT                          0xFF
 /**@}*/
 
@@ -717,6 +740,8 @@ extern "C" {
 #define HCI_LE_PATH_LOSS_REPORT_EVT                  0x20
 #define HCI_LE_POWER_REPORT_EVT                      0x21
 #define HCI_LE_BIG_INFO_ADV_REPORT_EVT               0x22
+/* Version Sydney */
+#define HCI_LE_SUBRATE_CHANGE_EVT                    0x23
 /**@}*/
 
 /** \name Event parameter lengths
@@ -768,7 +793,9 @@ extern "C" {
 #define HCI_LEN_LE_POWER_REPORT                      9       /*!< Power reporting event length. */
 #define HCI_LEN_LE_PATH_LOSS_ZONE                    5       /*!< Path loss reporting event length. */
 #define HCI_LEN_LE_BIG_INFO_ADV_REPORT               20      /*!< BIG Info advertising report length. */
-
+/* Version Sydney */
+#define HCI_LEN_ENC_CHANGE_V2                        5       /*!< Encryption change (V2) event length. */
+#define HCI_LEN_LE_SUBRATE_CHANGE                    12      /*!< Subrate change event length. */
 /**@}*/
 
 /** \name Supported commands
@@ -909,18 +936,20 @@ extern "C" {
 #define HCI_SUP_LE_SET_HOST_FEATURE                  0x02    /*!< Byte 44 */
 #define HCI_SUP_LE_READ_ISO_LINK_QUALITY             0x04    /*!< Byte 44 */
 #define HCI_SUP_LE_ENH_READ_TX_POWER_LEVEL           0x08    /*!< Byte 44 */
-#define HCI_SUP_LE_READ_REMOTE_TX_POWER_LEVEL        0x01    /*!< Byte 44 */
-#define HCI_SUP_LE_SET_PATH_LOSS_REPORT_PARAM        0x02    /*!< Byte 44 */
-#define HCI_SUP_LE_SET_PATH_LOSS_REPORT_ENABLE       0x04    /*!< Byte 44 */
-#define HCI_SUP_LE_SET_TX_POWER_REPORT_ENABLE        0x08    /*!< Byte 44 */
+#define HCI_SUP_LE_READ_REMOTE_TX_POWER_LEVEL        0x10    /*!< Byte 44 */
+#define HCI_SUP_LE_SET_PATH_LOSS_REPORT_PARAM        0x20    /*!< Byte 44 */
+#define HCI_SUP_LE_SET_PATH_LOSS_REPORT_ENABLE       0x40    /*!< Byte 44 */
+#define HCI_SUP_LE_SET_TX_POWER_REPORT_ENABLE        0x80    /*!< Byte 44 */
 #define HCI_SUP_LE_TRANSMITTER_TEST_V4               0x01    /*!< Byte 45 */
 #define HCI_SUP_READ_LOCAL_SUP_CODECS_V2             0x02    /*!< Byte 45 */
 #define HCI_SUP_READ_LOCAL_SUP_CODEC_CAP             0x04    /*!< Byte 45 */
 #define HCI_SUP_READ_LOCAL_SUP_CTR_DLY               0x08    /*!< Byte 45 */
 #define HCI_SUP_CONFIG_DATA_PATH                     0x10    /*!< Byte 45 */
+/* Version Sydney */
+#define HCI_SUP_LE_SET_DEF_SUBRATE                   0x01    /*!< Byte 46 */
+#define HCI_SUP_LE_SET_SUBRATE_REQ                   0x02    /*!< Byte 46 */
 
 #define HCI_SUP_CMD_LEN                              64      /*!< Byte length of support cmd field. */
-
 /**@}*/
 
 /** \name Event mask
@@ -941,6 +970,7 @@ extern "C" {
  */
 /**@{*/
 #define HCI_EVT_MASK_AUTH_PAYLOAD_TIMEOUT            0x80    /*!< Byte 2 */
+#define HCI_EVT_MASK_ENC_CHANGE_V2                   0x02    /*!< Byte 3 */
 /**@}*/
 
 /** \name LE event mask
@@ -984,10 +1014,10 @@ extern "C" {
 #define HCI_EVT_MASK_LE_BIG_SYNC_LOST_EVT            0x20    /*!< Byte 3 */
 #define HCI_EVT_MASK_LE_PEER_SCA_CMPL_EVT            0x40    /*!< Byte 3 */
 #define HCI_EVT_MASK_LE_PATH_LOSS_REPORT_EVT         0x80    /*!< Byte 3 */
-
 #define HCI_EVT_MASK_LE_TX_POWER_REPORT_EVT          0x01    /*!< Byte 4 (Bit 32)*/
 #define HCI_EVT_MASK_LE_BIG_INFO_ADV_RPT_EVT         0x02    /*!< Byte 4 */
-
+/* Version Sydney */
+#define HCI_EVT_MASK_LE_SUBRATE_CHANGE_EVT           0x04    /*!< Byte 4 */
 /**@}*/
 
 /** \name LE supported features
@@ -1027,7 +1057,7 @@ extern "C" {
 #define HCI_LE_SUP_FEAT_PAST_RECIPIENT               0x0000000002000000  /*!< Periodic Advertising Sync Transfer Recipient supported */
 #define HCI_LE_SUP_FEAT_SCA_UPDATE                   0x0000000004000000  /*!< Sleep Clock Accuracy Update supported */
 #define HCI_LE_SUP_FEAT_REMOTE_PUB_KEY_VALIDATION    0x0000000008000000  /*!< Remote Public Key Validation supported */
-/* Version Milan */
+/* Version 5.2 */
 #define HCI_LE_SUP_FEAT_CIS_MASTER                   0x0000000010000000  /*!< Connected Isochronous Master Role supported */
 #define HCI_LE_SUP_FEAT_CIS_SLAVE                    0x0000000020000000  /*!< Connected Isochronous Slave Role supported */
 #define HCI_LE_SUP_FEAT_ISO_BROADCASTER              0x0000000040000000  /*!< Isochronous Broadcaster Role supported */
@@ -1313,8 +1343,8 @@ extern "C" {
 */
 /**@{*/
 #define HCI_SYNC_TRSF_MODE_OFF                       0x00   /*!< Periodic sync transfer receive is disabled */
-#define HCI_SYNC_TRSF_MODE_REP_DISABLED              0x01,  /*!< Periodic sync transfer receive is enabled, report event is disabled */
-#define HCI_SYNC_TRSF_MODE_REP_ENABLED               0x02,  /*!< Periodic sync transfer receive is enabled, report event is enabled */
+#define HCI_SYNC_TRSF_MODE_REP_DISABLED              0x01   /*!< Periodic sync transfer receive is enabled, report event is disabled */
+#define HCI_SYNC_TRSF_MODE_REP_ENABLED               0x02   /*!< Periodic sync transfer receive is enabled, report event is enabled */
 /**@}*/
 
 /** \name Periodic advertising create sync options bits
@@ -1409,6 +1439,26 @@ extern "C" {
 #define HCI_CTE_TYPE_REQ_AOD_2_US                    0x02    /*!< AoD Constant Tone Extension with 2 us slots */
 /**@}*/
 
+/** \name Sync CTE Type bits
+*
+*/
+/**@{*/
+#define HCI_SYNC_CTE_TYPE_DONT_SYNC_AOA_BIT          (1<<0)  /*!< Do not sync to packets with an AoA Constant Tone Extension */
+#define HCI_SYNC_CTE_TYPE_DONT_SYNC_AOD_1_US_BIT     (1<<1)  /*!< Do not sync to packets with an AoD Constant Tone Extension with 1 us slots */
+#define HCI_SYNC_CTE_TYPE_DONT_SYNC_AOD_2_US_BIT     (1<<2)  /*!< Do not sync to packets with an AoD Constant Tone Extension with 2 us slots */
+#define HCI_SYNC_CTE_TYPE_DONT_SYNC_TYPE_3_BIT       (1<<3)  /*!< Do not sync to packets with a type 3 Constant Tone Extension */
+/**@}*/
+
+/** \name CTE Type bits
+*
+*/
+/**@{*/
+#define HCI_CTE_TYPE_DONT_SYNC_AOA_BIT               (1<<0)  /*!< Do not sync to packets with an AoA Constant Tone Extension */
+#define HCI_CTE_TYPE_DONT_SYNC_AOD_1_US_BIT          (1<<1)  /*!< Do not sync to packets with an AoD Constant Tone Extension with 1 us slots */
+#define HCI_CTE_TYPE_DONT_SYNC_AOD_2_US_BIT          (1<<2)  /*!< Do not sync to packets with an AoD Constant Tone Extension with 2 us slots */
+#define HCI_CTE_TYPE_DONT_SYNC_WITHOUT_CTE_BIT       (1<<4)  /*!< Do not sync to packets without Constant Tone Extension */
+/**@}*/
+
 /** \name Bluetooth core specification versions
  *
  */
@@ -1422,9 +1472,8 @@ extern "C" {
 /**@}*/
 
 #ifndef HCI_VER_BT
-#define HCI_VER_BT HCI_VER_BT_CORE_SPEC_5_1
+# define HCI_VER_BT HCI_VER_BT_CORE_SPEC_5_1
 #endif
-
 
 /** \name Parameter lengths
  *
@@ -1454,6 +1503,14 @@ extern "C" {
 #define HCI_PER_ADV_RPT_DATA_LEN_OFFSET              6       /*!< Length field offset of periodic advertising report data */
 /**@}*/
 
+/** \name Maximum Advertising Handle and SID
+*
+*/
+/**@{*/
+#define HCI_MAX_ADV_HANDLE                           0xEF    /*!< Maximum advertising handle */
+#define HCI_MAX_ADV_SID                              0x0F    /*!< Maximum advertising SID */
+/**@}*/
+
 /** \name Number of Antenna IDs in Switching Pattern
 *
 */
@@ -1472,18 +1529,32 @@ extern "C" {
 #define HCI_CONN_IQ_RPT_SAMPLE_CNT_OFFSET            12      /*!< Sample count field offset of connection IQ report */
 /**@}*/
 
+/** \name CIG Count
+*
+*/
+/**@{*/
+#define HCI_MAX_CIG_COUNT                            2       /*!< Maximum count for CIG */
+/**@}*/
+
 /** \name CIS Count
 *
 */
 /**@{*/
-#define HCI_MAX_CIS_COUNT                            0x10    /*!< Maximum count for CIS */
+#define HCI_MAX_CIS_COUNT                            6       /*!< Maximum count for CIS */
+/**@}*/
+
+/** \name BIG Count
+*
+*/
+/**@{*/
+#define HCI_MAX_BIG_COUNT                            2       /*!< Maximum count for BIG */
 /**@}*/
 
 /** \name BIS Count
 *
 */
 /**@{*/
-#define HCI_MAX_BIS_COUNT                            0x10    /*!< Maximum count for BIS */
+#define HCI_MAX_BIS_COUNT                            6       /*!< Maximum count for BIS */
 /**@}*/
 
 /** \name CIG IDs
@@ -1596,7 +1667,7 @@ extern "C" {
 */
 /**@{*/
 #define HCI_ISO_DATA_PATH_HCI                        0x00    /*!< HCI data path. */
-#define HCI_ISO_DATA_PATH_VS_I2S                     0x01    /*!< Vendor Specific: I2S data path. */
+#define HCI_ISO_DATA_PATH_VS                         0x01    /*!< Vendor Specific. */
 #define HCI_ISO_DATA_PATH_DISABLED                   0xFF    /*!< Data path is disabled. */
 /**@}*/
 
@@ -1667,8 +1738,16 @@ extern "C" {
  *
  */
 /**@{*/
-#define HCI_ID_LC3                                   0x01    /*!< LC3 ID */
+#define HCI_ID_LC3                                   0x06    /*!< LC3 ID */
 #define HCI_ID_VS                                    0xFF    /*!< Vendor specific ID */
+/**@}*/
+
+/** \name Coding Format Assigned Numbers
+ *
+ */
+/**@{*/
+#define HCI_CODEC_TRANSPORT_CIS                      0x02    /*!< Codec supported over LE CIS */
+#define HCI_CODEC_TRANSPORT_BIS                      0x03    /*!< Codec supported over LE BIS */
 /**@}*/
 
 /* \} */    /* STACK_HCI_API */

@@ -91,6 +91,9 @@ uint8_t wsfPoolOverFlowCount[WSF_BUF_STATS_MAX_POOL];
 static WsfBufDiagCback_t wsfBufDiagCback = NULL;
 #endif
 
+/* The number of outstanding memory pool buffers */
+static uint32_t wsfOutstandingBufCount = 0;
+
 /*************************************************************************************************/
 /*!
  *  \brief  Calculate size required by the buffer pool.
@@ -293,6 +296,9 @@ void *WsfBufAlloc(uint16_t len)
         /* Next free buffer is stored inside current free buffer. */
         pPool->pFree = pBuf->pNext;
 
+        /* Increment the number of allocated buffers */
+        wsfOutstandingBufCount++;
+
 #if WSF_BUF_FREE_CHECK_ASSERT == TRUE
         pBuf->free = 0;
 #endif
@@ -405,6 +411,9 @@ void WsfBufFree(void *pBuf)
       /* Pool found; put buffer back in free list. */
       p->pNext = pPool->pFree;
       pPool->pFree = p;
+
+      /* Decrement the number of allocated buffers */
+      wsfOutstandingBufCount--;
 
       /* Exit critical section. */
       WSF_CS_EXIT(cs);
@@ -522,4 +531,16 @@ void WsfBufDiagRegister(WsfBufDiagCback_t callback)
   /* Unused parameter */
   (void)callback;
 #endif
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Get the number of outstanding memory pool buffers
+ *
+ *  \return The number of outstanding buffers
+ */
+/*************************************************************************************************/
+uint32_t WsfBufNumOutstanding(void)
+{
+  return wsfOutstandingBufCount;
 }

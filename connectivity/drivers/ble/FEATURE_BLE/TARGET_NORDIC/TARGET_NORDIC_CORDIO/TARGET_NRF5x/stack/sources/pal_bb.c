@@ -26,9 +26,14 @@
 #include "pal_types.h"
 #include "pal_bb.h"
 #include "pal_bb.h"
+#include "pal_led.h"
+
 #include "nrf.h"
 #include "nrf_timer.h"
+
 #include <string.h>
+
+#include "mbed_nrf5x_adaptation.h"
 
 /**************************************************************************************************
   Local Variables
@@ -111,7 +116,7 @@ void PalBbDisable(void)
 void PalBbLoadCfg(PalBbCfg_t *pCfg)
 {
   pCfg->clkPpm = 20;
-  pCfg->rfSetupDelayUsec  = BB_RF_SETUP_DELAY_US;
+  pCfg->rfSetupDelayUsec = BB_RF_SETUP_DELAY_US;
   pCfg->maxScanPeriodMsec = BB_MAX_SCAN_PERIOD_MS;
   pCfg->schSetupDelayUsec = BB_SCH_SETUP_DELAY_US;
 #if (BB_CLK_RATE_HZ == 32768)
@@ -141,56 +146,18 @@ uint32_t PalBbGetCurrentTime(void)
     if (USE_RTC_BB_CLK)
     {
       /* return the RTC counter value */
-      return BB_TICKS_TO_US(NRF_RTC1->COUNTER);
+      return BB_TICKS_TO_US(PAL_BB_RTC->COUNTER);
     }
     else
     {
       /* Capture current TIMER0 count to capture register 3 */
-      nrf_timer_task_trigger(NRF_TIMER0, NRF_TIMER_TASK_CAPTURE3);
+      nrf_timer_task_trigger(PAL_BB_TIMER, NRF_TIMER_TASK_CAPTURE3);
 
       /* Read and return the captured count value from capture register 3 */
-      return BB_TICKS_TO_US(nrf_timer_cc_read(NRF_TIMER0, NRF_TIMER_CC_CHANNEL3));
+      return BB_TICKS_TO_US(nrf_timer_cc_read(PAL_BB_TIMER, NRF_TIMER_CC_CHANNEL3));
     }
   }
   return 0;
-}
-
-/*************************************************************************************************/
-/*!
- *  \brief      Get the current FRC time tick.
- *
- *  \param      pTime   Pointer to return the current time.
- *
- *  \return     Status error code.
- *
- *  Get the current FRC time.
- *
- *  \note       FRC is limited to the same bit-width as the BB clock. Return value is available
- *              only when the BB is active.
- */
-/*************************************************************************************************/
-bool_t PalBbGetTimestamp(uint32_t *pTime)
-{
-  if (palBbEnableCnt == 0)
-  {
-    return FALSE;
-  }
-
-  if (USE_RTC_BB_CLK && pTime)
-  {
-    /* return the RTC counter value */
-    *pTime = NRF_RTC1->COUNTER;
-  }
-  else if (pTime)
-  {
-    /* Capture current TIMER0 count to capture register 3 */
-    nrf_timer_task_trigger(NRF_TIMER0, NRF_TIMER_TASK_CAPTURE3);
-
-    /* Read and return the captured count value from capture register 3 */
-    *pTime = nrf_timer_cc_read(NRF_TIMER0, NRF_TIMER_CC_CHANNEL3);
-  }
-
-  return TRUE;
 }
 
 /*************************************************************************************************/
@@ -238,7 +205,7 @@ void RADIO_IRQHandler(void)
  *  \brief      Combined BLE and 154 timer interrupt handler.
  */
 /*************************************************************************************************/
-void TIMER0_IRQHandler(void)
+void PAL_BB_IRQ_HANDLER(void)
 {
   if (palBbTimerIrqCbackTbl[palBbProtId])
   {

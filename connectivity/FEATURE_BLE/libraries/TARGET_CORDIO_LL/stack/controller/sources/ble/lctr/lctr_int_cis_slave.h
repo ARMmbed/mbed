@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -83,6 +83,7 @@ void lctrSlvCisCigBeginOp(BbOpDesc_t *pOp);
 void lctrSlvCisCigContOp(BbOpDesc_t *pOp);
 void lctrSlvCisCigPostSubEvt(BbOpDesc_t *pOp, uint8_t status);
 uint32_t lctrSlvCisCheckContOp(BbOpDesc_t *pOp, bool_t *pNewCisCtx);
+uint32_t lctrSlvCisCheckContOpPostCback(BbOpDesc_t *pOp, bool_t *pNewCisCtx);
 void lctrSlvCisCigEndOp(BbOpDesc_t *pOp);
 void lctrSlvCisCigCleanupOp(BbOpDesc_t *pOp);
 void lctrSlvCisCigAbortOp(BbOpDesc_t *pOp);

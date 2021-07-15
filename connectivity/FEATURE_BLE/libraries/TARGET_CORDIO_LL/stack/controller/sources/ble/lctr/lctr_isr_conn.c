@@ -164,10 +164,11 @@ uint8_t *lctrProcessRxAck(lctrConnCtx_t *pCtx)
           pCtx->txHdr.nesn++;
           return NULL;
       }
+
+      lctrIncPacketCounterRx(pCtx);
     }
 
     pCtx->txHdr.nesn++;
-    lctrIncPacketCounterRx(pCtx);
     return pNextRxBuf;
   }
 
@@ -211,6 +212,12 @@ bool_t lctrProcessTxAck(lctrConnCtx_t *pCtx)
 
     if (pCtx->txHdr.len)     /* last packet from ARQ queue; zero length implies empty PDU */
     {
+      if ((pCtx->txHdr.llid == LL_LLID_CTRL_PDU) &&
+          (pCtx->numTxPendCtrlPdu > 0))
+      {
+        pCtx->numTxPendCtrlPdu--;
+      }
+
       /*** Peer ACK'ed a Data PDU ***/
 
       lctrTxPduAck(pCtx);

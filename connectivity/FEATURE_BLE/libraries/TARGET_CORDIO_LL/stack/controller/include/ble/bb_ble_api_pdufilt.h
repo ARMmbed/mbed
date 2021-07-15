@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2016-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -43,6 +43,10 @@ extern "C" {
 
 /*! \brief      Set a flag. */
 #define BB_BLE_PDU_FILT_SET_FLAG(pFilt, flag)        (pFilt)->flags |= BB_BLE_PDU_FILT_FLAG_##flag;
+
+/*! \brief      Clear a flag. */
+#define BB_BLE_PDU_FILT_CLR_FLAG(pFilt, flag)        (pFilt)->flags &= ~(BB_BLE_PDU_FILT_FLAG_##flag);
+
 
 /*! \brief      PDU filtering flags. */
 enum

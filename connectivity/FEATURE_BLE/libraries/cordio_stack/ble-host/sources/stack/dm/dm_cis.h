@@ -164,7 +164,7 @@ typedef struct
   wsfMsgHdr_t                   hdr;                                /*!< Message Header */
   uint8_t                       numCis;                             /*!< Total number of CISes to be created */
   uint16_t                      *pCisHandle;                        /*!< List of connection handles of CISes */
-  uint16_t                      *pAclHandle;                        /*!< List of connection handles of ACLs */
+  dmConnId_t                    *pConnId;                           /*!< List of DM connection identifiers */
 } dmCisApiOpen_t;
 
 /*! Data structure for DM_CIS_MSG_API_CLOSE */

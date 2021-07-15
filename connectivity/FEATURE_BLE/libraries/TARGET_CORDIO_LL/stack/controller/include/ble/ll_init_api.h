@@ -62,7 +62,7 @@ extern "C" {
 
 #ifndef BT_VER
 /*! \brief  Initialize default BT version. */
-#define BT_VER        LL_VER_BT_CORE_SPEC_5_1
+#define BT_VER        LL_VER_BT_CORE_SPEC_5_0
 #endif
 
 /**************************************************************************************************

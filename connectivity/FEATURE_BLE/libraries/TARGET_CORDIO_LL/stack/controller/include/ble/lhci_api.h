@@ -76,6 +76,7 @@ void LhciBisSlaveInit(void);
 void LhciBisMasterInit(void);
 void LhciIsoInit(void);
 void LhciPowerControlInit(void);
+void LhciEnhConnUpdateInit(void);
 void LhciVsExtInit(lhciCmdHandler_t decodeCmd);
 void LhciHandlerInit(wsfHandlerId_t handlerId);
 void LhciHandler(wsfEventMask_t event, wsfMsgHdr_t *pMsg);

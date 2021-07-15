@@ -330,22 +330,27 @@ uint8_t LlSetOpFlags(uint32_t flags, bool_t enable)
     LL_OP_MODE_FLAG_MST_RETX_AFTER_RX_NACK |
     LL_OP_MODE_FLAG_MST_IGNORE_CP_RSP |
     LL_OP_MODE_FLAG_MST_UNCOND_CP_RSP |
-    LL_OP_MODE_FLAG_REQ_SYM_PHY |
     LL_OP_MODE_FLAG_ENA_LEN_LLCP_STARTUP |
+    LL_OP_MODE_FLAG_REQ_SYM_PHY |
     LL_OP_MODE_FLAG_ENA_FEAT_LLCP_STARTUP |
     LL_OP_MODE_FLAG_SLV_DELAY_LLCP_STARTUP |
+    LL_OP_MODE_FLAG_ENA_SLV_LATENCY_WAKEUP |
+    LL_OP_MODE_FLAG_ENA_SLV_AUX_SCAN_RSP_ADI |
     LL_OP_MODE_FLAG_ENA_MST_CIS_NULL_PDU |
+    LL_OP_MODE_FLAG_ENA_SLV_AUX_IND_ADVA |
+    LL_OP_MODE_FLAG_ENA_ADV_CHAN_RAND |
+    LL_OP_MODE_FLAG_DIS_POWER_MONITOR |
+    LL_OP_MODE_FLAG_ENA_ISO_LOST_NOTIFY |
+    LL_OP_MODE_FLAG_ENA_CH_RPT_LLCP_AFTER_FEAT |
+    LL_OP_MODE_FLAG_IGNORE_CRC_ERR_TS |
+    LL_OP_MODE_FLAG_FORCE_CIS_CODED_PHY_S2 |
+    /* diagnostics only */
     LL_OP_MODE_FLAG_ENA_ADV_DLY |
     LL_OP_MODE_FLAG_ENA_SCAN_BACKOFF |
     LL_OP_MODE_FLAG_ENA_WW |
     LL_OP_MODE_FLAG_ENA_SLV_LATENCY |
-    LL_OP_MODE_FLAG_ENA_SLV_LATENCY_WAKEUP |
-    LL_OP_MODE_FLAG_ENA_SLV_AUX_SCAN_RSP_ADI |
-    LL_OP_MODE_FLAG_ENA_SLV_AUX_IND_ADVA |
-    LL_OP_MODE_FLAG_ENA_ADV_CHAN_RAND |
-    LL_OP_MODE_DISABLE_POWER_MONITOR |
     LL_OP_MODE_FLAG_ENA_LLCP_TIMER |
-    LL_OP_MODE_FLAG_IGNORE_CRC_ERR_TS;
+    LL_OP_MODE_FLAG_ENA_SUBRATE_CE;
 
   LL_TRACE_INFO2("### LlApi ###  LlSetOpFlags flag=%x enable=%d", flags, enable);
 
@@ -524,7 +529,7 @@ uint8_t LlRemoveDeviceFromWhitelist(uint8_t addrType, bdAddr_t pAddr)
 /*************************************************************************************************/
 uint8_t LlSetHostFeatures(uint8_t bitNum, bool_t bitVal)
 {
-  LL_TRACE_INFO2("### LlApi ###  LlSetHostFeatures, Bit=%d Value=%d", bitNum, bitVal);
+  LL_TRACE_INFO2("### LlApi ###  LlSetHostFeatures, bit=%d value=%d", bitNum, bitVal);
 
   if ((LL_HOST_CONTROLLED_FEAT & (UINT64_C(1) << bitNum)) == 0)
   {

@@ -275,6 +275,7 @@ void lctrMstDiscoverBuildOp(void)
   pOp->pCtx = &lctrMstScan;
   pOp->endCback = lctrMstDiscoverEndOp;
   pOp->abortCback = lctrMstDiscoverEndOp;
+  pOp->recoverable = TRUE;
 
   /*** BLE General Setup ***/
 
@@ -415,6 +416,9 @@ void lctrMstDiscoverBuildOp(void)
 
   SchInsertNextAvailable(pOp);
   lctrMstScan.scanWinStartUsec = pOp->dueUsec;
+
+  LL_TRACE_INFO1("    >>> Discover started, dueUsec=%u <<<", pOp->dueUsec);
+  LL_TRACE_INFO1("                          pBod=0x%08x", pOp);
 }
 
 
@@ -740,13 +744,13 @@ void LctrMstScanDefaults(void)
 /*************************************************************************************************/
 void lctrAdvReportsInc(void)
 {
-  WSF_CS_INIT();
+  WSF_CS_INIT(cs);
 
   WSF_ASSERT(lmgrMstScanCb.numAdvReport < pLctrRtCfg->maxAdvReports);
 
-  WSF_CS_ENTER();
+  WSF_CS_ENTER(cs);
   lmgrMstScanCb.numAdvReport++;
-  WSF_CS_EXIT();
+  WSF_CS_EXIT(cs);
 }
 
 /*************************************************************************************************/
@@ -756,13 +760,13 @@ void lctrAdvReportsInc(void)
 /*************************************************************************************************/
 void lctrAdvReportsDec(void)
 {
-  WSF_CS_INIT();
+  WSF_CS_INIT(cs);
 
   WSF_ASSERT(lmgrMstScanCb.numAdvReport > 0);
 
-  WSF_CS_ENTER();
+  WSF_CS_ENTER(cs);
   lmgrMstScanCb.numAdvReport--;
-  WSF_CS_EXIT();
+  WSF_CS_EXIT(cs);
 }
 
 /*************************************************************************************************/

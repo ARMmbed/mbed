@@ -31,6 +31,7 @@
 #include "custom_chci_tr.h"
 #include "pal_bb.h"
 #include "pal_cfg.h"
+#include "pal_frc.h"
 #include "lhci_api.h"
 #include "wsf_assert.h"
 #include "wsf_buf.h"
@@ -52,6 +53,8 @@
 #else
 #define DBG_WARN(...)
 #endif
+
+#include "mbed_nrf5x_adaptation.h"
 
 using namespace ble;
 
@@ -117,7 +120,6 @@ const LlRtCfg_t NRFCordioHCIDriver::_ll_cfg = {
 /*uint16_t*/  .auxDelayUsec = 0,
 /** Delay of auxiliary packet in microseconds from the time specified by auxPtr. */
 /*uint16_t*/  .auxPtrOffsetUsec = 0,
-
 /* Scanner */
 /** Maximum scan request received events. */
 /*uint8_t*/   .maxScanReqRcvdEvt = MBED_CONF_CORDIO_LL_MAX_SCAN_REQUEST_EVENTS,
@@ -137,7 +139,6 @@ const LlRtCfg_t NRFCordioHCIDriver::_ll_cfg = {
 /*int8_t*/    .defTxPwrLvl = 0,
 /** Allowable CE jitter on a slave (account for master's sleep clock resolution). */
 /*uint8_t*/   .ceJitterUsec = 0,
-
 /* ISO */
 /** Default number of ISO transmit buffers. */
 /*uint8_t*/   .numIsoTxBuf = 0,
@@ -147,7 +148,6 @@ const LlRtCfg_t NRFCordioHCIDriver::_ll_cfg = {
 /*uint16_t*/  .maxIsoSduLen = 0,
 /** Maximum ISO PDU buffer size. */
 /*uint16_t*/  .maxIsoPduLen = 0,
-
 /* CIS */
 /** Maximum number of CIG. */
 /*uint8_t*/   .maxCig = 0,
@@ -155,17 +155,14 @@ const LlRtCfg_t NRFCordioHCIDriver::_ll_cfg = {
 /*uint8_t*/   .maxCis = 0,
 /** Subevent spacing above T_MSS. */
 /*uint16_t*/  .cisSubEvtSpaceDelay = 0,
-
 /* BIS */
 /** Maximum number of BIG. */
 /* uint8_t */ .maxBig = 0,
 /** Maximum number of BIS. */
 /* uint8_t */ .maxBis = 0,
-
 /* DTM */
 /** DTM Rx synchronization window in milliseconds. */
 /*uint16_t*/  .dtmRxSyncMs = 10000,
-
 /* PHY */
 /** 2M PHY supported. */
 /*bool_t*/    .phy2mSup = MBED_CONF_CORDIO_LL_PHY_2M_SUPPORT,
@@ -175,10 +172,15 @@ const LlRtCfg_t NRFCordioHCIDriver::_ll_cfg = {
 /*bool_t*/    .stableModIdxTxSup = TRUE,
 /** Rx stable modulation index supported. */
 /*bool_t*/    .stableModIdxRxSup = TRUE,
+/** High RSSI threshold for power monitoring. */
+/*int8_t*/    .pcHighThreshold = -50,
+/** Low RSSI threshold for power monitoring. */
+/*int8_t*/    .pcLowThreshold = -70,
+/** Interval spacing of channel classification reporting. */
+/*uint8_t*/   .chClassIntSpacing = 50
 };
 
-extern "C" void TIMER0_IRQHandler(void);
-extern "C" void TIMER2_IRQHandler(void);
+extern "C" void PAL_BB_IRQ_HANDLER(void);
 
 NRFCordioHCIDriver::NRFCordioHCIDriver(CordioHCITransportDriver& transport_driver) : CordioHCIDriver(transport_driver), _is_init(false), _stack_buffer(NULL)
 {
@@ -188,20 +190,20 @@ NRFCordioHCIDriver::NRFCordioHCIDriver(CordioHCITransportDriver& transport_drive
 
 NRFCordioHCIDriver::~NRFCordioHCIDriver()
 {
-	// Deativate all interrupts
+	// Deactivate all interrupts
 	NVIC_DisableIRQ(RADIO_IRQn);
-	NVIC_DisableIRQ(TIMER0_IRQn);
+	NVIC_DisableIRQ(PAL_BB_IRQn);
 
     // Switch off Radio peripheral
     // TODO interop with 802.15.4
     NRF_RADIO->POWER = 0;
 
     // Stop timer
-    NRF_TIMER0->TASKS_STOP  = 1;
-    NRF_TIMER0->TASKS_CLEAR = 1;
+    PAL_BB_TIMER->TASKS_STOP  = 1;
+    PAL_BB_TIMER->TASKS_CLEAR = 1;
 
 	NVIC_ClearPendingIRQ(RADIO_IRQn);
-	NVIC_ClearPendingIRQ(TIMER0_IRQn);
+	NVIC_ClearPendingIRQ(PAL_BB_IRQn);
 
     MBED_ASSERT(_stack_buffer != NULL);
     free(_stack_buffer);
@@ -262,21 +264,24 @@ void NRFCordioHCIDriver::do_initialize()
     {
     }
     NRF_CLOCK->EVENTS_LFCLKSTARTED = 0;
+    // Start RTC.
+    PAL_BB_RTC->TASKS_STOP  = 1;
+    PAL_BB_RTC->TASKS_CLEAR = 1;
+    PAL_BB_RTC->PRESCALER   = 0;            /* clear prescaler */
+    PAL_BB_RTC->TASKS_START = 1;
 
-    // Start RTC0
-    NRF_RTC0->TASKS_STOP  = 1;
-    NRF_RTC0->TASKS_CLEAR = 1;
-    NRF_RTC0->PRESCALER   = 0;            /* clear prescaler */
-    NRF_RTC0->TASKS_START = 1;
+#if PAL_ALLOW_DEEP_SLEEP
+    // Start FRC.
+    PalFrcInit();
+#endif
 
     // Cycle radio peripheral power to guarantee known radio state
     NRF_RADIO->POWER = 0;
     NRF_RADIO->POWER = 1;
 
     // mbed-os target uses IRQ Handler names with _v added at the end
-    // (TIMER0_IRQHandler_v and TIMER2_IRQHandler_v) so we need to register these manually
-    NVIC_SetVector(TIMER0_IRQn, (uint32_t)TIMER0_IRQHandler);
-    NVIC_SetVector(TIMER2_IRQn, (uint32_t)TIMER2_IRQHandler);
+    // (PAL_BB_IRQ_HANDLER_v) so we need to register this manually
+    NVIC_SetVector(PAL_BB_IRQn, (uint32_t)PAL_BB_IRQ_HANDLER);
 
     // Extremely ugly
     for(uint32_t irqn = 0; irqn < 32; irqn++)
@@ -341,6 +346,15 @@ bool NRFCordioHCIDriver::get_random_static_address(ble::address_t& address)
     MBED_ASSERT((address[5] & 0xC0) == 0xC0);
 
     return true;
+}
+
+void NRFCordioHCIDriver::on_deep_sleep(timestamp_t wakeTimeMs)
+{
+#if PAL_ALLOW_DEEP_SLEEP
+    if (wakeTimeMs > PAL_WAKE_LATENCY_MS) {
+        palFrcSetWakeup(wakeTimeMs - PAL_WAKE_LATENCY_MS);
+    }
+#endif
 }
 
 ble::CordioHCIDriver& ble_cordio_get_hci_driver() {

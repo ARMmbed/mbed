@@ -70,6 +70,15 @@ eattCb_t eattCb;
 eattChanCb_t eattChanCb[DM_CONN_MAX][EATT_CONN_CHAN_MAX];
 #endif
 
+/* Default component function inteface */
+const eattFcnIf_t eattFcnDefault =
+{
+  attEmptyL2cCocDataCback,
+  attEmptyL2cCocCback,
+  (attMsgHandler_t) attEmptyHandler,
+  attEmptyConnCback
+};
+
 /**************************************************************************************************
   External Variables
 **************************************************************************************************/
@@ -415,7 +424,16 @@ static void eattL2cEnChanInd(l2cCocEnConnectInd_t *pMsg)
               pChanCb->cid = pMsg->cidList[i];
               pChanCb->peerMtu = pMsg->mtu;
               pChanCb->localMtu = pEattCfg->mtu;
-              pChanCb->priority = pEattCfg->pPriorityTbl[slot - 1];
+
+              if (pEattCfg->pPriorityTbl)
+              {
+                pChanCb->priority = pEattCfg->pPriorityTbl[slot - 1];
+              }
+              else
+              {
+                pChanCb->priority = slot;
+              }
+
               pChanCb->inUse = TRUE;
 
               eattUpdateMtu(connId, slot);
@@ -551,34 +569,39 @@ static void eattL2cDataCnf(l2cCocDataCnf_t *pMsg)
 {
   attCcb_t *pCcb = attCcbByConnId((dmConnId_t) pMsg->hdr.param);
 
-  if (pCcb)
+  /* verify connection is open */
+  if (pCcb && pCcb->connId != DM_CONN_ID_NONE)
   {
     uint8_t slot = eattGetSlotId((dmConnId_t) pMsg->hdr.param, pMsg->cid);
 
     if (slot != ATT_BEARER_SLOT_INVALID)
     {
-      /* verify connection is open */
-      if (pCcb && pCcb->connId != DM_CONN_ID_NONE)
+      EATT_TRACE_INFO2("eattL2cDataCnf: slot: %d, status %d", slot, pMsg->hdr.status);
+
+      if (pMsg->hdr.status == L2C_COC_DATA_ERR_OVERFLOW)
       {
-        if (pMsg->hdr.event == L2C_CTRL_FLOW_DISABLE_IND)
+        for (uint8_t i = 0; i < EATT_CONN_CHAN_MAX; i++)
         {
           /* flow disabled */
-          pCcb->sccb[slot].control |= ATT_CCB_STATUS_FLOW_DISABLED;
+          pCcb->sccb[i].control |= ATT_CCB_STATUS_FLOW_DISABLED;
         }
-        else
+      }
+      else
+      {
+        for (uint8_t i = 0; i < EATT_CONN_CHAN_MAX; i++)
         {
           /* flow enabled */
-          pCcb->sccb[slot].control &= ~ATT_CCB_STATUS_FLOW_DISABLED;
+          pCcb->sccb[i].control &= ~ATT_CCB_STATUS_FLOW_DISABLED;
+        }
 
-          /* call server control callback */
+        /* call server control callback */
+        (*attCb.pEnServer->l2cCocCnf)((l2cCocEvt_t*) pMsg);
+
+        /* check flow again; could be changed recursively */
+        if (!(pCcb->sccb[slot].control & ATT_CCB_STATUS_FLOW_DISABLED))
+        {
+          /* call client control callback */
           (*attCb.pEnClient->l2cCocCnf)((l2cCocEvt_t*) pMsg);
-
-          /* check flow again; could be changed recursively */
-          if (!(pCcb->sccb[slot].control & ATT_CCB_STATUS_FLOW_DISABLED))
-          {
-            /* call client control callback */
-            (*attCb.pEnClient->l2cCocCnf)((l2cCocEvt_t*) pMsg);
-          }
         }
       }
     }
@@ -681,7 +704,7 @@ void EattEstablishChannels(dmConnId_t connId)
   {
     eattConnCb_t *pCcb = eattGetConnCb(connId);
 
-    EATT_TRACE_INFO1("EattEstablishChannels: connId: %#x", connId);
+    EATT_TRACE_INFO1("EattEstablishChannels: connId: 0x%x", connId);
 
     if (pCcb)
     {
@@ -897,9 +920,38 @@ static void eattL2cDataReq(attCcb_t *pCcb, uint8_t slot, uint16_t len, uint8_t *
 
 /*************************************************************************************************/
 /*!
+ *  \brief  Empty l2c coc callback for ATT.
+ *
+ *  \param  pMsg      L2CAP coc event message.
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+void attEmptyL2cCocDataCback(l2cCocEvt_t *pMsg)
+{
+  l2cCocDataInd_t *pDataInd = &pMsg->dataInd;
+  dmConnId_t       connId = (dmConnId_t) pDataInd->hdr.param;
+  uint8_t          slot = eattGetSlotId(connId, pDataInd->cid);
+  attCcb_t        *pCcb = attCcbByConnId(connId);
+
+  /* get connection control block for this connId, ignore packet if not found */
+  if (pCcb)
+  {
+    /* parse opcode */
+    uint8_t opcode = *(pDataInd->pData);
+
+    attSendOpNotSupportedErr(pCcb, slot, opcode);
+  }
+}
+
+/*************************************************************************************************/
+/*!
  *  \brief  Initialize the Enhanced ATT subsystem.
  *
  *  \return None
+ *
+ *  \note   EattInit must be called after the ATT task is created and before calling EattsInit 
+ *          and/or EattcInit.
  */
 /*************************************************************************************************/
 void EattInit(uint8_t roleBits)
@@ -927,6 +979,9 @@ void EattInit(uint8_t roleBits)
   /* Register functions with ATT control block */
   attCb.eattHandler = eattHandler;
   attCb.eattL2cDataReq = eattL2cDataReq;
+  
+  attCb.pEnServer = &eattFcnDefault;
+  attCb.pEnClient = &eattFcnDefault;
 
   /* Set the channel control blocks in the connection control blocks */
 #if EATT_CONN_CHAN_MAX > 0

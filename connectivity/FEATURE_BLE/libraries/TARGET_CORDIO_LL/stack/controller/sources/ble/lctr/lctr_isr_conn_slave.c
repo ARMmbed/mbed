@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -45,6 +45,13 @@
 /*! \brief      Assert BB meets data PDU requirements. */
 WSF_CT_ASSERT((BB_FIXED_DATA_PKT_LEN == 0) ||
               (BB_FIXED_DATA_PKT_LEN >= LCTR_DATA_PDU_MAX_LEN));
+
+/*! \brief      Slave connection ISR control block. */
+static struct
+{
+  uint16_t numTxData;           /*!< Number of Tx data PDU in a single CE. */
+  uint16_t numRxData;           /*!< Number of Rx data PDU in a single CE. */
+} lctrSlvConnIsr;
 
 /**************************************************************************************************
   Function Declarations
@@ -160,7 +167,7 @@ static void lctrSlvConnUpdateOp(lctrConnCtx_t *pCtx, bool_t ignoreOffset)
     pCtx->data.slv.txWinSizeUsec = txWinSizeUsec;
 
     /* Add additional time due to Tx window size and WW due to Tx window offset. */
-    pOp->minDurUsec += txWinSizeUsec + wwTxWinOffsetUsec;
+    pOp->minDurUsec +=  wwTxWinOffsetUsec;
 
     /*** BLE general setup ***/
 
@@ -280,6 +287,25 @@ static void lctrSlvInitConnIsr(lctrConnCtx_t *pCtx)
   pCtx->data.slv.syncWithMaster = FALSE;
   pCtx->data.slv.rxFromMaster = FALSE;
   pCtx->data.slv.firstRxStartTsUsec = 0;
+
+  lctrSlvConnIsr.numTxData = 0;
+  lctrSlvConnIsr.numRxData = 0;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Pack a channel status message.
+ *
+ *  \param  pBuf        Packed buffer.
+ */
+/*************************************************************************************************/
+static void lctrPackChannelStatusMsg(uint8_t *pBuf)
+{
+  unsigned int i;
+  for (i = 0; i < LL_MAX_NUM_CHAN_DATA; i++)
+  {
+    UINT8_TO_BSTREAM(pBuf, (((UINT64_C(1) << i) & lmgrCb.chanClass) ? LL_CH_CLASS_UNKNOWN : LL_CH_CLASS_BAD));
+  }
 }
 
 /*************************************************************************************************/
@@ -308,7 +334,8 @@ void lctrSlvConnBeginOp(BbOpDesc_t *pOp)
     pLctrVsHdlrs->ceSetup(LCTR_GET_CONN_HANDLE(pCtx));
   }
 
-  /*** Initialize connection event resources. ***/
+  /*** Initialize connection event resources ***/
+
   lctrSlvInitConnIsr(pCtx);
 
   /*** Setup receiver ***/
@@ -364,13 +391,35 @@ void lctrSlvConnEndOp(BbOpDesc_t *pOp)
   }
 
   pCtx->rssi = pConn->rssi;
-
-  if ((pCtx->monitoringState == LCTR_PC_MONITOR_ENABLED) &&
-      (pCtx->lastRxStatus == BB_STATUS_SUCCESS))
+  if (pCtx->monitoringState == LCTR_PC_MONITOR_ENABLED)
   {
-    if (lctrPcActTbl[pCtx->powerMonitorScheme])
+
+    /* If a packet did not receive for whatever reason, add a datapoint with the lowest RSSI. */
+    if (pCtx->lastRxStatus != BB_STATUS_SUCCESS)
     {
-      lctrPcActTbl[pCtx->powerMonitorScheme](pCtx);
+      pCtx->rssi = 0x80; /* Most negative 8 bit number. */
+    }
+
+    switch (pCtx->powerMonitorScheme)
+    {
+      case LCTR_PC_MONITOR_AUTO:
+      {
+        /* Calculations handled on timer expiration for tmrPowerCtrl. */
+        /* Use a positive value to hold accumulated RSSI, as RSSI will never be positive. */
+        pCtx->pclMonitorParam.autoMonitor.accumulatedRssi += (uint32_t) (-(pCtx->rssi));
+        pCtx->pclMonitorParam.autoMonitor.totalAccumulatedRssi++;
+        break;
+      }
+      case LCTR_PC_MONITOR_PATH_LOSS:
+      {
+        /* Power control monitoring being enabled implies that this function exists. */
+        lctrPathLossMonitorActFn(pCtx);
+        break;
+      }
+      default:
+        /* Should not happen. */
+        WSF_ASSERT(FALSE);
+        break;
     }
   }
 
@@ -392,6 +441,14 @@ void lctrSlvConnEndOp(BbOpDesc_t *pOp)
   {
     lctrStoreConnTimeoutTerminateReason(pCtx);
     WsfTimerStartMs(&pCtx->tmrSupTimeout, pCtx->supTimeoutMs);
+
+    if (!lmgrGetOpFlag(LL_OP_MODE_FLAG_ENA_FEAT_LLCP_STARTUP) &&
+        (pCtx->monitoringState == LCTR_PC_MONITOR_ENABLED) &&
+        (pCtx->powerMonitorScheme == LCTR_PC_MONITOR_AUTO) &&
+        !lmgrGetOpFlag(LL_OP_MODE_FLAG_DIS_POWER_MONITOR))
+    {
+      WsfTimerStartMs(&pCtx->tmrPowerCtrl, LL_PC_SERVICE_MS);
+    }
 
     pCtx->connEst = TRUE;
   }
@@ -447,8 +504,7 @@ void lctrSlvConnEndOp(BbOpDesc_t *pOp)
     }
   }
 
-  /* Slave received connection update on the instant. */
-  /* Immediately use that packet as the new anchor point and do not apply txWinOffset and txWinSize. */
+  /* Check if channel status update is required. */
   if ((pCtx->llcpActiveProc == LCTR_PROC_CONN_UPD) && lctrSlvCheckConnUpdInstant(pCtx) &&
       (pCtx->eventCounter == pCtx->connUpd.instant))
   {
@@ -456,32 +512,68 @@ void lctrSlvConnEndOp(BbOpDesc_t *pOp)
     LL_TRACE_WARN1("Received connection update at instant, applying immediately at CE=%d", pCtx->eventCounter);
   }
 
+  /* If the channel map has changed since the last time, */
+  /* Send master the status indication. */
+  if (pCtx->chanStatRptEnable && pCtx->data.slv.queuedChanStatusTs &&
+     (BbGetTargetTimeDelta(pOp->dueUsec, pCtx->data.slv.lastStatusSentTs) > pCtx->data.slv.chanStatMinIntUs))
+  {
+    /* Make sure that the report has not passed the max delay parameter. */
+    if (BbGetTargetTimeDelta(pOp->dueUsec, pCtx->data.slv.queuedChanStatusTs) < pCtx->data.slv.chanStatMaxDelay)
+    {
+      pCtx->data.slv.lastStatusSentTs = pOp->dueUsec;
+
+      lctrMsgChStatusInd_t *pMsg;
+      if ((pMsg = (lctrMsgChStatusInd_t *)WsfMsgAlloc(sizeof(*pMsg))) != NULL)
+      {
+        pMsg->hdr.handle = LCTR_GET_CONN_HANDLE(pCtx);
+        pMsg->hdr.dispId = LCTR_DISP_CONN;
+        pMsg->hdr.event  = LCTR_CONN_LLCP_CHANNEL_STATUS;
+
+        lctrPackChannelStatusMsg(pMsg->chanStatus);
+
+        WsfMsgSend(lmgrPersistCb.handlerId, pMsg);
+      }
+    }
+
+    /* Reset the timestamp to signal that there is no pending status report. */
+    pCtx->data.slv.queuedChanStatusTs = 0;
+  }
+
   /*** Update for next operation ***/
 
   uint16_t numUnsyncIntervals = pCtx->eventCounter - pCtx->data.slv.lastActiveEvent + 1;
 
   uint16_t numSkipCe = 0;
+  uint16_t numSkipSr = 0;
+  uint16_t srLatency = pCtx->maxLatency;
+
+  /* Enhanced Connection Update. */
+  if (lctrCalcSubrateConnEventsFn)
+  {
+    numSkipSr = lctrCalcSubrateConnEventsFn(pCtx, lctrSlvConnIsr.numTxData + lctrSlvConnIsr.numRxData);
+    srLatency = (pCtx->maxLatency * pCtx->ecu.srFactor) + numSkipSr;
+  }
 
   if ((pCtx->data.slv.abortSlvLatency == FALSE) &&
       lctrGetConnOpFlag(pCtx, LL_OP_MODE_FLAG_ENA_SLV_LATENCY) &&
-      (pCtx->maxLatency &&
-       pCtx->data.slv.initAckRcvd &&
-       pCtx->data.slv.rxFromMaster &&
-       (WsfQueueEmpty(&pCtx->txArqQ)) &&
-       (pCtx->state != LCTR_CONN_STATE_TERMINATING)))
+      pCtx->maxLatency &&
+      pCtx->data.slv.initAckRcvd &&
+      pCtx->data.slv.rxFromMaster &&
+      WsfQueueEmpty(&pCtx->txArqQ) &&
+      (pCtx->state != LCTR_CONN_STATE_TERMINATING))
   {
     if (pCtx->llcpActiveProc == LCTR_PROC_INVALID)
     {
-      numSkipCe = pCtx->maxLatency;
+      numSkipCe = srLatency;
     }
     else
     {
       /* Still apply the slave latency if the instant is not reached for the following LLCPs. */
       if ((pCtx->llcpActiveProc == LCTR_PROC_CONN_UPD) && lctrSlvCheckConnUpdInstant(pCtx))
       {
-        if ((uint16_t)(pCtx->connUpd.instant - pCtx->eventCounter) > (pCtx->maxLatency + 1))
+        if ((uint16_t)(pCtx->connUpd.instant - pCtx->eventCounter) > (srLatency + 1))
         {
-          numSkipCe = pCtx->maxLatency;
+          numSkipCe = srLatency;
         }
         else if ((pCtx->connUpd.instant - pCtx->eventCounter) > 1)
         {
@@ -492,9 +584,9 @@ void lctrSlvConnEndOp(BbOpDesc_t *pOp)
       else if ((pCtx->llcpActiveProc == LCTR_PROC_CMN_CH_MAP_UPD) &&
                (pCtx->cmnState == LCTR_CMN_STATE_BUSY))
       {
-        if ((uint16_t)(pCtx->chanMapUpd.instant - pCtx->eventCounter) > (pCtx->maxLatency + 1))
+        if ((uint16_t)(pCtx->chanMapUpd.instant - pCtx->eventCounter) > (srLatency + 1))
         {
-          numSkipCe = pCtx->maxLatency;
+          numSkipCe = srLatency;
         }
         else if ((pCtx->chanMapUpd.instant - pCtx->eventCounter) > 1)
         {
@@ -504,9 +596,9 @@ void lctrSlvConnEndOp(BbOpDesc_t *pOp)
       }
       else if ((pCtx->llcpActiveProc == LCTR_PROC_PHY_UPD) && (pCtx->isSlvPhyUpdInstant == TRUE))
       {
-        if ((uint16_t)(pCtx->phyUpd.instant - pCtx->eventCounter) > (pCtx->maxLatency + 1))
+        if ((uint16_t)(pCtx->phyUpd.instant - pCtx->eventCounter) > (srLatency + 1))
         {
-          numSkipCe = pCtx->maxLatency;
+          numSkipCe = srLatency;
         }
         else if ((pCtx->phyUpd.instant - pCtx->eventCounter) > 1)
         {
@@ -516,15 +608,23 @@ void lctrSlvConnEndOp(BbOpDesc_t *pOp)
       }
     }
   }
+  else
+  {
+    /* No slave latency; listen at the next subrated connection events. */
+    numSkipCe = numSkipSr;
+  }
 
   if (numSkipCe > 0)
   {
+    if (numSkipCe > numSkipSr)
+    {
+      LL_TRACE_INFO2("Applying slave latency, last attended eventCounter=%u, wake up at eventCounter=%u", pCtx->eventCounter, pCtx->eventCounter + numSkipCe + 1);
+    }
+
     pCtx->eventCounter += numSkipCe;
     numUnsyncIntervals += numSkipCe;
 
     lctrChSelHdlr[pCtx->usedChSel](pCtx, numSkipCe - 1);
-
-    LL_TRACE_INFO2("Applying slave latency, waking up at eventCounter=%u, numSkipCE=%u", pCtx->eventCounter + 1, numSkipCe);
   }
 
   while (TRUE)
@@ -551,7 +651,9 @@ void lctrSlvConnEndOp(BbOpDesc_t *pOp)
     /* Advance to next interval. */
     pOp->dueUsec = pCtx->data.slv.anchorPointUsec + connInterUsec - wwTotalUsec;
 
-    pOp->minDurUsec = pCtx->data.slv.txWinSizeUsec + pCtx->effConnDurUsec + wwTotalUsec;
+    /* Use small minDurUsec to improve scheduling. */
+    pOp->minDurUsec = pCtx->data.slv.txWinSizeUsec + (2 * LL_MAX_DATA_TIME_MIN) + LL_BLE_TIFS_US + wwTotalUsec;
+
     pConn->rxSyncDelayUsec = pCtx->data.slv.txWinSizeUsec + (wwTotalUsec << 1);
 
     if ((pCtx->llcpActiveProc == LCTR_PROC_CONN_UPD) &&
@@ -568,12 +670,12 @@ void lctrSlvConnEndOp(BbOpDesc_t *pOp)
       lctrSlvConnUpdateOp(pCtx, FALSE);
     }
     else if ((pCtx->llcpActiveProc == LCTR_PROC_CMN_CH_MAP_UPD) &&
-             (pCtx->eventCounter == pCtx->chanMapUpd.instant))
+              (pCtx->eventCounter == pCtx->chanMapUpd.instant))
     {
       lctrSlvChanMapUpdateOp(pCtx);
     }
     else if ((pCtx->llcpActiveProc == LCTR_PROC_PHY_UPD) &&
-             (pCtx->eventCounter == pCtx->phyUpd.instant))
+              (pCtx->eventCounter == pCtx->phyUpd.instant))
     {
       lctrSlvPhyUpdateOp(pCtx);
     }
@@ -620,6 +722,8 @@ void lctrSlvConnAbortOp(BbOpDesc_t *pOp)
 {
   lctrConnCtx_t * const pCtx = pOp->pCtx;
 
+  LL_TRACE_WARN2("!!! Connection Slave BOD aborted, handle=%u, eventCounter=%u", LCTR_GET_CONN_HANDLE(pCtx), pCtx->eventCounter);
+
   lctrSlvInitConnIsr(pCtx);
   lctrSlvConnEndOp(pOp);
 }
@@ -639,6 +743,11 @@ void lctrSlvConnTxCompletion(BbOpDesc_t *pOp, uint8_t status)
     lctrConnCtx_t * const pCtx = pOp->pCtx;
 
     lctrSetControlPduAck(pCtx);
+
+    if (pCtx->txHdr.len)
+    {
+      lctrSlvConnIsr.numTxData++;
+    }
   }
 }
 
@@ -693,12 +802,12 @@ void lctrSlvConnRxCompletion(BbOpDesc_t *pOp, uint8_t *pRxBuf, uint8_t status)
   {
     if (status == BB_STATUS_RX_TIMEOUT)
     {
-      LL_TRACE_WARN3("lctrSlvConnRxCompletion: BB failed with status=RX_TIMEOUT, handle=%u, bleChan=%u, eventCounter=%u", LCTR_GET_CONN_HANDLE(pCtx), pBle->chan.chanIdx, pCtx->eventCounter);
+      LL_TRACE_WARN3("lctrSlvConnRxCompletion: BB failed with status=RX_TIMEOUT, eventCounter=%u, bleChan=%u, handle=%u", pCtx->eventCounter, pCtx->bleData.chan.chanIdx, LCTR_GET_CONN_HANDLE(pCtx));
     }
 
     if (status == BB_STATUS_FAILED)
     {
-      LL_TRACE_ERR3("lctrSlvConnRxCompletion: BB failed with status=FAILED, handle=%u, bleChan=%u, eventCounter=%u", LCTR_GET_CONN_HANDLE(pCtx), pBle->chan.chanIdx, pCtx->eventCounter);
+      LL_TRACE_ERR3("lctrSlvConnRxCompletion: BB failed with status=FAILED, eventCounter=%u, bleChan=%u, handle=%u", pCtx->eventCounter, pCtx->bleData.chan.chanIdx, LCTR_GET_CONN_HANDLE(pCtx));
     }
 
     BbSetBodTerminateFlag();
@@ -740,6 +849,23 @@ void lctrSlvConnRxCompletion(BbOpDesc_t *pOp, uint8_t *pRxBuf, uint8_t status)
   }
 
   lctrUnpackDataPduHdr(&pCtx->rxHdr, pRxBuf);
+
+  /* Check for MIC failure and if this is not a re-transmission */
+  if ((status == BB_STATUS_MIC_FAILED) &&
+      ((pCtx->rxHdr.sn ^ pCtx->txHdr.nesn) & 1) == 0)
+  {
+    LL_TRACE_WARN3("lctrSlvConnRxCompletion: BB failed with status=MIC_FAILED, eventCounter=%u, bleChan=%u, handle=%u", pCtx->eventCounter, pCtx->bleData.chan.chanIdx, LCTR_GET_CONN_HANDLE(pCtx));
+    lctrSendConnMsg(pCtx, LCTR_CONN_TERM_MIC_FAILED);
+    /* Close connection event. */
+    BbSetBodTerminateFlag();
+    lctrRxPduFree(pRxBuf);
+    goto Done;
+  }
+
+  if (pCtx->rxHdr.len)
+  {
+    lctrSlvConnIsr.numRxData++;
+  }
 
   /* Check LLID from master. */
   if ((pCtx->isSlvReadySent == FALSE) &&

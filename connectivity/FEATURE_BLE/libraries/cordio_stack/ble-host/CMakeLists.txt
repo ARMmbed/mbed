@@ -12,6 +12,7 @@ target_include_directories(mbed-ble-cordio
         sources/stack/hci
         sources/stack/l2c
         sources/stack/smp
+        ../../TARGET_CORDIO_LL/stack/controller/include/ble
 )
 
 target_sources(mbed-ble-cordio

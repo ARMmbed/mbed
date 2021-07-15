@@ -64,7 +64,7 @@ const attFcnIf_t attFcnDefault =
 };
 
 /* Default component function inteface */
-const eattFcnIf_t eattFcnDefault =
+const eattFcnIf_t attEattFcnDefault =
 {
   attEmptyL2cCocCback,
   attEmptyL2cCocCback,
@@ -249,9 +249,7 @@ void attEmptyConnCback(attCcb_t *pCcb, dmEvt_t *pDmEvt)
 /*!
  *  \brief  Empty l2c coc callback for ATT.
  *
- *  \param  handle    The connection handle.
- *  \param  len       The length of the L2CAP payload data in pPacket.
- *  \param  pPacket   A buffer containing the packet.
+ *  \param  pMsg      L2CAP coc event message.
  *
  *  \return None.
  */
@@ -274,7 +272,16 @@ void attEmptyL2cCocCback(l2cCocEvt_t *pMsg)
 /*************************************************************************************************/
 void attEmptyDataCback(uint16_t handle, uint16_t len, uint8_t *pPacket)
 {
-  return;
+  attCcb_t *pCcb = attCcbByHandle(handle);
+
+  /* get connection control block for this handle, ignore packet if not found */
+  if (pCcb)
+  { 
+    /* parse opcode */
+    uint8_t opcode = *(pPacket + L2C_PAYLOAD_START);
+    
+    attSendOpNotSupportedErr(pCcb, ATT_BEARER_SLOT_ID, opcode);
+  }
 }
 
 /*************************************************************************************************/
@@ -359,6 +366,61 @@ void attSetMtu(attCcb_t *pCcb, uint8_t slot, uint16_t peerMtu, uint16_t localMtu
     /* notify app about the new value */
     attExecCallback(pCcb->connId, ATT_MTU_UPDATE_IND, 0, ATT_SUCCESS, mtu);
   }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Send an error response PDU.
+ *
+ *  \param  handle    The connection handle.
+ *  \param  opcode    Opcode of the request that generated this error.
+ *  \param  attHandle Attribute handle in request, if applicable.
+ *  \param  reason    Error reason.
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+void attErrRsp(attCcb_t *pCcb, uint8_t slot, uint8_t opcode, uint16_t attHandle, uint8_t reason)
+{
+  uint8_t *pBuf;
+  uint8_t *p;
+
+  /* allocate buffer */
+  if ((pBuf = attMsgAlloc(L2C_PAYLOAD_START + ATT_ERR_RSP_LEN)) != NULL)
+  {
+    p = pBuf + L2C_PAYLOAD_START;
+    UINT8_TO_BSTREAM(p, ATT_PDU_ERR_RSP);
+    UINT8_TO_BSTREAM(p, opcode);
+    UINT16_TO_BSTREAM(p, attHandle);
+    UINT8_TO_BSTREAM(p, reason);
+
+    attL2cDataReq(pCcb, slot, ATT_ERR_RSP_LEN, pBuf);
+  }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Handle a not supported opcode, sending an error if necessary.
+ *
+ *  \param  pCcb    Pointer to control block.
+ *  \param  slot    ATT bearer slot.
+ *  \param  opcode  Opcode.
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+void attSendOpNotSupportedErr(attCcb_t *pCcb, uint8_t slot, uint8_t opcode)
+{
+  if (opcode & ATT_PDU_MASK_COMMAND)
+  {
+    ATT_TRACE_WARN1("ATTC subsystem not registered for opcode: 0x%02x - Command bit set - Ingnoring command", opcode);
+    return;
+  }
+
+  ATT_TRACE_WARN1("ATTC subsystem not registered for opcode: 0x%02x", opcode);
+
+  /* Send error */
+  attErrRsp(pCcb, slot, opcode, 0, ATT_ERR_NOT_SUP);
 }
 
 /*************************************************************************************************/
@@ -484,8 +546,8 @@ void AttHandlerInit(wsfHandlerId_t handlerId)
   /* initialize control block */
   attCb.pClient = &attFcnDefault;
   attCb.pServer = &attFcnDefault;
-  attCb.pEnServer = &eattFcnDefault;
-  attCb.pEnClient = &eattFcnDefault;
+  attCb.pEnServer = &attEattFcnDefault;
+  attCb.pEnClient = &attEattFcnDefault;
 
   /* Register with L2C */
   L2cRegister(L2C_CID_ATT,  attL2cDataCback, attL2cCtrlCback);

@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2009-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@
 
 #include <string.h>
 #include "wsf_types.h"
+#include "wsf_math.h"
 #include "wsf_msg.h"
 #include "wsf_trace.h"
 #include "wsf_assert.h"
@@ -57,7 +58,18 @@
 #endif
 
 /**************************************************************************************************
-  Local Variables
+  Local Functions
+**************************************************************************************************/
+
+static void hciCoreIsoNullOpenCloseFunction(uint16_t handle);
+static void *hciCoreNullFindByHandleFunction(uint16_t handle);
+static uint8_t *hciCoreNullAssembleIsoFunction(uint8_t *pData);
+static void hciCoreNullOpenGroupFunction(uint8_t id, uint8_t count, uint16_t *pHandles, uint8_t role);
+static void hciCoreNullCloseGroupFUnction(uint8_t id);
+static void hciCoreNullIsoTxReady(uint8_t bufs);
+
+/**************************************************************************************************
+  Global Variables
 **************************************************************************************************/
 
 /* Event mask */
@@ -142,9 +154,28 @@ uint64_t hciLeSupFeatCfg =
   HCI_LE_SUP_FEAT_STABLE_MOD_IDX_TRANSMITTER |    /* Stable Modulation Index - Transmitter supported */
   HCI_LE_SUP_FEAT_STABLE_MOD_IDX_RECEIVER;        /* Stable Modulation Index - Receiver supported */
 
-/**************************************************************************************************
-  Global Variables
-**************************************************************************************************/
+/* Default ISO function inteface */
+static const isoFcnIf_t isoFcnDefault =
+{
+  hciCoreIsoNullOpenCloseFunction,
+  hciCoreIsoNullOpenCloseFunction,
+  hciCoreNullFindByHandleFunction,
+  hciCoreNullOpenGroupFunction,
+  hciCoreNullCloseGroupFUnction
+};
+
+/* Component function interface table indexed ISO type */
+isoFcnIf_t *isoFcnIfTbl[HCI_CORE_TOTAL_ISO_TYPES] =
+{
+  (isoFcnIf_t *) &isoFcnDefault,                /* HCI_CORE_CIS */
+  (isoFcnIf_t *) &isoFcnDefault,                /* HCI_CORE_BIS */
+};
+
+/* Assembling received ISO data */
+hciIsoReassembleCb_t hciIsoReassembleCb = hciCoreNullAssembleIsoFunction;
+
+/* Servicing ISO TX data path */
+hciIsoTxReadyCb_t hciIsoTxReadyCb = hciCoreNullIsoTxReady;
 
 /* Control block */
 hciCoreCb_t hciCoreCb;
@@ -311,120 +342,6 @@ void hciCoreConnClose(uint16_t handle)
 
 /*************************************************************************************************/
 /*!
- *  \brief  Allocate a CIS connection structure.
- *
- *  \param  handle  Connection handle.
- *
- *  \return None.
- */
-/*************************************************************************************************/
-static void hciCoreCisAlloc(uint16_t handle)
-{
-  uint8_t         i;
-  hciCoreCis_t   *pCis = hciCoreCb.cis;
-
-  /* find available connection struct */
-  for (i = DM_CIS_MAX; i > 0; i--, pCis++)
-  {
-    if (pCis->handle == HCI_HANDLE_NONE)
-    {
-      /* allocate and initialize */
-      pCis->handle = handle;
-
-      return;
-    }
-  }
-
-  HCI_TRACE_WARN0("HCI cis struct alloc failure");
-}
-
-/*************************************************************************************************/
-/*!
- *  \brief  Free a CIS connection structure.
- *
- *  \param  handle  Connection handle.
- *
- *  \return None.
- */
-/*************************************************************************************************/
-static void hciCoreCisFree(uint16_t handle)
-{
-  uint8_t         i;
-  hciCoreCis_t   *pCis = hciCoreCb.cis;
-
-  /* find connection struct */
-  for (i = DM_CIS_MAX; i > 0; i--, pCis++)
-  {
-    if (pCis->handle == handle)
-    {
-      /* free structure */
-      pCis->handle = HCI_HANDLE_NONE;
-
-      return;
-    }
-  }
-
-  HCI_TRACE_WARN1("hciCoreCisFree handle not found:%u", handle);
-}
-
-/*************************************************************************************************/
-/*!
- *  \brief  Get a CIS connection structure by handle
- *
- *  \param  handle  Connection handle.
- *
- *  \return Pointer to CIS connection structure or NULL if not found.
- */
-/*************************************************************************************************/
-hciCoreCis_t *hciCoreCisByHandle(uint16_t handle)
-{
-  uint8_t         i;
-  hciCoreCis_t   *pCis = hciCoreCb.cis;
-
-  /* find available connection struct */
-  for (i = DM_CIS_MAX; i > 0; i--, pCis++)
-  {
-    if (pCis->handle == handle)
-    {
-      return pCis;
-    }
-  }
-
-  return NULL;
-}
-
-/*************************************************************************************************/
-/*!
- *  \brief  Perform internal processing on HCI CIS connection open.
- *
- *  \param  handle  Connection handle.
- *
- *  \return None.
- */
-/*************************************************************************************************/
-void hciCoreCisOpen(uint16_t handle)
-{
-  /* allocate CIS connection structure */
-  hciCoreCisAlloc(handle);
-}
-
-/*************************************************************************************************/
-/*!
- *  \brief  Perform internal processing on HCI CIS connection close.
- *
- *  \param  handle  Connection handle.
- *
- *  \return None.
- */
-/*************************************************************************************************/
-void hciCoreCisClose(uint16_t handle)
-{
-  /* free CIS connection structure */
-  hciCoreCisFree(handle);
-}
-
-/*************************************************************************************************/
-/*!
  *  \brief  Send ACL data to transport.
  *
  *  \param  pConn    Pointer to connection structure.
@@ -469,15 +386,7 @@ void hciCoreTxReady(uint8_t bufs)
   uint16_t        len;
   hciCoreConn_t   *pConn;
 
-  /* increment available buffers, with ceiling */
-  if (bufs > 0)
-  {
-    hciCoreCb.availBufs += bufs;
-    if (hciCoreCb.availBufs > hciCoreCb.numBufs)
-    {
-      hciCoreCb.availBufs = hciCoreCb.numBufs;
-    }
-  }
+  hciCoreCb.availBufs = WSF_MIN(hciCoreCb.availBufs + bufs, hciCoreCb.numBufs);
 
   /* service ACL data queue and send as many buffers as we can */
   while (hciCoreCb.availBufs > 0)
@@ -822,11 +731,6 @@ void HciCoreInit(void)
     hciCoreCb.conn[i].handle = HCI_HANDLE_NONE;
   }
 
-  for (i = 0; i < DM_CIS_MAX; i++)
-  {
-    hciCoreCb.cis[i].handle = HCI_HANDLE_NONE;
-  }
-
   hciCoreCb.maxRxAclLen = HCI_MAX_RX_ACL_LEN;
   hciCoreCb.aclQueueHi = HCI_ACL_QUEUE_HI;
   hciCoreCb.aclQueueLo = HCI_ACL_QUEUE_LO;
@@ -953,8 +857,8 @@ void HciSendAclData(uint8_t *pData)
   /* look up connection structure */
   if ((pConn = hciCoreConnByHandle(handle)) != NULL)
   {
-    /* if queue empty and buffers available */
-    if (WsfQueueEmpty(&hciCoreCb.aclQueue) && hciCoreCb.availBufs > 0)
+    /* if queue empty, buffers available and no HCI fragmentation in progress */
+    if (WsfQueueEmpty(&hciCoreCb.aclQueue) && (hciCoreCb.availBufs > 0) && (pConn->fragmenting == FALSE))
     {
       /* send data */
       hciCoreTxAclStart(pConn, len, pData);
@@ -983,4 +887,95 @@ void HciSendAclData(uint8_t *pData)
 
     HCI_TRACE_WARN1("HciSendAclData discarding buffer, handle=%u", handle);
   }
+}
+
+/**************************************************************************************************
+  ISO EMPTY FUNCTIONS
+**************************************************************************************************/
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Default empty function for closing ISO control blocks.
+ *
+ *  \param  handle  ISO handle
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+static void hciCoreIsoNullOpenCloseFunction(uint16_t handle)
+{
+  return;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Default empty function for finding ISO handle.
+ *
+ *  \param  handle  ISO handle
+ *
+ *  \return Pointer to CIS connection structure or NULL if not found.
+ */
+/*************************************************************************************************/
+static void *hciCoreNullFindByHandleFunction(uint16_t handle)
+{
+  return NULL;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Default empty function for opening a ISO group
+ *
+ *  \param  id          Group identifier.
+ *  \param  count       Count of handles associated.
+ *  \param  pHandles    Associated handles.
+ *  \param  role        Role of group.
+ *
+ */
+/*************************************************************************************************/
+static void hciCoreNullOpenGroupFunction(uint8_t id, uint8_t count, uint16_t *pHandles, uint8_t role)
+{
+  return;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Default empty function for closing a ISO group
+ *
+ *  \param  id          Group identifier.
+ *
+ */
+/*************************************************************************************************/
+static void hciCoreNullCloseGroupFUnction(uint8_t id)
+{
+  return;
+}
+/*************************************************************************************************/
+/*!
+ *  \brief  Default empty function for assembling received ISO data.
+ *
+ *  \param  handle  ISO handle
+ *
+ *  \return pointer to ISO packet to send, or NULL if no packet to send.
+ */
+/*************************************************************************************************/
+static uint8_t *hciCoreNullAssembleIsoFunction(uint8_t *pData)
+{
+  /* discard buffer */
+  WsfMsgFree(pData);
+
+  return NULL;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Default empty function for servicing the ISO TX data path.
+ *
+ *  \param  handle  ISO handle
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+static void hciCoreNullIsoTxReady(uint8_t bufs)
+{
+  return;
 }

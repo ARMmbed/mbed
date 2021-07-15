@@ -504,6 +504,7 @@ static void dmCisCigSmActRemoveFailed(dmCisCigCb_t *pCigCb, dmCisMsg_t *pMsg)
 static void dmCisSmActOpen(dmCisCcb_t *pCcb, dmCisMsg_t *pMsg)
 {
   dmCisApiOpen_t  *pOpen = &pMsg->apiOpen;
+  uint16_t        aclHandle[DM_CIS_MAX];
   uint8_t         status = HCI_SUCCESS;
 
   /* if the previous create CIS isn't pending or hasn't been cancelled */
@@ -514,9 +515,9 @@ static void dmCisSmActOpen(dmCisCcb_t *pCcb, dmCisMsg_t *pMsg)
       dmConnCcb_t *pConnCcb;
 
       /* if the ACL connection handle doesn't exist */
-      if ((pConnCcb = dmConnCcbByHandle(pOpen->pAclHandle[i])) == NULL)
+      if ((pConnCcb = dmConnCcbById(pOpen->pConnId[i])) == NULL)
       {
-        DM_TRACE_WARN1("dmCisSmActOpen: ACL handle not found (handle:%d)", pOpen->pAclHandle[i]);
+        DM_TRACE_WARN1("dmCisSmActOpen: ACL connection id not found (connId:%d)", pOpen->pConnId[i]);
         status = HCI_ERR_UNKNOWN_HANDLE;
         break;
       }
@@ -536,6 +537,9 @@ static void dmCisSmActOpen(dmCisCcb_t *pCcb, dmCisMsg_t *pMsg)
         status = HCI_ERR_UNKNOWN_HANDLE;
         break;
       }
+
+      /* save ACL handle */
+      aclHandle[i] = pConnCcb->handle;
     }
   }
   else
@@ -548,7 +552,7 @@ static void dmCisSmActOpen(dmCisCcb_t *pCcb, dmCisMsg_t *pMsg)
   {
     HciCisCreateCisParams_t createCisParam;
 
-    createCisParam.pAclHandle = pOpen->pAclHandle;
+    createCisParam.pAclHandle = aclHandle;
     createCisParam.pCisHandle = pOpen->pCisHandle;
 
     /* create CIS */
@@ -562,7 +566,7 @@ static void dmCisSmActOpen(dmCisCcb_t *pCcb, dmCisMsg_t *pMsg)
       if ((pCisCcb = dmCisCcbByHandle(pOpen->pCisHandle[i])) != NULL)
       {
         pCisCcb->state = pCcb->state;
-        pCisCcb->aclHandle = pOpen->pAclHandle[i];
+        pCisCcb->aclHandle = aclHandle[i];
       }
     }
   }
@@ -760,18 +764,18 @@ void DmCisCigRemove(uint8_t cigId)
  *
  *  \param  numCis      Total number of CISes to be created.
  *  \param  pCisHandle  List of connection handles of CISes.
- *  \param  pAclHandle  List of connection handles of ACLs.
+ *  \param  pConnId     List of DM connection identifiers.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-void DmCisOpen(uint8_t numCis, uint16_t *pCisHandle, uint16_t *pAclHandle)
+void DmCisOpen(uint8_t numCis, uint16_t *pCisHandle, dmConnId_t *pConnId)
 {
   dmCisApiOpen_t *pMsg;
 
   WSF_ASSERT((numCis > 0 ) && (numCis <= DM_CIS_MAX));
 
-  if ((pMsg = WsfMsgAlloc(sizeof(dmCisApiOpen_t) + (numCis * 2 * sizeof(uint16_t)))) != NULL)
+  if ((pMsg = WsfMsgAlloc(sizeof(dmCisApiOpen_t) + (numCis * (sizeof(uint16_t) + sizeof(dmConnId_t))))) != NULL)
   {
     pMsg->hdr.event = DM_CIS_MSG_API_OPEN;
     pMsg->hdr.param = pCisHandle[0];
@@ -780,8 +784,8 @@ void DmCisOpen(uint8_t numCis, uint16_t *pCisHandle, uint16_t *pAclHandle)
     pMsg->pCisHandle = (uint16_t *) (pMsg + 1);
     memcpy(pMsg->pCisHandle, pCisHandle, (numCis * sizeof(uint16_t)));
 
-    pMsg->pAclHandle = (uint16_t *) (pMsg->pCisHandle + numCis);
-    memcpy(pMsg->pAclHandle, pAclHandle, (numCis * sizeof(uint16_t)));
+    pMsg->pConnId = (dmConnId_t *) (pMsg->pCisHandle + numCis);
+    memcpy(pMsg->pConnId, pConnId, (numCis * sizeof(dmConnId_t)));
 
     WsfMsgSend(dmCb.handlerId, pMsg);
   }
@@ -867,7 +871,7 @@ void DmCisCigSetSca(uint8_t cigId, uint8_t sca)
  *  \return None.
  */
 /*************************************************************************************************/
-void DmCisCigSetPackingFraming(uint8_t cigId, uint8_t packing, uint32_t framing)
+void DmCisCigSetPackingFraming(uint8_t cigId, uint8_t packing, uint8_t framing)
 {
   dmCisCigCb_t  *pCigCb;
 

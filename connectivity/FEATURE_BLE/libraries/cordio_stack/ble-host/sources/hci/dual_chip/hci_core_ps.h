@@ -24,11 +24,11 @@
 #ifndef HCI_CORE_PS_H
 #define HCI_CORE_PS_H
 
+#include "wsf_types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include "wsf_types.h"
 
 /**************************************************************************************************
   Function Declarations

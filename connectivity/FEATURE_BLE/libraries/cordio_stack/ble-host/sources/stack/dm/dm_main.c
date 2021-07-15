@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2009-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -123,10 +123,10 @@ static const uint8_t dmHciToIdTbl[] =
   DM_ID_ISO,                                    /* HCI_READ_LOCAL_SUP_CTR_DLY_CMD_CMPL_CBACK_EVT */
   DM_ID_BIS,                                    /* HCI_LE_CREATE_BIG_CMPL_CBACK_EVT */
   DM_ID_BIS,                                    /* HCI_LE_TERM_BIG_CMPL_CBACK_EVT */
-  DM_ID_BIS_SYNC,                               /* HCI_LE_BIG_SYNC_EST_CBACK_EVT */   
+  DM_ID_BIS_SYNC,                               /* HCI_LE_BIG_SYNC_EST_CBACK_EVT */
   DM_ID_BIS_SYNC,                               /* HCI_LE_BIG_SYNC_LOST_CBACK_EVT */
   DM_ID_BIS_SYNC,                               /* HCI_LE_BIG_TERM_SYNC_CMPL_CBACK_EVT */
-  DM_ID_BIS_SYNC                                /* HCI_LE_BIG_INFO_ADV_REPORT_CBACK_EVT */
+  DM_ID_SYNC                                    /* HCI_LE_BIG_INFO_ADV_REPORT_CBACK_EVT */
 #if MBED_CONF_CORDIO_ROUTE_UNHANDLED_COMMAND_COMPLETE_EVENTS
   , DM_ID_DEV                                   /* HCI_UNHANDLED_CMD_COMPL_CBACK_EVT */
 #endif
@@ -208,8 +208,8 @@ static const uint16_t dmEvtCbackLen[] =
   sizeof(HciLeCisEstEvt_t),                    /* DM_CIS_OPEN_IND */
   sizeof(hciDisconnectCmplEvt_t),              /* DM_CIS_CLOSE_IND */
   sizeof(HciLeReqPeerScaCmplEvt_t_t),          /* DM_REQ_PEER_SCA_IND */
-  sizeof(hciLeSetupIsoDataPathCmdCmplEvt_t),   /* DM_ISO_DATA_PATH_SETUP_IND */
-  sizeof(hciLeRemoveIsoDataPathCmdCmplEvt_t),  /* DM_ISO_DATA_PATH_REMOVE_IND */
+  sizeof(dmSetupIsoDataPathEvt_t),             /* DM_ISO_DATA_PATH_SETUP_IND */
+  sizeof(dmRemoveIsoDataPathEvt_t),            /* DM_ISO_DATA_PATH_REMOVE_IND */
   sizeof(hciConfigDataPathCmdCmplEvt_t),       /* DM_DATA_PATH_CONFIG_IND */
   sizeof(hciReadLocalSupCodecsCmdCmplEvt_t),   /* DM_READ_LOCAL_SUP_CODECS_IND */
   sizeof(hciReadLocalSupCodecCapCmdCmplEvt_t), /* DM_READ_LOCAL_SUP_CODEC_CAP_IND */

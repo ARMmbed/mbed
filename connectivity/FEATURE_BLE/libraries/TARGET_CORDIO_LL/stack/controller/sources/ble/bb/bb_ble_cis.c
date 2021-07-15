@@ -80,10 +80,10 @@ void BbBleCisTxData(PalBbBleTxBufDesc_t descs[], uint8_t cnt)
 /*************************************************************************************************/
 void BbBleCisRxData(uint8_t *pBuf, uint16_t len)
 {
-  WSF_ASSERT(!bbBleCb.pRxCisDataBuf);
+  WSF_ASSERT(!bbBleCb.pRxDataBuf);
 
-  bbBleCb.pRxCisDataBuf = pBuf;
-  bbBleCb.rxCisDataLen = len;
+  bbBleCb.pRxDataBuf = pBuf;
+  bbBleCb.rxDataLen = len;
 
   if ((BbGetCurrentBod()->prot.pBle->chan.opType == BB_BLE_OP_SLV_CIS_EVENT) &&
       (bbBleCb.evtState == 0))
@@ -95,7 +95,7 @@ void BbBleCisRxData(uint8_t *pBuf, uint16_t len)
 
 /*************************************************************************************************/
 /*!
- *  \brief      Get connection packet statistics.
+ *  \brief      Get CIS packet statistics.
  */
 /*************************************************************************************************/
 void BbBleGetCisStats(BbBleDataPktStats_t *pStats)

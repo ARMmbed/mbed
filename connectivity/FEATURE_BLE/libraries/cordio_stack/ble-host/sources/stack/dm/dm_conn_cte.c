@@ -1,4 +1,4 @@
-﻿/*************************************************************************************************/
+/*************************************************************************************************/
 /*!
  *  \file
  *
@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2018-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -412,11 +412,12 @@ static void dmConnCteActRxSampleStart(dmConnCteMsg_t *pMsg)
     /* if currently idle */
     if (pCteCb->rxSampleState == DM_CONN_CTE_STATE_IDLE)
     {
+      pCteCb->rxSampleState = DM_CONN_CTE_STATE_STARTING;
+
+      /* set connection CTE receive parameters, and enable Connection IQ sampling */
       HciLeSetConnCteRxParamsCmd(pCcb->handle, TRUE, pMsg->rxSampleStart.slotDurations,
                                  pMsg->rxSampleStart.switchPatternLen,
                                  pMsg->rxSampleStart.pAntennaIDs);
-
-      pCteCb->rxSampleState = DM_CONN_CTE_STATE_STARTING;
     }
     else
     {
@@ -446,9 +447,10 @@ static void dmConnCteActRxSampleStop(dmConnCteMsg_t *pMsg)
     /* if currently sampling */
     if (pCteCb->rxSampleState == DM_CONN_CTE_STATE_SAMPLING)
     {
-      HciLeSetConnCteRxParamsCmd(pCcb->handle, FALSE, 0, 0, NULL);
-
       pCteCb->rxSampleState = DM_CONN_CTE_STATE_STOPPING;
+
+      /* disable Connection IQ sampling */
+      HciLeSetConnCteRxParamsCmd(pCcb->handle, FALSE, 0, 0, NULL);
     }
     else
     {
@@ -499,10 +501,11 @@ static void dmConnCteActReqStart(dmConnCteMsg_t *pMsg)
     /* if currently idle */
     if (pCteCb->reqState == DM_CONN_CTE_STATE_IDLE)
     {
+      pCteCb->reqState = DM_CONN_CTE_STATE_STARTING;
+
+      /* enable connection CTE request */
       HciLeConnCteReqEnableCmd(pCcb->handle, TRUE, pMsg->reqStart.cteReqInt,
                                pMsg->reqStart.reqCteLen, pMsg->reqStart.reqCteType);
-
-      pCteCb->reqState = DM_CONN_CTE_STATE_STARTING;
     }
     else
     {
@@ -532,9 +535,10 @@ static void dmConnCteActReqStop(dmConnCteMsg_t *pMsg)
     /* if currently initiating */
     if (pCteCb->reqState == DM_CONN_CTE_STATE_INITIATING)
     {
-      HciLeConnCteReqEnableCmd(pCcb->handle, FALSE, 0, 0, 0);
-
       pCteCb->reqState = DM_CONN_CTE_STATE_STOPPING;
+
+      /* disable connection CTE request */
+      HciLeConnCteReqEnableCmd(pCcb->handle, FALSE, 0, 0, 0);
     }
     else
     {
@@ -564,9 +568,10 @@ void dmConnCteActRspStart(dmConnCteMsg_t *pMsg)
     /* if currently idle */
     if (pCteCb->rspState == DM_CONN_CTE_STATE_IDLE)
     {
-      HciLeConnCteRspEnableCmd(pCcb->handle, TRUE);
-
       pCteCb->rspState = DM_CONN_CTE_STATE_STARTING;
+
+      /* enable connection CTE response */
+      HciLeConnCteRspEnableCmd(pCcb->handle, TRUE);
     }
     else
     {
@@ -596,9 +601,10 @@ void dmConnCteActRspStop(dmConnCteMsg_t *pMsg)
     /* if currently responding */
     if (pCteCb->rspState == DM_CONN_CTE_STATE_RESPONDING)
     {
-      HciLeConnCteRspEnableCmd(pCcb->handle, FALSE);
-
       pCteCb->rspState = DM_CONN_CTE_STATE_STOPPING;
+
+      /* disable connection CTE response */
+      HciLeConnCteRspEnableCmd(pCcb->handle, FALSE);
     }
     else
     {

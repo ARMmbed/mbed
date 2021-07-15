@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2011-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -70,8 +70,16 @@ extern "C" {
 #define ATT_UUID_PULSE_OXIMITER_SERVICE     0x1822    /*!< \brief Pulse Oximeter Service */
 #define ATT_UUID_MESH_PRV_SERVICE           0x1827    /*!< \brief Mesh Provisioning Service */
 #define ATT_UUID_MESH_PROXY_SERVICE         0x1828    /*!< \brief Mesh Proxy Service */
-#define ATT_UUID_CONSTANT_TONE_SERVICE      0x7F7F    /*!< \brief Constant Tone Extension */
-
+#define ATT_UUID_AUDIO_INPUT_CTRL_SERVICE   0x1843    /*!< \brief Audio Input Control Service */
+#define ATT_UUID_VOLUME_CTRL_SERVICE        0x1844    /*!< \brief Volume Control Service */
+#define ATT_UUID_VOLUME_OFFSET_CTRL_SERVICE 0x1845    /*!< \brief Volume Offset Control Service */
+#define ATT_UUID_CONSTANT_TONE_SERVICE      0x184A    /*!< \brief Constant Tone Extension */
+#define ATT_UUID_MICROPHONE_CTRL_SERVICE    0x8FD4    /*!< \brief Microphone Control Service */
+#define ATT_UUID_PUB_AUDIO_CAP_SERVICE      0x8FD9    /*!< \brief Published Audio Capability Service */
+#define ATT_UUID_AUDIO_STRM_CTRL_SERVICE    0x8FDA    /*!< \brief Audio Stream Control Service */
+#define ATT_UUID_BCAST_AUDIO_SCAN_SERVICE   0x8FDB    /*!< \brief Broadcast Audio Scan Service */
+#define ATT_UUID_BASIC_AUDIO_ANNC_SERVICE   0x8FDC    /*!< \brief Basic Audio Announcement Service */
+#define ATT_UUID_BCAST_AUDIO_ANNC_SERVICE   0x8FDD    /*!< \brief Broadcast Audio Announcement Service */
 /**@}*/
 
 /** \name GATT UUIDs
@@ -210,12 +218,36 @@ extern "C" {
 #define ATT_UUID_CLIENT_SUPPORTED_FEATURES  0x2B29    /*!< \brief Client Supported Features */
 #define ATT_UUID_DATABASE_HASH              0x2B2A    /*!< \brief Database Hash */
 #define ATT_UUID_SERVER_SUPPORTED_FEATURES  0x2B3A    /*!< \brief Server Supported Features */
-#define ATT_UUID_CTE_ENABLE                 0x7F80    /*!< \brief Constant Tone Extension enable */
-#define ATT_UUID_CTE_MIN_LEN                0x7F81    /*!< \brief Constant Tone Extension minimum length */
-#define ATT_UUID_CTE_TX_CNT                 0x7F82    /*!< \brief Constant Tone Extension transmit count */
-#define ATT_UUID_CTE_TX_DURATION            0x7F83    /*!< \brief Constant Tone Extension transmit duration */
-#define ATT_UUID_CTE_INTERVAL               0x7F84    /*!< \brief Constant Tone Extension interval */
-#define ATT_UUID_CTE_PHY                    0x7F85    /*!< \brief Constant Tone Extension PHY */
+#define ATT_UUID_AIC_INPUT_STATE            0x2B77    /*!< \brief Audio Input Control Input State */
+#define ATT_UUID_AIC_GAIN_SETTING_ATTR      0x2B78    /*!< \brief Audio Input Control Gain Setting Attributes */
+#define ATT_UUID_AIC_INPUT_TYPE             0x2B79    /*!< \brief Audio Input Control Input Type */
+#define ATT_UUID_AIC_INPUT_STATUS           0x2B7A    /*!< \brief Audio Input Control Input Status */
+#define ATT_UUID_AIC_AUDIO_INPUT_CTRL       0x2B7B    /*!< \brief Audio Input Control Audio Input Control */
+#define ATT_UUID_AIC_AUDIO_INPUT_DESC       0x2B7C    /*!< \brief Audio Input Control Audio Input Description */
+#define ATT_UUID_VOLUME_STATE               0x2B7D    /*!< \brief Volume Control State */
+#define ATT_UUID_VOLUME_CONTROL_POINT       0x2B7E    /*!< \brief Volume Control Point */
+#define ATT_UUID_VOLUME_FLAGS               0x2B7F    /*!< \brief Volume Control Flags */
+#define ATT_UUID_VOLUME_OFFSET_STATE        0x2B80    /*!< \brief Volume Offset State */
+#define ATT_UUID_AUDIO_LOCATION             0x2B81    /*!< \brief Audio Location */
+#define ATT_UUID_VOLUME_OFFSET_CONTROL_PT   0x2B82    /*!< \brief Volume Offset Control Point */
+#define ATT_UUID_AUDIO_OUT_DESC             0x2B83    /*!< \brief Audio Output Description */
+#define ATT_UUID_CTE_ENABLE                 0x2BAD    /*!< \brief Constant Tone Extension enable */
+#define ATT_UUID_CTE_MIN_LEN                0x2BAE    /*!< \brief Constant Tone Extension minimum length */
+#define ATT_UUID_CTE_TX_CNT                 0x2BAF    /*!< \brief Constant Tone Extension transmit count */
+#define ATT_UUID_CTE_TX_DURATION            0x2BB0    /*!< \brief Constant Tone Extension transmit duration */
+#define ATT_UUID_CTE_INTERVAL               0x2BB1    /*!< \brief Constant Tone Extension interval */
+#define ATT_UUID_CTE_PHY                    0x2BB2    /*!< \brief Constant Tone Extension PHY */
+#define ATT_UUID_MC_MUTE                    0x8FE1    /*!< \brief Microphone Control Mute */
+#define ATT_UUID_SNK_PAC                    0x8F96    /*!< \brief Sink PAC */
+#define ATT_UUID_SNK_AUDIO_LOC              0x8F97    /*!< \brief Sink audio locations */
+#define ATT_UUID_SRC_PAC                    0x8F98    /*!< \brief Source PAC */
+#define ATT_UUID_SRC_AUDIO_LOC              0x8F99    /*!< \brief Source audio locations */
+#define ATT_UUID_AUDIO_CONT_AVAIL           0x8F9A    /*!< \brief Audio content availability */
+#define ATT_UUID_SUP_AUDIO_CONT             0x8F9B    /*!< \brief Supported audio content */
+#define ATT_UUID_ASE                        0x8F9C    /*!< \brief Audio Stream Endpoint (ASE) */
+#define ATT_UUID_ASE_CP                     0x8F9D    /*!< \brief Audio Stream Endpoint (ASE) Control Point */
+#define ATT_UUID_BAS_CP                     0x8F9E    /*!< \brief Broadcast Audio Scan (BAS) Control Point */
+#define ATT_UUID_BCAST_RX_STATE             0x8F9F    /*!< \brief Broadcast Receive State */
 /**@}*/
 
 /** \name GATT Unit UUIDs
@@ -381,7 +413,7 @@ extern const uint8_t attNwaSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Network Ava
 extern const uint8_t attWdsSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Watchdog Service */
 extern const uint8_t attHrsSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Heart Rate Service */
 extern const uint8_t attPassSvcUuid[ATT_16_UUID_LEN];    /*!< \brief Phone Alert Status Service */
-extern const uint8_t attBasSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Battery Service */
+extern const uint8_t attBattSvcUuid[ATT_16_UUID_LEN];    /*!< \brief Battery Service */
 extern const uint8_t attBpsSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Blood Pressure Service */
 extern const uint8_t attAnsSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Alert Notification Service */
 extern const uint8_t attHidSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Human Interface Device Service */
@@ -392,7 +424,15 @@ extern const uint8_t attMprvSvcUuid[ATT_16_UUID_LEN];    /*!< \brief Mesh Provis
 extern const uint8_t attMprxSvcUuid[ATT_16_UUID_LEN];    /*!< \brief Mesh Proxy Service */
 extern const uint8_t attWssSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Weight scale service */
 extern const uint8_t attCteSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Constant Tone Extension service */
-
+extern const uint8_t attAicsSvcUuid[ATT_16_UUID_LEN];    /*!< \brief Audio Input Control service */
+extern const uint8_t attMicsSvcUuid[ATT_16_UUID_LEN];    /*!< \brief Microphone Control service */
+extern const uint8_t attVcsSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Volume Control service */
+extern const uint8_t attVocsSvcUuid[ATT_16_UUID_LEN];    /*!< \brief Volume Offset Control service */
+extern const uint8_t attPacSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Audio capability service */
+extern const uint8_t attAscSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Audio Stream Endpoint Service */
+extern const uint8_t attBasSvcUuid[ATT_16_UUID_LEN];     /*!< \brief Broadcast Audio Scan Service */
+extern const uint8_t attBscAaSvcUuid[ATT_16_UUID_LEN];   /*!< \brief Basic Audio Announcement Service */
+extern const uint8_t attBcstAaSvcUuid[ATT_16_UUID_LEN];  /*!< \brief Broadcast Audio Announcement Service */
 /**@}*/
 
 /** \name GATT UUID Variables
@@ -536,7 +576,30 @@ extern const uint8_t attCteTxDurChUuid[ATT_16_UUID_LEN]; /*!< \brief Constant To
 extern const uint8_t attCteIntChUuid[ATT_16_UUID_LEN];   /*!< \brief Constant Tone Extension interval */
 extern const uint8_t attCtePhyChUuid[ATT_16_UUID_LEN];   /*!< \brief Constant Tone Extension PHY */
 extern const uint8_t attSsfChUuid[ATT_16_UUID_LEN];     /*!< \brief Server supported features */
-
+extern const uint8_t attAicsStChUuid[ATT_16_UUID_LEN];   /*!< \brief Audio Input Control input status */
+extern const uint8_t attAicsGsaChUuid[ATT_16_UUID_LEN];  /*!< \brief Audio Input Control gain settings attributes */
+extern const uint8_t attAicsItChUuid[ATT_16_UUID_LEN];   /*!< \brief Audio Input Control input type */
+extern const uint8_t attAicsStatChUuid[ATT_16_UUID_LEN]; /*!< \brief Audio Input Control input status */
+extern const uint8_t attAicsAicChUuid[ATT_16_UUID_LEN];  /*!< \brief Audio Input Control audio input control point */
+extern const uint8_t attAicsAidhUuid[ATT_16_UUID_LEN];   /*!< \brief Audio Input Control audio input description */
+extern const uint8_t attMicsMuteChUuid[ATT_16_UUID_LEN]; /*!< \brief Microphone Control mute */
+extern const uint8_t attVcsStateChUuid[ATT_16_UUID_LEN]; /*!< \brief Volume Control state */
+extern const uint8_t attVcsCpChUuid[ATT_16_UUID_LEN];    /*!< \brief Volume Control Point */
+extern const uint8_t attVcsFlagsChUuid[ATT_16_UUID_LEN]; /*!< \brief Volume Control flags */
+extern const uint8_t attVocsStateChUuid[ATT_16_UUID_LEN];/*!< \brief Volume Offset Control state */
+extern const uint8_t attVocsLocChUuid[ATT_16_UUID_LEN];  /*!< \brief Volume Offset Control audio location */
+extern const uint8_t attVocsCpChUuid[ATT_16_UUID_LEN];   /*!< \brief Volume Offset Control control point */
+extern const uint8_t attVocsDescChUuid[ATT_16_UUID_LEN]; /*!< \brief Volume Offset Control description */
+extern const uint8_t attSnkPacChUuid[ATT_16_UUID_LEN];   /*!< \brief Sink PAC */
+extern const uint8_t attSnkAudLocChUuid[ATT_16_UUID_LEN];/*!< \brief Sink audio locations */
+extern const uint8_t attSrcPacChUuid[ATT_16_UUID_LEN];   /*!< \brief Source PAC */
+extern const uint8_t attSrcAudLocChUuid[ATT_16_UUID_LEN];/*!< \brief Source audio locations */
+extern const uint8_t attAudCntAvChUuid[ATT_16_UUID_LEN]; /*!< \brief Audio Content Availability */
+extern const uint8_t attSupAudCntChUuid[ATT_16_UUID_LEN];/*!< \brief Supported Audio Content */
+extern const uint8_t attAseChUuid[ATT_16_UUID_LEN];      /*!< \brief Audio Stream Endpoint (ASE) */
+extern const uint8_t attAseCpChUuid[ATT_16_UUID_LEN];    /*!< \brief Audio Stream Endpoint (ASE) Control Point */
+extern const uint8_t attBasCpChUuid[ATT_16_UUID_LEN];    /*!< \brief Broadcast Audio Scan (BAS) Control Point */
+extern const uint8_t attBcRxStateChUuid[ATT_16_UUID_LEN];/*!< \brief Broadcast Receive State */
 /**@}*/
 
 /*! \} */    /* STACK_ATT_API */

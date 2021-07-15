@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2016-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -124,7 +124,7 @@ void DmAdvConfig(uint8_t advHandle, uint8_t advType, uint8_t peerAddrType, uint8
 
   WSF_ASSERT(advHandle < DM_NUM_ADV_SETS);
 
-  if ((pMsg = WsfMsgAlloc(sizeof(dmAdvApiConfig_t))) != NULL)
+  if ((pMsg = WsfMsgAlloc(sizeof(dmAdvApiSetData_t))) != NULL)
   {
     pMsg->hdr.event = DM_ADV_MSG_API_CONFIG;
     pMsg->advType = advType;

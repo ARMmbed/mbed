@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -147,6 +147,8 @@ enum
 #define LL_MAX_ADV_HANDLE       0xEF    /*!< Maximum advertising handle. */
 #define LL_MAX_ADV_SID          0x0F    /*!< Maximum advertising SID */
 
+#define LL_DID_NOT_PRESENT      0xFF    /*!< Periodic advertising data DID was not present. */
+
 #define LL_EXT_ADV_HDR_MIN_LEN      1       /*!< Minimum extended advertising header length (ExtHdrLen and AdvMode fields). */
 #define LL_EXT_ADV_HDR_MAX_LEN      64      /*!< Maximum extended advertising header length (ExtHdrLen, AdvMode fields and Extended header). */
 #define LL_EXT_HDR_FLAG_LEN         1       /*!< Length of extended header flag field */
@@ -167,7 +169,7 @@ enum
 #define LL_EXT_ADVB_NORMAL_TIME_S8  ((LL_BLE_US_PER_BYTE_CODED_S8 * (LL_EXT_ADVB_NORMAL_LEN - LL_ADV_HDR_LEN)) + LL_MIN_PKT_TIME_US_CODED_S8)
                                         /*!< Time for a Coded S8 advertising channel PDU with normal length. */
 
-#define LL_AUX_PTR_MAX_USEC     2457600 /*!< Maximum AuxPtr offset value in microseconds. */
+#define LL_AUX_PTR_MAX_USEC     2457300 /*!< Maximum AuxPtr offset value in microseconds. */
 
 #define LL_SYNC_MIN_TIMEOUT     0x000A  /*!< Minimum synchronization timeout. */
 #define LL_SYNC_MAX_TIMEOUT     0x4000  /*!< Maximum synchronization timeout. */
@@ -176,7 +178,7 @@ enum
 
 #define LL_PER_ADV_INT_MIN      0x0006  /*!< Minimum periodic advertising interval. */
 
-#define LL_SYNC_OFFS_ADJUST_USEC  LL_AUX_PTR_MAX_USEC   /*!< Sync offset adjust of 2.4576 seconds. */
+#define LL_SYNC_OFFS_ADJUST_USEC  2457600   /*!< Sync offset adjust of 2.4576 seconds. */
 #define LL_SYNC_INFO_LEN        18      /*!< Size of SyncInfo field. */
 
 /*! \brief      Periodic sync transfer receive mode. */
@@ -185,7 +187,8 @@ enum
   LL_SYNC_TRSF_MODE_OFF           = 0,    /*!< Periodic sync transfer receive is disabled. */
   LL_SYNC_TRSF_MODE_REP_DISABLED  = 1,    /*!< Periodic sync transfer receive is enabled, report event is disabled. */
   LL_SYNC_TRSF_MODE_REP_ENABLED   = 2,    /*!< Periodic sync transfer receive is enabled, report event is enabled. */
-  LL_SYNC_TRSF_MAX_MODE = LL_SYNC_TRSF_MODE_REP_ENABLED
+  LL_SYNC_TRSF_MODE_DUP_FILTERED  = 3,    /*!< Periodic sync transfer receive is enabled, report event is enabled, duplicates will be filtered if ADI field is present. */
+  LL_SYNC_TRSF_MAX_MODE           = LL_SYNC_TRSF_MODE_DUP_FILTERED
 };
 
 /*** Data PDU ***/
@@ -234,7 +237,12 @@ enum
   LL_PDU_CIS_TERM_IND           = 0x22, /*!< CIS terminate indication PDU. */
   LL_PDU_PWR_CTRL_REQ           = 0x23, /*!< Power Control request. */
   LL_PDU_PWR_CTRL_RSP           = 0x24, /*!< Power Control response. */
-  LL_PDU_PWR_CHNG_IND           = 0x25, /*!< Transmit power change indication PDU. */
+  LL_PDU_PWR_CHANGE_IND         = 0x25, /*!< Transmit power change indication PDU. */
+  /* --- Core Spec Sydney --- */
+  LL_PDU_SUBRATE_REQ            = 0x26, /*!< Connection subrate request PDU. */
+  LL_PDU_SUBRATE_IND            = 0x27, /*!< Connection subrate indication PDU. */
+  LL_PDU_CH_REPORTING_IND       = 0x28, /*!< Channel class reporting indication PDU. */
+  LL_PDU_CH_STATUS_IND          = 0x29, /*!< Channel status indication PDU. */
 
   LL_PDU_UNSPECIFIED            = 0xFF  /*!< Unspecified PDU. */
 };
@@ -275,7 +283,7 @@ enum
 #define LL_CIS_SDU_CONFIG_RSP_LEN     4       /*!< CIS SDU config response PDU length. */
 #define LL_PWR_CTRL_REQ_LEN           4       /*!< Power Control request PDU length. */
 #define LL_PWR_CTRL_RSP_LEN           5       /*!< Power Control response PDU length. */
-#define LL_PWR_CHNG_IND_LEN           5       /*!< Power Indication PDU length. */
+#define LL_PWR_CHANGE_IND_LEN         5       /*!< Power Indication PDU length. */
 
 #define LL_EMPTY_PDU_LEN              2       /*!< Length of an empty data PDU. */
 
@@ -288,6 +296,11 @@ enum
 
 #define LL_MAX_NUM_CHAN_DATA          37      /*!< Maximum number of used data channels. */
 #define LL_MIN_NUM_CHAN_DATA          2       /*!< Minimum number of used data channels. */
+/* --- Core Spec Sydney --- */
+#define LL_SUBRATE_REQ_LEN            11      /*!< LL Connection subrating request PDU length. */
+#define LL_SUBRATE_IND_LEN            11      /*!< LL Connection subrating indication PDU length. */
+#define LL_CH_REPORTING_LEN           4       /*!< Channel class reporting indication PDU length. */
+#define LL_CH_STATUS_LEN              11      /*!< Channel status indication PDU length. */
 
 /*! \brief      Data PDU LLID types. */
 enum
@@ -336,7 +349,7 @@ enum
 
 #define LL_MAX_DATA_TIME_MIN          328     /*!< Minimum value for maximum Data PDU time */
 #define LL_MAX_DATA_TIME_ABS_MAX      17040   /*!< Absolute maximum limit for maximum Data PDU time */
-#define LL_MAX_DATA_TIME_ABS_MAX_1M   2128    /*!< Absolute maximum limit for maximum Data PDU time (LE 1M PHY) */
+#define LL_MAX_DATA_TIME_ABS_MAX_1M   2120    /*!< Absolute maximum limit for maximum Data PDU time (LE 1M PHY). Core Spec Table 4.5: 2128 if CTE is supported, else 2120. */
 #define LL_MAX_DATA_TIME_ABS_MIN_CODED  2704  /*!< Absolute minimum limit for maximum Data PDU time (CODED PHY) */
 
 #define LL_T_PRT_SEC                  40      /*!< LLCP procedure response timeout in seconds. */
@@ -490,7 +503,7 @@ enum
 
 #define LL_MAX_TIFS_DEVIATION         2       /*!< Maximum TIFS deviation in microseconds. */
 
-#define LL_WW_RX_DEVIATION_USEC       16      /*!< RX deviation in microseconds for window widening. */
+#define LL_WW_RX_DEVIATION_USEC       16      /*!< Rx deviation in microseconds for window widening. */
 
 #define LL_30_USEC_OFFS_MAX_USEC      245730  /*!< Maximum value for 30 microseconds offset unit in microseconds. */
 
@@ -527,9 +540,6 @@ enum
 #define LL_BIG_TERMINATE_IND_PDU_LEN  3       /*!< BIG Terminate indication PDU length. */
 
 #define LL_BIG_MIN_INSTANT            6       /*!< Minimum number of BIG Events to apply a BIG Control PDU. */
-
-#define LL_BIG_CONTROL_ACCESS_ADDR    UINT32_C(0x7A412493)
-                                              /*!< BIG Control access address. */
 
 /*** Modify Sleep Clock Accuracy ***/
 
@@ -585,6 +595,31 @@ enum
 {
   LL_CODEC_TRANS_CIS_BIT = (1 << 2),          /*!< Codec supported over LE CIS. */
   LL_CODEC_TRANS_BIS_BIT = (1 << 3)           /*!< Codec supported over LE BIS. */
+};
+
+/*** Channel classification ***/
+
+#define LL_CH_RPT_SPACING_MIN            5    /*!< Minimum value for minimum spacing and max delay parameter. */
+#define LL_CH_RPT_SPACING_DEFAULT       10    /*!< Default spacing for channel reporting indication. */
+#define LL_CH_RPT_SPACING_MAX          150    /*!< Maximum value for minimum spacing and max delay parameter. */
+
+#define LL_CH_CLASS_BAD                  3    /*!< Channel classification is bad. */
+#define LL_CH_CLASS_UNKNOWN              0    /*!< Channel classification is unknown. */
+
+/*! \brief      Minimum and maximum time between LL_CHANNEL_STATUS_IND reports in 200ms units. */
+enum
+{
+  LCTR_MIN_CH_STATUS_INTERVAL        = 5,     /*!< Channel class reporting minimum (1 second). */
+  LCTR_MAX_CH_STATUS_INTERVAL        = 150,   /*!< Channel class reporting maximum (30 seconds). */
+};
+
+/*** Enhanced connection update ***/
+
+/*! \brief      Minimum and maximum subrate. */
+enum
+{
+  LCTR_MIN_SUBRATE                   = 1,     /*!< Minimum subrate. */
+  LCTR_MAX_SUBRATE                   = 500    /*!< Maximum subrate. */
 };
 
 #ifdef __cplusplus

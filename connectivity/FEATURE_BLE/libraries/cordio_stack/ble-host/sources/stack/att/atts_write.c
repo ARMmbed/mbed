@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2009-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -145,8 +145,7 @@ void attsProcWrite(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
     {
       /* err has been set; fail */
     }
-    /* verify write length within max length, fixed size writes within size must be allowed
-     * as described in CORE SPECIFICATION Version 5.2, Vol 3, Part F, 3.4.5.1 */
+    /* verify write length */
     else if (writeLen > pAttr->maxLen)
     {
       err = ATT_ERR_LENGTH;
@@ -157,6 +156,7 @@ void attsProcWrite(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
       if ((pAttr->settings & ATTS_SET_WRITE_CBACK) &&
           (pGroup->writeCback != NULL))
       {
+        /* call write callback */
         err = (*pGroup->writeCback)(pCcb->pMainCcb->connId, handle, opcode, 0, writeLen,
                                     pPacket, pAttr);
       }
@@ -207,7 +207,7 @@ void attsProcWrite(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
     }
     else
     {
-      attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_WRITE_REQ, handle, err);
+      attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_WRITE_REQ, handle, err);
     }
   }
 }
@@ -265,7 +265,7 @@ void attsProcPrepWriteReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
     err = ATT_ERR_LENGTH;
   }
   /* verify prepare write queue limit not reached */
-  else if (WsfQueueCount(&attsCb.prepWriteQueue[pCcb->connId - 1]) >= pAttCfg->numPrepWrites)
+  else if (WsfQueueCount(&attsCb.prepWriteQueue[pCcb->connId-1]) >= pAttCfg->numPrepWrites)
   {
     err = ATT_ERR_QUEUE_FULL;
   }
@@ -275,7 +275,7 @@ void attsProcPrepWriteReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
     err = ATT_ERR_RESOURCES;
   }
   else if ((pAttr->settings & ATTS_SET_WRITE_CBACK) &&
-          (pGroup->writeCback != NULL))
+           (pGroup->writeCback != NULL))
   {
     err = (*pGroup->writeCback)(pCcb->connId, handle, ATT_PDU_PREP_WRITE_REQ, 0, writeLen,
                                 pPacket, pAttr);
@@ -288,7 +288,7 @@ void attsProcPrepWriteReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
     pPrep->handle = handle;
     pPrep->offset = offset;
     memcpy(pPrep->packet, pPacket, writeLen);
-    WsfQueueEnq(&attsCb.prepWriteQueue[pCcb->connId - 1], pPrep);
+    WsfQueueEnq(&attsCb.prepWriteQueue[pCcb->connId-1], pPrep);
 
     /* allocate response buffer */
     if ((pBuf = attMsgAlloc(L2C_PAYLOAD_START + ATT_PREP_WRITE_RSP_LEN + writeLen)) != NULL)
@@ -306,7 +306,7 @@ void attsProcPrepWriteReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
 
   if (err)
   {
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_PREP_WRITE_REQ, handle, err);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_PREP_WRITE_REQ, handle, err);
   }
 }
 
@@ -342,7 +342,7 @@ void attsProcExecWriteReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
   else if (*pPacket == ATT_EXEC_WRITE_ALL)
   {
     /* iterate over prepare write queue and verify offset and length */
-    for (pPrep = attsCb.prepWriteQueue[pCcb->connId - 1].pHead; pPrep != NULL; pPrep = pPrep->pNext)
+    for (pPrep = attsCb.prepWriteQueue[pCcb->connId-1].pHead; pPrep != NULL; pPrep = pPrep->pNext)
     {
       /* find attribute */
       if ((pAttr = attsFindByHandle(pPrep->handle, &pGroup)) != NULL)
@@ -371,7 +371,7 @@ void attsProcExecWriteReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
     if (err == ATT_SUCCESS)
     {
       /* for each buffer */
-      while ((pPrep = WsfQueueDeq(&attsCb.prepWriteQueue[pCcb->connId - 1])) != NULL)
+      while ((pPrep = WsfQueueDeq(&attsCb.prepWriteQueue[pCcb->connId-1])) != NULL)
       {
         /* write buffer */
         if ((err = attsExecPrepWrite(pCcb, pPrep)) != ATT_SUCCESS)
@@ -394,7 +394,7 @@ void attsProcExecWriteReq(attsCcb_t *pCcb, uint16_t len, uint8_t *pPacket)
   /* send response or error response */
   if (err)
   {
-    attsErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_EXEC_WRITE_REQ, 0, err);
+    attErrRsp(pCcb->pMainCcb, pCcb->slot, ATT_PDU_EXEC_WRITE_REQ, 0, err);
   }
   else
   {
@@ -441,7 +441,7 @@ void AttsContinueWriteReq(dmConnId_t connId, uint16_t handle, uint8_t status)
 
   if (status)
   {
-    attsErrRsp(pCcb, ATT_BEARER_SLOT_ID, ATT_PDU_WRITE_REQ, handle, status);
+    attErrRsp(pCcb, ATT_BEARER_SLOT_ID, ATT_PDU_WRITE_REQ, handle, status);
   }
   else
   {

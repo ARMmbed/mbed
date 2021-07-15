@@ -186,8 +186,9 @@ void lctrSendPhyUpdateIndPdu(lctrConnCtx_t *pCtx, uint8_t txPhys, uint8_t rxPhys
     else
 #endif
     {
-      ceOffset = LL_MIN_INSTANT + 1 +                       /* +1 for next CE */
-                 pCtx->maxLatency;                          /* ensure slave will listen this packet */
+      ceOffset = ((LL_MIN_INSTANT + 1 +     /* +1 for next CE */
+                   pCtx->maxLatency) *      /* ensure slave will listen to this packet */
+                  pCtx->ecu.srFactor);      /* include subrating factor */
     }
 
     if (txPhys || rxPhys)

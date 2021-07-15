@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -91,14 +91,26 @@ lctrLlcpEh_t lctrStorePeriodicSyncTrsfFn = NULL;
 /*! \brief      Pointer to lctrReceivePeriodicSyncInd function. */
 lctrLlcpEh_t lctrReceivePeriodicSyncIndFn = NULL;
 
-/*! \brief      Power monitoring scheme action table. */
-lctrPcMonAct_t lctrPcActTbl[LCTR_PC_MONITOR_SCHEME_TOTAL];
+/*! \brief      Pointer to path lctrPathLossMonitorAct function. */
+lctrPcMonAct_t lctrPathLossMonitorActFn = NULL;
 
 /*! \brief      Pointer to lctrSendPowerChangeInd function. */
 lctrPcPowInd_t lctrSendPowerChangeIndCback = NULL;
 
 /*! \brief      Pointer to lctrNotifyPowerReportInd function. */
 lctrPcNotifyPwr_t lctrNotifyPowerReportIndCback = NULL;
+
+/*! \brief      Pointer to lctrCisServicePowerMonitor Function. */
+lctrCisServicePowerMonitor_t lctrCisServicePowerMonitorFn = NULL;
+
+/*! \brief      Last channel class map since host update (Used for slave channel status indications). */
+static uint64_t lastChanClassMap = LL_CHAN_DATA_ALL;
+
+/*! \brief      Calculate number of subrated connection events. */
+lctrCalcSubrateConnEvents_t lctrCalcSubrateConnEventsFn = NULL;
+
+/*! \brief      Calculate number of subrated connection events. */
+lctrCheckLlcpOverride_t lctrSlvCheckEncOverridePhyUpdateFn = NULL;
 
 /*************************************************************************************************/
 /*!
@@ -289,6 +301,44 @@ bool_t LctrIsProcActPended(uint16_t handle, uint8_t event)
 
 /*************************************************************************************************/
 /*!
+ *  \brief  Check whether a feature exchange procedure was host-initiated, or initiated as a result of connection startup.
+ *
+ *  \param  handle      Connection handle.
+ *
+ *  \return TRUE if the procedure was host-initiated. FALSE if not.
+ */
+/*************************************************************************************************/
+bool_t LctrIsFeatExchHostInit(uint16_t handle)
+{
+  lctrConnCtx_t *pCtx = LCTR_GET_CONN_CTX(handle);
+
+  if (!pCtx->enabled)
+  {
+    /* Should not happen. */
+    return FALSE;
+  }
+
+  return (pCtx->llcpNotifyMask & (1 << LCTR_PROC_CMN_FEAT_EXCH)) ? TRUE : FALSE;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Set controller to notify host when feature exchange completes.
+ *
+ *  \param  handle      Connection handle.
+ *
+ */
+/*************************************************************************************************/
+void LctrSetHostNotifyFeatExch(uint16_t handle)
+{
+
+  lctrConnCtx_t *pCtx = LCTR_GET_CONN_CTX(handle);
+
+  pCtx->llcpNotifyMask |= (1 << LCTR_PROC_CMN_FEAT_EXCH);
+}
+
+/*************************************************************************************************/
+/*!
  *  \brief      Get encryption mode used in a connection.
  *
  *  \param      handle          Connection handle.
@@ -415,6 +465,13 @@ lctrConnCtx_t *lctrAllocConnCtx(void)
       pMsg->dispId = LCTR_DISP_CONN;
       pMsg->event = LCTR_CONN_TMR_AUTH_PAYLOAD_EXP;
 
+      /* Setup power control timer. */
+      pCtx->tmrPowerCtrl.handlerId = lmgrPersistCb.handlerId;
+      pMsg = (lctrMsgHdr_t *)&pCtx->tmrPowerCtrl.msg;
+      pMsg->handle = connIdx;
+      pMsg->dispId = LCTR_DISP_CONN;
+      pMsg->event = LCTR_CONN_LLCP_PWR_CTRL_SERVICE;
+
       /* Default packet lengths. */
       pCtx->localDataPdu.maxTxLen = lmgrConnCb.maxTxLen;
       pCtx->localDataPdu.maxRxLen = WSF_MIN(LCTR_MAX_DATA_LEN_MAX, pLctrRtCfg->maxAclLen);
@@ -457,16 +514,32 @@ lctrConnCtx_t *lctrAllocConnCtx(void)
       }
 
       /* Power control initialization. */
-      if (pCtx->usedFeatSet & LL_FEAT_POWER_CONTROL_REQUEST)
+      if ((pCtx->usedFeatSet & LL_FEAT_POWER_CONTROL_REQUEST) &&
+          !lmgrGetOpFlag(LL_OP_MODE_FLAG_DIS_POWER_MONITOR))
       {
         pCtx->powerMonitorScheme = LCTR_PC_MONITOR_AUTO;
         pCtx->monitoringState    = LCTR_PC_MONITOR_ENABLED;
-        pCtx->pclMonitorParam.autoMonitor.highThreshold = LCTR_RSSI_HIGH_THRESHOLD;
-        pCtx->pclMonitorParam.autoMonitor.lowThreshold = LCTR_RSSI_LOW_THRESHOLD;
-        pCtx->pclMonitorParam.autoMonitor.minTimeSpent = LCTR_PC_MIN_TIME;
-        pCtx->pclMonitorParam.autoMonitor.requestVal = LCTR_PC_REQUEST_VAL;
-        pCtx->pclMonitorParam.autoMonitor.curTimeSpent = 0;
+        pCtx->pclMonitorParam.autoMonitor.highThreshold = pLctrRtCfg->pcHighThreshold;
+        pCtx->pclMonitorParam.autoMonitor.lowThreshold = pLctrRtCfg->pcLowThreshold;
+        pCtx->pclMonitorParam.autoMonitor.requestVal = LL_PC_REQ_CHANGE_DBM;
+
+        /* Reset average counters. */
+        pCtx->pclMonitorParam.autoMonitor.accumulatedRssi = 0;
+        pCtx->pclMonitorParam.autoMonitor.totalAccumulatedRssi = 0;
+        pCtx->pclMonitorParam.autoMonitor.rssiRunAvg.avgCount = 0;
+        pCtx->cisAccumulatedRssi = 0;
+        pCtx->cisTotalAccumulatedRssi = 0;
+        pCtx->cisRunAvg.avgCount = 0;
       }
+
+      /* Default Enhanced Connection Update. */
+      pCtx->ecu.srFactor = 1;
+      /* pCtx->ecu.contNum = 0; */
+      pCtx->ecu.defSrMin = lmgrConnCb.defSrMin;
+      pCtx->ecu.defSrMax = lmgrConnCb.defSrMax;
+      pCtx->ecu.defMaxLatency = lmgrConnCb.defMaxLatency;
+      pCtx->ecu.defContNum = lmgrConnCb.defContNum;
+      pCtx->ecu.defSvt = lmgrConnCb.defSvt;
 
       LmgrIncResetRefCount();
       lmgrCb.numConnEnabled++;
@@ -519,6 +592,7 @@ void lctrFreeConnCtx(lctrConnCtx_t *pCtx)
   WsfTimerStop(&pCtx->tmrProcRsp);
   WsfTimerStop(&pCtx->tmrPingTimeout);
   WsfTimerStop(&pCtx->tmrAuthTimeout);
+  WsfTimerStop(&pCtx->tmrPowerCtrl);
 
   uint16_t handle = LCTR_GET_CONN_HANDLE(pCtx);
 
@@ -695,18 +769,10 @@ void lctrConnRxPendingHandler(void)
     lctrUnpackDataPduHdr(&rxHdr, pRxBuf);
 
     /* Decrypt PDU. */
-    if (lctrPktDecryptHdlr)
+    if (pCtx->bleData.chan.enc.enaDecrypt)
     {
-      if (lctrPktDecryptHdlr(&pCtx->bleData.chan.enc, pRxBuf))
-      {
-        if (pCtx->bleData.chan.enc.enaDecrypt)
-        {
-          /* Restart authentication timers. */
-          WsfTimerStartMs(&pCtx->tmrAuthTimeout, pCtx->authTimeoutMs);
-          WsfTimerStartMs(&pCtx->tmrPingTimeout, pCtx->pingPeriodMs);
-        }
-      }
-      else
+      if (lctrPktDecryptHdlr &&
+          (!lctrPktDecryptHdlr(&pCtx->bleData.chan.enc, pRxBuf)))
       {
         LL_TRACE_ERR1("!!! MIC verification failed on connHandle=%u", connHandle);
         lctrRxPduFree(pRxBuf);
@@ -714,6 +780,10 @@ void lctrConnRxPendingHandler(void)
         lctrSendConnMsg(pCtx, LCTR_CONN_TERM_MIC_FAILED);
         continue;
       }
+
+      /* Restart authentication timers. */
+      WsfTimerStartMs(&pCtx->tmrAuthTimeout, pCtx->authTimeoutMs);
+      WsfTimerStartMs(&pCtx->tmrPingTimeout, pCtx->pingPeriodMs);
     }
 
     /* Demux PDU. */
@@ -1076,7 +1146,7 @@ void LctrSetTxPowerLevel(uint16_t handle, int8_t level)
       {
         if (lctrNotifyPowerReportIndCback)
         {
-          lctrNotifyPowerReportIndCback(pCtx, LL_POWER_REPORT_REASON_LOCAL, phy, adjustedLevel,
+          lctrNotifyPowerReportIndCback(pCtx, LL_SUCCESS, LL_POWER_REPORT_REASON_LOCAL, phy, adjustedLevel,
                                     lctrGetPowerLimits(adjustedLevel),
                                     adjustedLevel - txPwrOld[phy]);
         }
@@ -1144,7 +1214,7 @@ void LctrSetPhyTxPowerLevel(uint16_t handle, int8_t level, uint8_t phy)
   {
     if (lctrNotifyPowerReportIndCback)
     {
-      lctrNotifyPowerReportIndCback(pCtx, LL_POWER_REPORT_REASON_LOCAL, pBle->chan.txPhy, adjustedLevel,
+      lctrNotifyPowerReportIndCback(pCtx, LL_SUCCESS, LL_POWER_REPORT_REASON_LOCAL, pBle->chan.txPhy, adjustedLevel,
                                 lctrGetPowerLimits(pBle->chan.txPower),
                                 delta);
     }
@@ -1209,6 +1279,30 @@ uint8_t LctrGetTxPhy(uint16_t handle)
 uint8_t LctrGetRxPhy(uint16_t handle)
 {
   return pLctrConnTbl[handle].bleData.chan.rxPhy;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Get status of CIS termination procedure.
+ *
+ *  \param      handle          Connection handle.
+ *
+ *  \return     TRUE if termination is currently pending, FALSE if not.
+ */
+/*************************************************************************************************/
+bool_t LctrCisTerminationInProgress(uint16_t handle)
+{
+  WSF_ASSERT(handle < pLctrRtCfg->maxConn);
+
+  lctrConnCtx_t *pCtx = &pLctrConnTbl[handle];
+
+  if ((pCtx->llcpActiveProc == LCTR_PROC_CIS_TERM) ||
+      (pCtx->llcpPendMask & (1 << LCTR_PROC_CIS_TERM)))
+  {
+    return TRUE;
+  }
+
+  return FALSE;
 }
 
 /*************************************************************************************************/
@@ -1327,7 +1421,7 @@ BbOpDesc_t *lctrConnResolveConflict(BbOpDesc_t *pNewOp, BbOpDesc_t *pExistOp)
       !((pExistOp->prot.pBle->chan.opType == BB_BLE_OP_SLV_CONN_EVENT) ||
         (pExistOp->prot.pBle->chan.opType == BB_BLE_OP_MST_CONN_EVENT)))
   {
-    LL_TRACE_WARN1("!!! Scheduling conflict, BLE connections: incoming handle=%u prioritized over non-BLE operation", LCTR_GET_CONN_HANDLE(pNewCtx));
+    LL_TRACE_WARN1("!!! Scheduling conflict, BLE connections: incoming handle=%u prioritized over non-connection operation", LCTR_GET_CONN_HANDLE(pNewCtx));
     return pNewOp;
   }
 
@@ -1603,11 +1697,17 @@ uint8_t lctrSetPowerMonitorEnable(uint16_t handle, bool_t enable)
 
   pCtx->powerMonitorScheme = LCTR_PC_MONITOR_AUTO;
   pCtx->monitoringState    = enable;
-  pCtx->pclMonitorParam.autoMonitor.highThreshold = LCTR_RSSI_HIGH_THRESHOLD;
-  pCtx->pclMonitorParam.autoMonitor.lowThreshold = LCTR_RSSI_LOW_THRESHOLD;
-  pCtx->pclMonitorParam.autoMonitor.minTimeSpent = LCTR_PC_MIN_TIME;
-  pCtx->pclMonitorParam.autoMonitor.requestVal = LCTR_PC_REQUEST_VAL;
-  pCtx->pclMonitorParam.autoMonitor.curTimeSpent = 0;
+  pCtx->pclMonitorParam.autoMonitor.highThreshold = pLctrRtCfg->pcHighThreshold;
+  pCtx->pclMonitorParam.autoMonitor.lowThreshold = pLctrRtCfg->pcLowThreshold;
+  pCtx->pclMonitorParam.autoMonitor.requestVal = LL_PC_REQ_CHANGE_DBM;
+
+  /* Initialize average function. */
+  pCtx->pclMonitorParam.autoMonitor.accumulatedRssi = 0;
+  pCtx->pclMonitorParam.autoMonitor.totalAccumulatedRssi = 0;
+  pCtx->pclMonitorParam.autoMonitor.rssiRunAvg.avgCount = 0;
+  pCtx->cisAccumulatedRssi = 0;
+  pCtx->cisTotalAccumulatedRssi = 0;
+  pCtx->cisRunAvg.avgCount = 0;
 
   return LL_SUCCESS;
 }
@@ -1647,4 +1747,76 @@ uint8_t lctrGetPowerLimits(int8_t txPower)
   {
     return 0;
   }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Host channel class update handler for connections.
+ *
+ *  \param  chanMap     Updated channel map.
+ *
+ *  \return Status code.
+ */
+/*************************************************************************************************/
+uint8_t lctrConnChClassUpdate(uint64_t chanMap)
+{
+  lctrChanMapUpdate_t *pMsg;
+  lctrConnCtx_t *pCtx;
+  uint16_t handle;
+  uint8_t status = LL_SUCCESS;
+
+  /* Update for connections */
+  for (handle = 0; handle < pLctrRtCfg->maxConn; handle++)
+  {
+    if (LctrIsConnHandleEnabled(handle))
+    {
+      if (LctrGetRole(handle) == LL_ROLE_MASTER)
+      {
+        /* Update the channel map for CIS master as well. */
+        if (LctrUpdateCisChanMapFn)
+        {
+          LctrUpdateCisChanMapFn(handle);
+        }
+
+        if (LctrIsProcActPended(handle, LCTR_CONN_MSG_API_CHAN_MAP_UPDATE) == TRUE)
+        {
+          status = LL_ERROR_CODE_CMD_DISALLOWED;
+        }
+
+        if ((pMsg = (lctrChanMapUpdate_t *)WsfMsgAlloc(sizeof(*pMsg))) != NULL)
+        {
+          pMsg->hdr.handle = handle;
+          pMsg->hdr.dispId = LCTR_DISP_CONN;
+          pMsg->hdr.event  = LCTR_CONN_MSG_API_CHAN_MAP_UPDATE;
+
+          pMsg->chanMap = chanMap;
+
+          WsfMsgSend(lmgrPersistCb.handlerId, pMsg);
+        }
+        else
+        {
+          LL_TRACE_ERR0("lctrConnChClassUpdate: out of message buffers");
+          return LL_ERROR_CODE_CMD_DISALLOWED;
+        }
+      }
+      else /* LL_ROLE_SLAVE */
+      {
+        if (lastChanClassMap != chanMap)
+        {
+          pCtx = LCTR_GET_CONN_CTX(handle);
+
+          if ((pCtx->usedFeatSet & LL_FEAT_CHANNEL_CLASSIFICATION) &&
+              pCtx->chanStatRptEnable)
+          {
+            pCtx->data.slv.queuedChanStatusTs = PalBbGetCurrentTime();
+            /* Update is sent to host in lctrSlvConnEndOp(). */
+          }
+
+          lastChanClassMap = chanMap;
+        }
+      }
+    }
+  }
+
+  return status;
 }

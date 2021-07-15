@@ -84,16 +84,18 @@ void LctrSlvConnEncInit(void)
   }
 
   /* Add packet encryption handlers. */
+#if (!(BB_ENABLE_INLINE_ENC_TX && BB_ENABLE_INLINE_DEC_RX))
   lctrInitCipherBlkHdlr = PalCryptoAesEnable;
+#endif
 #if (!BB_ENABLE_INLINE_ENC_TX)
   lctrPktEncryptHdlr = PalCryptoAesCcmEncrypt;
 #else
-  lctrSetEncryptPktCountHdlr = PalCryptoSetEncryptPacketCount;
+  lctrSetEncryptPktCountHdlr = PalBbBleSetInlineEncryptPacketCount;
 #endif
 #if (!BB_ENABLE_INLINE_DEC_RX)
   lctrPktDecryptHdlr = PalCryptoAesCcmDecrypt;
 #else
-  lctrSetDecryptPktCountHdlr = PalCryptoSetDecryptPacketCount;
+  lctrSetDecryptPktCountHdlr = PalBbBleSetInlineDecryptPacketCount;
 #endif
 
   /* Set supported features. */

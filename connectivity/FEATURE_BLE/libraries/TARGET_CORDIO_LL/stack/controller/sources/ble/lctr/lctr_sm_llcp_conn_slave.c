@@ -50,10 +50,10 @@ enum
   LCTR_CU_EVENT_HOST_REPLY,             /*!< Received host connection parameter reply. */
   LCTR_CU_EVENT_HOST_NEG_REPLY,         /*!< Received host connection parameter negative reply. */
   LCTR_CU_EVENT_PEER_CONN_UPD_IND,      /*!< Received peer LL_CONN_UPD_IND. */
-  LCTR_CU_EVENT_PEER_REJECT,            /*!< Received peer LL_REJECT_IND OR LL_UNKNOWN_RSP. */
+  LCTR_CU_EVENT_PEER_REJECT,            /*!< Received peer LL_REJECT_IND or LL_UNKNOWN_RSP. */
   LCTR_CU_EVENT_INT_PROC_COMP,          /*!< Procedure completion event. */
   LCTR_CU_EVENT_INT_START_CONN_UPD,     /*!< Start pending connection update procedure. */
-  LCTR_CU_EVENT_TOTAL,                  /*!< Total connection parameter/update states. */
+  LCTR_CU_EVENT_TOTAL,                  /*!< Total connection parameter/update events. */
   LCTR_CU_EVENT_INVALID = 0xFF          /*!< Invalid event. */
 };
 
@@ -670,14 +670,15 @@ void lctrSlvLlcpExecuteSm(lctrConnCtx_t *pCtx, uint8_t event)
       break;
   }
 
-  if (!(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_ENCRYPT]  && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_ENCRYPT](pCtx, event)) &&
-      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PING]     && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PING](pCtx, event)) &&
-      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CONN_UPD] && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CONN_UPD](pCtx, event)) &&
-      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PHY_UPD]  && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PHY_UPD](pCtx, event)) &&
-      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CIS_EST]  && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CIS_EST](pCtx, event)) &&
-      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CIS_TERM] && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CIS_TERM](pCtx, event)) &&
-      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PC]       && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PC](pCtx, event)) &&
-      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CMN]      && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CMN](pCtx, event)) )
+  if (!(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_ENCRYPT]      && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_ENCRYPT](pCtx, event)) &&
+      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PING]         && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PING](pCtx, event)) &&
+      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_ENH_CONN_UPD] && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_ENH_CONN_UPD](pCtx, event)) &&
+      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CONN_UPD]     && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CONN_UPD](pCtx, event)) &&
+      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PHY_UPD]      && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PHY_UPD](pCtx, event)) &&
+      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CIS_EST]      && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CIS_EST](pCtx, event)) &&
+      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CIS_TERM]     && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CIS_TERM](pCtx, event)) &&
+      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PC]           && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_PC](pCtx, event)) &&
+      !(lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CMN]          && lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CMN](pCtx, event)) )
   {
     lctrLlcpStatelessEventHandler(pCtx, event);
   }

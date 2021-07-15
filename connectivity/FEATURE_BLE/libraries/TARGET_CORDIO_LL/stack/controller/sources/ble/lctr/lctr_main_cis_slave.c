@@ -71,12 +71,11 @@ void LctrCisSlvInit(void)
   lctrResetHdlrTbl[LCTR_DISP_CIS] = lctrSlvCisResetHandler;
 
   /* Add connection message dispatcher. */
-  if (lctrMsgDispTbl[LCTR_DISP_CIS] != NULL)
-  {
-    lctrMsgDispTbl[LCTR_DISP_CIS] = (LctrMsgDisp_t)lctrCisDisp;
-  }
+  lctrMsgDispTbl[LCTR_DISP_CIS] = (LctrMsgDisp_t)lctrCisDisp;
 
-  lctrCisDefaults();
+  /* Add CIS function pointers */
+  LctrUpdateCisChanMapFn = LctrCisUpdateChanMap;
+  lctrCisServicePowerMonitorFn = lctrCisServicePowerMonitor;
 
   /* Add connection event handlers. */
   lctrEventHdlrTbl[LCTR_EVENT_CIS_RX_PENDING]  = lctrCisRxPendingHandler;
@@ -85,6 +84,8 @@ void LctrCisSlvInit(void)
   /* Add LLCP SM handler. */
   lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CIS_EST]      = lctrSlvLlcpExecuteCisEstSm;
   lctrSlvLlcpSmTbl[LCTR_LLCP_SM_CIS_TERM]      = lctrLlcpExecuteCisTermSm;
+
+  lctrCisDefaults();
 
   /* Set supported features. */
   if (pLctrRtCfg->btVer >= LL_VER_BT_CORE_SPEC_5_1)
@@ -207,6 +208,7 @@ void lctrSlvCisBuildCigOp(lctrCigCtx_t *pCigCtx)
 
   BbBleData_t * const pBle = &pCisCtx->bleData;
   BbBleSlvCisEvent_t * const pCis = &pBle->op.slvCis;
+  lctrConnCtx_t * const pConnCtx = LCTR_GET_CONN_CTX(pCisCtx->aclHandle);
 
   memset(pOp, 0, sizeof(BbOpDesc_t));
   memset(pBle, 0, sizeof(BbBleData_t));
@@ -235,8 +237,18 @@ void lctrSlvCisBuildCigOp(lctrCigCtx_t *pCigCtx)
   pBle->chan.peerTxStableModIdx = TRUE;
   pBle->chan.peerRxStableModIdx = TRUE;
 
-  /* Set PHY options to mirror acl connection option. */
-  pBle->chan.initTxPhyOptions = BB_PHY_OPTIONS_BLE_S8;
+  if (lmgrGetOpFlag(LL_OP_MODE_FLAG_FORCE_CIS_CODED_PHY_S2))
+  {
+    /* Force Coded PHY option to S2. */
+    pBle->chan.initTxPhyOptions = BB_PHY_OPTIONS_BLE_S2;
+    pBle->chan.tifsTxPhyOptions = BB_PHY_OPTIONS_BLE_S2;
+  }
+  else
+  {
+    /* Set PHY options to mirror ACL connection option. */
+    pBle->chan.initTxPhyOptions = pConnCtx->bleData.chan.initTxPhyOptions;
+    pBle->chan.tifsTxPhyOptions = pConnCtx->bleData.chan.tifsTxPhyOptions;
+  }
 
 #if (LL_ENABLE_TESTER)
   pBle->chan.accAddrRx = pCisCtx->accessAddr ^ llTesterCb.cisAccessAddrRx;
@@ -254,7 +266,8 @@ void lctrSlvCisBuildCigOp(lctrCigCtx_t *pCigCtx)
 
   /*** General setup ***/
 
-  pOp->minDurUsec = pCisCtx->subIntervUsec * WSF_MAX(pCisCtx->bnMToS, pCisCtx->bnSToM); /* Guarantee at least Max BN */
+  /* Use small minDurUsec to improve scheduling. */
+  pOp->minDurUsec = pCisCtx->subIntervUsec;
   pOp->maxDurUsec = pCigCtx->cigSyncDelayUsec;
 
   /* pOp->due = 0 */  /* set in lctrCisMstCigOpCommit() */
@@ -268,6 +281,7 @@ void lctrSlvCisBuildCigOp(lctrCigCtx_t *pCigCtx)
   /*** BLE stream setup ***/
 
   pCis->checkContOpCback = lctrSlvCisCheckContOp;
+  pCis->checkContOpPostCback = lctrSlvCisCheckContOpPostCback;
   pCis->execCback = lctrSlvCisCigBeginOp;
   pCis->contExecCback = lctrSlvCisCigContOp;
   pCis->postSubEvtCback = lctrSlvCisCigPostSubEvt;
@@ -292,7 +306,7 @@ void lctrSlvCisBuildCisData(lctrCisCtx_t *pCisCtx)
 {
   BbBleData_t * const pBle = &pCisCtx->bleData;
   BbBleSlvCisEvent_t * const pCis = &pBle->op.slvCis;
-  lctrConnCtx_t * pConnCtx = LCTR_GET_CONN_CTX(pCisCtx->aclHandle);
+  lctrConnCtx_t * const pConnCtx = LCTR_GET_CONN_CTX(pCisCtx->aclHandle);
 
   memset(pBle, 0, sizeof(BbBleData_t));
   memset(pCis, 0, sizeof(BbBleMstCisEvent_t));
@@ -316,15 +330,17 @@ void lctrSlvCisBuildCisData(lctrCisCtx_t *pCisCtx)
   pBle->chan.peerTxStableModIdx = TRUE;
   pBle->chan.peerRxStableModIdx = TRUE;
 
-  /* Set PHY options to mirror acl connection option. */
-  if (pConnCtx->bleData.chan.tifsTxPhyOptions != BB_PHY_OPTIONS_DEFAULT)
+  if (lmgrGetOpFlag(LL_OP_MODE_FLAG_FORCE_CIS_CODED_PHY_S2))
   {
-    /* Set PHY options to host defined behavior. */
-    pBle->chan.initTxPhyOptions = pConnCtx->bleData.chan.tifsTxPhyOptions;
+    /* Force Coded PHY option to S2. */
+    pBle->chan.initTxPhyOptions = BB_PHY_OPTIONS_BLE_S2;
+    pBle->chan.tifsTxPhyOptions = BB_PHY_OPTIONS_BLE_S2;
   }
   else
   {
-    pBle->chan.initTxPhyOptions = BB_PHY_OPTIONS_BLE_S8;
+    /* Set PHY options to mirror ACL connection option. */
+    pBle->chan.initTxPhyOptions = pConnCtx->bleData.chan.initTxPhyOptions;
+    pBle->chan.tifsTxPhyOptions = pConnCtx->bleData.chan.tifsTxPhyOptions;
   }
 
 #if (LL_ENABLE_TESTER)
@@ -344,6 +360,7 @@ void lctrSlvCisBuildCisData(lctrCisCtx_t *pCisCtx)
   /*** BLE stream setup ***/
 
   pCis->checkContOpCback = lctrSlvCisCheckContOp;
+  pCis->checkContOpPostCback = lctrSlvCisCheckContOpPostCback;
   pCis->execCback   = lctrSlvCisCigBeginOp;
   pCis->contExecCback   = lctrSlvCisCigContOp;
   pCis->postSubEvtCback = lctrSlvCisCigPostSubEvt;

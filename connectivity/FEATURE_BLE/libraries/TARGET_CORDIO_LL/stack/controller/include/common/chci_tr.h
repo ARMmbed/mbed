@@ -68,15 +68,6 @@ void chciTrRecv(uint8_t prot, uint8_t type, uint8_t *pBuf);
 /*************************************************************************************************/
 void chciTrSendComplete(void);
 
-/*************************************************************************************************/
-/*!
- *  \brief  Service the transport device.
- *
- *  \return TRUE if work pending, FALSE if no work is pending.
- */
-/*************************************************************************************************/
-bool_t ChciTrService(void);
-
 #ifdef __cplusplus
 };
 #endif

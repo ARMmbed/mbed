@@ -88,6 +88,7 @@ void lctrMstCisCigRxCompletion(BbOpDesc_t *pOp, uint8_t *pRxBuf, uint8_t status)
 
 /* ISR: BOD handlers */
 uint32_t lctrMstCisCheckContOp(BbOpDesc_t *pOp, bool_t *pNewCisCtx);
+uint32_t lctrMstCisCheckContOpPostCback(BbOpDesc_t *pOp, bool_t *pNewCisCtx);
 void lctrMstCisCigBeginOp(BbOpDesc_t *pOp);
 void lctrMstCisCigContOp(BbOpDesc_t *pOp);
 void lctrMstCisCigPostSubEvt(BbOpDesc_t *pOp, uint8_t status);

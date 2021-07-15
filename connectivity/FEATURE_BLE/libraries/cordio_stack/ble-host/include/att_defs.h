@@ -113,10 +113,6 @@ extern "C" {
  */
 /**@{*/
 #define ATT_ERR_VALUE_RANGE           0x80      /*!< \brief Value out of range */
-#define ATT_ERR_INVALID_CHANGE_CTR    0x80      /*!< \brief Invalid change counter */
-#define ATT_ERR_OPCODE_NOT_SUPPORTED  0x81      /*!< \brief Opcode out of range */
-#define ATT_ERR_MUTE_DISABLE          0x82      /*!< \brief Mute disable */
-#define ATT_ERR_VALUE_RANGE_x83       0x83      /*!< \brief Value out of range 0x83 */
 /**@}*/
 
 /** \name ATT HCI Error Status

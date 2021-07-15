@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2009-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 #define HCI_CORE_H
 
 #include "hci_core_ps.h"
+#include "hci_core_iso.h"
 #include "wsf_queue.h"
 #include "wsf_os.h"
 #include "hci_api.h"
@@ -61,27 +62,27 @@ typedef struct
   uint8_t           outBufs;                      /*!< \brief Outstanding ACL buffers sent to controller */
 } hciCoreConn_t;
 
-/*! \brief Per-connection structure for OSI packet accounting */
-typedef struct
-{
-  uint16_t          handle;                       /*!< \brief Connection handle */
-} hciCoreCis_t;
-
 /*! \brief Main control block for dual-chip implementation */
 typedef struct
 {
   hciCoreConn_t     conn[DM_CONN_MAX];            /*!< \brief Connection structures */
-  hciCoreCis_t      cis[DM_CIS_MAX];              /*!< \brief CIS structures */
+  hciCoreCig_t      *pCig;                        /*!< \biref CIG structures */
+  hciCoreCis_t      *pCis;                        /*!< \brief CIS structures */
+  hciCoreBig_t      *pBig;                        /*!< \brief BIG structures */
+  hciCoreBis_t      *pBis;                        /*!< \brief BIS structures */
   uint8_t           leStates[HCI_LE_STATES_LEN];  /*!< \brief Controller LE supported states */
   bdAddr_t          bdAddr;                       /*!< \brief Bluetooth device address */
   wsfQueue_t        aclQueue;                     /*!< \brief HCI ACL TX queue */
   hciCoreConn_t     *pConnRx;                     /*!< \brief Connection struct for current transport RX packet */
   uint16_t          maxRxAclLen;                  /*!< \brief Maximum reassembled RX ACL packet length */
   uint16_t          bufSize;                      /*!< \brief Controller ACL data buffer size */
+  uint16_t          isoBufSize;                   /*!< \brief ISO buffer size. */
   uint8_t           aclQueueHi;                   /*!< \brief Disable flow when this many ACL buffers queued */
   uint8_t           aclQueueLo;                   /*!< \brief Enable flow when this many ACL buffers queued */
   uint8_t           availBufs;                    /*!< \brief Current avail ACL data buffers */
+  uint8_t           availIsoBufs;                 /*!< \brief Current available ISO data buffers. */
   uint8_t           numBufs;                      /*!< \brief Controller number of ACL data buffers */
+  uint8_t           isoNumBufs;                   /*!< \brief Number of ISO buffers. */
   uint8_t           whiteListSize;                /*!< \brief Controller white list size */
   uint8_t           numCmdPkts;                   /*!< \brief Controller command packed count */
   uint64_t          leSupFeat;                    /*!< \brief Controller LE supported features */
@@ -169,39 +170,6 @@ void hciCoreConnClose(uint16_t handle);
  */
 /*************************************************************************************************/
 hciCoreConn_t *hciCoreConnByHandle(uint16_t handle);
-
-/*************************************************************************************************/
-/*!
- *  \brief  Perform internal processing on HCI CIS connection open.
- *
- *  \param  handle  Connection handle.
- *
- *  \return None.
- */
-/*************************************************************************************************/
-void hciCoreCisOpen(uint16_t handle);
-
-/*************************************************************************************************/
-/*!
- *  \brief  Perform internal processing on HCI CIS connection close.
- *
- *  \param  handle  Connection handle.
- *
- *  \return None.
- */
-/*************************************************************************************************/
-void hciCoreCisClose(uint16_t handle);
-
-/*************************************************************************************************/
-/*!
- *  \brief  Get a CIS connection structure by handle
- *
- *  \param  handle  Connection handle.
- *
- *  \return Pointer to CIS connection structure or NULL if not found.
- */
-/*************************************************************************************************/
-hciCoreCis_t *hciCoreCisByHandle(uint16_t handle);
 
 /*************************************************************************************************/
 /*!

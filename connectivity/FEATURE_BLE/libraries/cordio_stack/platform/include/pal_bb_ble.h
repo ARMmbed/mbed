@@ -175,6 +175,15 @@ void PalBbBleEnable(void);
 /*************************************************************************************************/
 void PalBbBleDisable(void);
 
+/*************************************************************************************************/
+/*!
+ *  \brief      Low power operation.
+ *
+ *  \note       Called by upper baseband code.
+ */
+/*************************************************************************************************/
+void PalBbBleLowPower(void);
+
 /*! \} */    /* PAL_BB_BLE_INIT */
 
 /*! \addtogroup PAL_BB_BLE_CHAN
@@ -201,6 +210,24 @@ void PalBbBleDisable(void);
  */
 /*************************************************************************************************/
 void PalBbBleSetChannelParam(PalBbBleChan_t *pChan);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Set the inline encryption packet count for transmit.
+ *
+ *  \param      pktCtr  Packet counter value, a 39-bit value (upper bits are ignored).
+ */
+/*************************************************************************************************/
+void PalBbBleSetInlineEncryptPacketCount(uint64_t pktCtr);
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Set the inline decryption packet count for reception.
+ *
+ *  \param      pktCtr  Packet counter value, a 39-bit value (upper bits are ignored).
+ */
+/*************************************************************************************************/
+void PalBbBleSetInlineDecryptPacketCount(uint64_t pktCtr);
 
 /*! \} */    /* PAL_BB_BLE_CHAN */
 
@@ -333,35 +360,6 @@ void PalBbBleEnableDataWhitening(bool_t enable);
  */
 /*************************************************************************************************/
 void PalBbBleEnablePrbs15(bool_t enable);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Set inline encryption/decryption direction bit.
- *
- *  \param      dir     0=slave, non-zero=master
- *
- */
-/*************************************************************************************************/
-void PalBbBleInlineEncryptDecryptSetDirection(uint8_t dir);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Set the inline encryption packet count for transmit.
- *
- *  \param      count   Packet counter value, a 39-bit value
- *
- */
-/*************************************************************************************************/
-void PalBbBleInlineEncryptSetPacketCount(uint64_t count);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Low power operation.
- *
- *  \note       Called by upper baseband code.
- */
-/*************************************************************************************************/
-void PalBbBleLowPower(void);
 
 /*! \} */    /* PAL_BB_BLE_TEST */
 

@@ -1,10 +1,8 @@
 /*************************************************************************************************/
 /*!
- *  \file   wsf_heap.c
+ *  \file
  *
  *  \brief  Heap service.
- *
- *  Copyright (c) 2009-2018 Arm Ltd. All Rights Reserved.
  *
  *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
@@ -87,5 +85,5 @@ uint32_t WsfHeapCountAvailable(void)
 /*************************************************************************************************/
 uint32_t WsfHeapCountUsed(void)
 {
-  return 0;
+   return 0;
 }

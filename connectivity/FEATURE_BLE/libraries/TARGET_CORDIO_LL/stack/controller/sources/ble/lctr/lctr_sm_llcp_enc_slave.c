@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 #include "lctr_int_enc_slave.h"
 #include "lctr_int_conn.h"
 #include "lctr_int_conn_slave.h"
+#include "lctr_int_slave_phy.h"
 #include "lmgr_api.h"
 #include "wsf_trace.h"
 
@@ -428,7 +429,8 @@ static void lctrSlvCheckProcOverride(lctrConnCtx_t *pCtx, uint8_t event)
   {
     case LCTR_ENC_EVENT_PEER_ENC_REQ:
       if (lctrSlvCheckEncOverrideConnParam(pCtx) ||
-          lctrSlvCheckEncOverrideCommonParam(pCtx))
+          lctrSlvCheckEncOverrideCommonParam(pCtx) ||
+          ((lctrSlvCheckEncOverridePhyUpdateFn == NULL) || lctrSlvCheckEncOverridePhyUpdateFn(pCtx)))
       {
         pCtx->llcpPendMask |= 1 << pCtx->llcpActiveProc;
         pCtx->llcpActiveProc = LCTR_PROC_ENCRYPT;

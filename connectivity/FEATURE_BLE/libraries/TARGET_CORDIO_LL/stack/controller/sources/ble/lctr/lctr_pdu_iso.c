@@ -37,9 +37,9 @@
  *  \return Header length.
  */
 /*************************************************************************************************/
-uint8_t lctrIsoUnpackHdr(lctrIsoHdr_t *pHdr, const uint8_t *pBuf)
+uint8_t lctrIsoUnpackHdr(lctrIsoHdr_t *pHdr, uint8_t *pBuf)
 {
-  uint8_t len = HCI_ISO_HDR_LEN + HCI_ISO_DL_MIN_LEN;
+  uint8_t len = HCI_ISO_HDR_LEN;
 
   uint16_t field16;
 
@@ -50,21 +50,34 @@ uint8_t lctrIsoUnpackHdr(lctrIsoHdr_t *pHdr, const uint8_t *pBuf)
 
   BSTREAM_TO_UINT16(pHdr->len, pBuf);
 
-  if (pHdr->tsFlag)
+  switch (pHdr->pb)
   {
-    BSTREAM_TO_UINT32(pHdr->ts, pBuf);
-    len += HCI_ISO_TS_LEN;
-  }
-  else
-  {
-    pHdr->ts = 0;
-  }
+    case LCTR_PB_COMP:
+    case LCTR_PB_FIRST:
+      len += HCI_ISO_DL_MIN_LEN;
+      if (pHdr->tsFlag)
+      {
+        BSTREAM_TO_UINT32(pHdr->ts, pBuf);
+        len += HCI_ISO_TS_LEN;
+      }
+      else
+      {
+        pHdr->ts = 0;
+      }
 
-  BSTREAM_TO_UINT16(pHdr->pktSn, pBuf);
-  BSTREAM_TO_UINT16(field16, pBuf);
+      BSTREAM_TO_UINT16(pHdr->pktSn, pBuf);
+      BSTREAM_TO_UINT16(field16, pBuf);
 
-  pHdr->sduLen = (field16 >>  0) & 0x0FFF;
-  pHdr->ps     = (field16 >> 14) & 0x03;
+      pHdr->sduLen = (field16 >>  0) & 0x0FFF;
+      pHdr->ps     = (field16 >> 14) & 0x03;
+      break;
+
+    default:
+      pHdr->ts     = 0;
+      pHdr->sduLen = 0;
+      pHdr->ps     = 0;
+      break;
+  }
 
   pHdr->pSdu = pBuf;
 

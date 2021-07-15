@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -67,24 +67,12 @@ extern "C" {
 /*! \brief      Resolve connection context from the handle. */
 #define LCTR_GET_CONN_CTX(h)        &(pLctrConnTbl[h])
 
-/*! \brief      Resolve txPower from phy index. */
+/*! \brief      Resolve txPower from PHY index. */
 #define LCTR_GET_TXPOWER(pCtx, phy, option) \
         (pCtx->phyTxPower[phy - (((phy == LL_PHY_LE_CODED) && (option ==  BB_PHY_OPTIONS_BLE_S2)) ? 0 : 1)])
 
 /*! \brief      Set the txpower of a specified PHY. */
 #define LCTR_SET_TXPOWER(pCtx, phy, pow) (pCtx->phyTxPower[phy - 1] = pow)
-
-/*! \brief      Low threshold for power monitoring. */
-#define LCTR_RSSI_LOW_THRESHOLD     -65
-
-/*! \brief      High threshold for power monitoring. */
-#define LCTR_RSSI_HIGH_THRESHOLD    -30
-
-/*! \brief      Minimum time spent until request. */
-#define LCTR_PC_MIN_TIME            15
-
-/*! \brief      Default request of increase/decrease in value. */
-#define LCTR_PC_REQUEST_VAL         5
 
 /*! \brief      Special reset terminate reason. */
 #define LCTR_RESET_TERM_REASON  0xFF
@@ -147,6 +135,8 @@ enum
   LCTR_PROC_CMN_SET_MIN_USED_CHAN,      /*!< Set minimum number of used channels procedure. */
   LCTR_PROC_CMN_PER_ADV_SYNC_TRSF,      /*!< Periodic advertising sync transfer procedure. */
   LCTR_PROC_CMN_REQ_PEER_SCA,           /*!< Request peer SCA procedure. */
+  LCTR_PROC_CMN_CH_CLASS_REPORTING,     /*!< Channel classification reporting procedure. */
+  LCTR_PROC_CMN_CH_STATUS_REPORT,       /*!< Channel status reporting procedure. */
   LCTR_PROC_CMN_TOTAL,                  /*!< Total number of common procedures. */
 
   /* Custom SM LLCP procedures. */
@@ -162,6 +152,7 @@ enum
   LCTR_PROC_CIS_TERM_PEER,              /*!< Peer-initiated CIS termination procedure. */
   LCTR_PROC_PWR_IND,                    /*!< Power indication prodecure. */
   LCTR_PROC_PWR_CTRL,                   /*!< Power control procedure. */
+  LCTR_PROC_SUBRATE,                    /*!< Subrate procedure. */
 
   LCTR_PROC_INVALID = 0xFF              /*!< Invalid ID. */
 
@@ -225,11 +216,19 @@ typedef struct
       bool_t        rxFromMaster;       /*!< At least one successful packet received from master. */
       uint32_t      firstRxStartTsUsec; /*!< Timestamp of the first received frame regardless of CRC error in microseconds. */
 
+      uint32_t      lastStatusSentTs;   /*!< Timestamp of last channel status update. */
+      uint32_t      chanStatMinIntUs;   /*!< Minimum interval in us between channel status updates. */
+      uint32_t      chanStatMaxDelay;   /*!< Max delay before a change of channel status is allowed to be sent. */
+      uint32_t      queuedChanStatusTs; /*!< Timestamp of last channel status that is queued to be sent out. */
     } slv;                              /*!< Slave connection specific data. */
 
     struct
     {
       bool_t        sendConnUpdInd;     /*!< Send LL_CONNECTION_UPDATE_IND flag. */
+      uint8_t       peerChannelStatus[LL_MAX_NUM_CHAN_DATA];
+                                        /*!< Current channel status map of peer. */
+      uint32_t      recvdChanStatTs;    /*!< Timestamp of last received channel status from peer. */
+      uint32_t      chanStatMinIntUs;   /*!< Minimum interval in us between channel status updates. */
     } mst;                              /*!< Master connection specific data. */
   } data;                               /*!< Role specific data. */
 
@@ -264,6 +263,7 @@ typedef struct
   wsfQueue_t        rxDataQ;            /*!< Receive data pending queue. */
   uint8_t           numTxComp;          /*!< Number of completed Tx buffers. */
   uint8_t           numRxPend;          /*!< Number of Rx pending buffers. */
+  uint8_t           numTxPendCtrlPdu;   /*!< Number of pending Control PDUs. */
   bool_t            emptyPduPend;       /*!< Empty PDU ACK pending. */
   bool_t            emptyPduFirstAtt;   /*!< Empty PDU first attempt. */
   bool_t            forceStartPdu;      /*!< Next data will be forced to be a start PDU */
@@ -302,6 +302,7 @@ typedef struct
   bool_t            remoteVerValid;     /*!< Peer version data valid. */
   lctrVerInd_t      remoteVer;          /*!< Peer version data. */
   bool_t            featExchFlag;       /*!< Flag for completed feature exchange. */
+  uint64_t          peerFeatures;       /*!< Peer reported features. */
   uint64_t          usedFeatSet;        /*!< Used feature set. */
   uint8_t           peerSca;            /*!< Peer SCA. */
 
@@ -309,6 +310,9 @@ typedef struct
   uint8_t           peerPwrLimits;      /*!< Peer power limits field. */
   uint8_t           peerApr[LL_PC_PHY_TOTAL];
                                         /*!< Acceptable reduction of power as calculated by the peer. */
+
+  /* Channel reporting parameters. */
+  bool_t            chanStatRptEnable;  /*!< Enable status of channel status reporting. */
 
   /* Data length */
   lctrDataLen_t     localDataPdu;       /*!< Local Data PDU parameters. */
@@ -332,7 +336,7 @@ typedef struct
   uint16_t          perServiceData;     /*!< ID for periodic sync indication. */
   uint16_t          perSyncHandle;      /*!< Periodic sync handle. */
 
-  /* PAST(Periodic advertising sync transfer) parameters. */
+  /* PAST parameters. */
   uint8_t           syncMode;           /*!< Sync transfer mode. */
   uint16_t          syncSkip;           /*!< Sync skip for periodic adv sync transfer. */
   uint16_t          syncTimeout;        /*!< Sync timeout for periodic adv sync transfer. */
@@ -342,6 +346,7 @@ typedef struct
   uint8_t           encState;           /*!< Current encryption state. */
   uint8_t           pingState;          /*!< Current ping state. */
   uint8_t           connUpdState;       /*!< Connection update state. */
+  uint8_t           ecuState;           /*!< Enhanced connection update state. */
   uint8_t           phyUpdState;        /*!< PHY update state. */
   uint8_t           cmnState;           /*!< Common LLCP state. */
   bool_t            peerReplyWaiting;   /*!< Peer waiting for reply. */
@@ -369,6 +374,7 @@ typedef struct
   uint8_t           reqErrCode;         /*!< LLCP error code. */
 
   /* Power Control */
+  wsfTimer_t        tmrPowerCtrl;       /*!< Power control monitor timer. */
   int8_t            delta;              /*!< Power control delta storage. */
   bool_t            peerReqRecvd;       /*!< Peer request received. */
   uint8_t           reqPhy;             /*!< PHY of most recent power control request. */
@@ -381,10 +387,11 @@ typedef struct
   {
     struct
     {
-      int8_t highThreshold;             /*!< High extreme RSSI threshold. */
-      int8_t lowThreshold;              /*!< Low extreme RSSI threshold. */
-      uint8_t minTimeSpent;             /*!< Minimum time spent in an extreme RSSI zone to trigger a request. */
-      uint8_t curTimeSpent;             /*!< Current time spent in an extreme RSSI zone. */
+      int8_t highThreshold;             /*!< High RSSI threshold. */
+      int8_t lowThreshold;              /*!< Low RSSI threshold. */
+      uint8_t totalAccumulatedRssi;     /*!< Total accumulated RSSI samples in current sample slot. */
+      uint32_t accumulatedRssi;         /*!< Absolute value of accumulated RSSI in current RSSI sample slot (RSSI can never be positive). */
+      lctrRssiRunAvg_t rssiRunAvg;      /*!< RSSI running average. */
       uint8_t requestVal;               /*!< Value of increase/decrease in power to request. */
     } autoMonitor;                      /*!< Autonomous RSSI monitoring specific data. */
 
@@ -403,10 +410,43 @@ typedef struct
   } pclMonitorParam;                    /*!< Power control monitoring data. */
 
   /* CIS */
-  uint16_t                llcpCisHandle;           /*!< CIS handle for the LLCP procedure. */
-  lctrCheckTermFn_t       checkCisTerm;            /*!< Pointer to the check CIS termination function. */
-  lctrCheckCisEstAclFn_t  checkCisEstAcl;          /*!< Pointer to the check if CIS is established function. */
-  uint8_t                 cisRssiExtremeTimeSpent; /*!< CIS's current time spent in an extreme zone. */
+  uint16_t          llcpCisHandle;      /*!< CIS handle for the LLCP procedure. */
+  lctrCheckTermFn_t checkCisTerm;       /*!< Pointer to the check CIS termination function. */
+  lctrCheckCisEstAclFn_t  checkCisEstAcl;    /*!< Pointer to the check if CIS is established function. */
+  uint8_t           cisRssiExtremeTimeSpent; /*!< CIS's current time spent in an extreme zone. */
+  uint8_t           cisTotalAccumulatedRssi; /*!< Total accumulated RSSI samples in current sample slot. */
+  uint32_t          cisAccumulatedRssi; /*!< Absolute value of accumulated RSSI in current RSSI sample slot (RSSI can never be positive). */
+  lctrRssiRunAvg_t  cisRunAvg;          /*!< Running average of RSSI for CIS connection for power control. */
+
+  /* Enhanced Connection Update */
+  struct
+  {
+    /* Default values. */
+    uint16_t        defSrMin;           /*!< Subrate minimum value. */
+    uint16_t        defSrMax;           /*!< Subrate maximum value. */
+    uint16_t        defMaxLatency;      /*!< Maximum latency. */
+    uint16_t        defContNum;         /*!< Continuation number. */
+    uint16_t        defSvt;             /*!< Supervision timeout. */
+
+    /* Active values. */
+    uint16_t        srFactor;           /*!< Active subrate factor. */
+    uint16_t        srBaseEvent;        /*!< Subrate base event. */
+    uint16_t        contNum;            /*!< Continuation number. */
+    uint16_t        svt;                /*!< Supervision timeout. */
+    uint16_t        contNumCtr;         /*!< Number of continuation number in subrate events. */
+
+    struct
+    {
+      uint16_t      srFactor;           /*!< Active subrate factor. */
+      uint16_t      srBaseEvent;        /*!< Subrate base event. */
+      uint16_t      contNum;            /*!< Continuation number. */
+      uint16_t      contNumCtr;         /*!< Number of continuation number in subrate events. */
+      uint16_t      maxLatency;         /*!< Maximum latency. */
+      uint16_t      svt;                /*!< Supervision timeout. */
+    } pending;
+
+    bool_t          isSubrateTransMode; /*!< True if central in subrate transition mode. */
+  } ecu;                                /*!< Enhanced connection update parameters. */
 } lctrConnCtx_t;
 
 /*! \brief      Call signature of a cipher block handler. */
@@ -419,7 +459,7 @@ typedef bool_t (*lctrPktEncHdlr_t)(PalCryptoEnc_t *pEnc, uint8_t *pHdr, uint8_t 
 typedef bool_t (*lctrPktDecHdlr_t)(PalCryptoEnc_t *pEnc, uint8_t *pBuf);
 
 /*! \brief      Call signature of a set packet count handler. */
-typedef void (*lctrPktCntHdlr_t)(PalCryptoEnc_t *pEnc, uint64_t pktCnt);
+typedef void (*lctrPktCntHdlr_t)(uint64_t pktCnt);
 
 /*! \brief      Call signature of a LLCP state machine handler. */
 typedef bool_t (*LctrLlcpHdlr_t)(lctrConnCtx_t *pCtx, uint8_t event);
@@ -440,21 +480,31 @@ typedef void (*lctrPcMonAct_t)(lctrConnCtx_t *pCtx);
 typedef void (*lctrPcPowInd_t)(lctrConnCtx_t *pCtx, uint8_t phy, int8_t delta, int8_t txPower, bool_t phyChange);
 
 /*! \brief      Call signature of power report notification handler. */
-typedef void (*lctrPcNotifyPwr_t)(lctrConnCtx_t *pCtx, uint8_t reason, uint8_t phy, int8_t txPower, uint8_t limits, int8_t delta);
+typedef void (*lctrPcNotifyPwr_t)(lctrConnCtx_t *pCtx, uint8_t status, uint8_t reason, uint8_t phy, int8_t txPower, uint8_t limits, int8_t delta);
 
 /*! \brief      Call signature of CIS pend disconnect function. */
 typedef bool_t (*lctrPendCisDisc_t)(lctrConnCtx_t *pCtx);
+
+/*! \brief      Call signature of CIS power monitoring function. */
+typedef void   (*lctrCisServicePowerMonitor_t)(lctrConnCtx_t *pCtx);
+
+/*! \brief      Call signature of calculate number of subrated connection events. */
+typedef uint16_t (*lctrCalcSubrateConnEvents_t)(lctrConnCtx_t *pCtx, uint16_t numDataPdu);
+
+/*! \brief      Call signature of check LLCP override. */
+typedef bool_t (*lctrCheckLlcpOverride_t)(lctrConnCtx_t *pCtx);
 
 /*! \brief      LLCP state machine handlers. */
 enum
 {
   LCTR_LLCP_SM_ENCRYPT,                 /*!< Encryption LLCP state machine. */
   LCTR_LLCP_SM_PING,                    /*!< Ping state machine. */
+  LCTR_LLCP_SM_ENH_CONN_UPD,            /*!< Enhanced connection update state machine. */
   LCTR_LLCP_SM_CONN_UPD,                /*!< Connection update state machine. */
   LCTR_LLCP_SM_PHY_UPD,                 /*!< PHY update state machine. */
   LCTR_LLCP_SM_CIS_EST,                 /*!< CIS establishment state machine. */
   LCTR_LLCP_SM_CIS_TERM,                /*!< CIS termination state machine. */
-  LCTR_LLCP_SM_PC,                     /*!< Power control state machine. */
+  LCTR_LLCP_SM_PC,                      /*!< Power control state machine. */
   LCTR_LLCP_SM_CMN,                     /*!< Common LLCP state machine. */
   LCTR_LLCP_SM_TOTAL                    /*!< Total number of LLCP state machine. */
 };
@@ -480,9 +530,12 @@ extern lctrLlcpEh_t lctrSendPerSyncFromBcstFn;
 extern lctrLlcpEh_t lctrStorePeriodicSyncTrsfFn;
 extern lctrLlcpEh_t lctrSendPeriodicSyncIndFn;
 extern lctrLlcpEh_t lctrReceivePeriodicSyncIndFn;
-extern lctrPcMonAct_t lctrPcActTbl[LCTR_PC_MONITOR_SCHEME_TOTAL];
+extern lctrPcMonAct_t lctrPathLossMonitorActFn;
 extern lctrPcPowInd_t lctrSendPowerChangeIndCback;
 extern lctrPcNotifyPwr_t lctrNotifyPowerReportIndCback;
+extern lctrCisServicePowerMonitor_t lctrCisServicePowerMonitorFn;
+extern lctrCalcSubrateConnEvents_t lctrCalcSubrateConnEventsFn;
+extern lctrCheckLlcpOverride_t lctrSlvCheckEncOverridePhyUpdateFn;
 
 /**************************************************************************************************
   Function Declarations
@@ -573,6 +626,12 @@ void lctrSendPeerScaRsp(lctrConnCtx_t *pCtx);
 void lctrStorePeerSca(lctrConnCtx_t *pCtx);
 void lctrNotifyHostPeerScaCnf(lctrConnCtx_t *pCtx);
 
+/* Channel status reporting actions. */
+void lctrSendChannelStatusInd(lctrConnCtx_t *pCtx);
+void lctrStoreChannelStatusInd(lctrConnCtx_t *pCtx);
+void lctrSendChannelReportingInd(lctrConnCtx_t *pCtx);
+void lctrStoreChannelReportingInd(lctrConnCtx_t *pCtx);
+
 /* Unknown/Unsupported */
 void lctrSendUnknownRsp(lctrConnCtx_t *pCtx);
 void lctrSendRejectInd(lctrConnCtx_t *pCtx, uint8_t reason, bool_t forceRejectExtInd);
@@ -636,6 +695,9 @@ uint8_t lctrGetPowerLimits(int8_t txPower);
 
 /* Reservation */
 uint32_t lctrGetConnRefTime(uint8_t connHandle, uint32_t *pDurUsec);
+
+/* Channel map updating. */
+uint8_t lctrConnChClassUpdate(uint64_t chanMap);
 
 /*************************************************************************************************/
 /*!
@@ -749,11 +811,11 @@ static inline void lctrIncPacketCounterTx(lctrConnCtx_t *pCtx)
 /*************************************************************************************************/
 static inline void lctrIncPacketCounterRx(lctrConnCtx_t *pCtx)
 {
-  if (lctrSetEncryptPktCountHdlr)
+  if (lctrSetDecryptPktCountHdlr)
   {
     PalCryptoEnc_t * const pEnc = &pCtx->bleData.chan.enc;
 
-    if ((pEnc->enaEncrypt) &&
+    if ((pEnc->enaDecrypt) &&
         (pEnc->nonceMode == PAL_BB_NONCE_MODE_PKT_CNTR))
     {
       pCtx->rxPktCounter++;
@@ -782,10 +844,10 @@ static inline void lctrSetBbPacketCounterTx(lctrConnCtx_t *pCtx)
     switch (pEnc->nonceMode)
     {
       case PAL_BB_NONCE_MODE_PKT_CNTR:
-        lctrSetEncryptPktCountHdlr(pEnc, pCtx->txPktCounter);
+        lctrSetEncryptPktCountHdlr(pCtx->txPktCounter);
         break;
       case PAL_BB_NONCE_MODE_EXT16_CNTR:
-        lctrSetEncryptPktCountHdlr(pEnc, pCtx->eventCounter);
+        lctrSetEncryptPktCountHdlr(pCtx->eventCounter);
         break;
       default:
         break;
@@ -814,10 +876,10 @@ static inline void lctrSetBbPacketCounterRx(lctrConnCtx_t *pCtx)
     switch (pEnc->nonceMode)
     {
       case PAL_BB_NONCE_MODE_PKT_CNTR:
-        lctrSetDecryptPktCountHdlr(pEnc, pCtx->rxPktCounter);
+        lctrSetDecryptPktCountHdlr(pCtx->rxPktCounter);
         break;
       case PAL_BB_NONCE_MODE_EXT16_CNTR:
-        lctrSetDecryptPktCountHdlr(pEnc, pCtx->eventCounter);
+        lctrSetDecryptPktCountHdlr(pCtx->eventCounter);
         break;
       default:
         break;
@@ -870,11 +932,11 @@ static inline void lctrStoreConnTimeoutTerminateReason(lctrConnCtx_t *pCtx)
 /*************************************************************************************************/
 static inline void lctrDataTxIncAvailBuf(void)
 {
-  WSF_CS_INIT();
+  WSF_CS_INIT(cs);
 
-  WSF_CS_ENTER();
+  WSF_CS_ENTER(cs);
   lmgrConnCb.availTxBuf++;
-  WSF_CS_EXIT();
+  WSF_CS_EXIT(cs);
 }
 
 /*************************************************************************************************/
@@ -884,11 +946,11 @@ static inline void lctrDataTxIncAvailBuf(void)
 /*************************************************************************************************/
 static inline void lctrDataTxDecAvailBuf(void)
 {
-  WSF_CS_INIT();
+  WSF_CS_INIT(cs);
 
-  WSF_CS_ENTER();
+  WSF_CS_ENTER(cs);
   lmgrConnCb.availTxBuf--;
-  WSF_CS_EXIT();
+  WSF_CS_EXIT(cs);
 }
 
 /*************************************************************************************************/
@@ -900,11 +962,11 @@ static inline void lctrDataTxDecAvailBuf(void)
 /*************************************************************************************************/
 static inline void lctrDataRxIncAvailBuf(uint8_t numBufs)
 {
-  WSF_CS_INIT();
+  WSF_CS_INIT(cs);
 
-  WSF_CS_ENTER();
+  WSF_CS_ENTER(cs);
   lmgrConnCb.availRxBuf += numBufs;
-  WSF_CS_EXIT();
+  WSF_CS_EXIT(cs);
 }
 
 /*************************************************************************************************/

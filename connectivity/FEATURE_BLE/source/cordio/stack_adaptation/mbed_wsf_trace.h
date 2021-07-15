@@ -21,17 +21,31 @@
 #if MBED_CONF_MBED_TRACE_ENABLE
 void wsf_mbed_trace_init();
 
-#if MBED_CONF_CORDIO_TRACE_HCI_PACKETS
+# if MBED_CONF_CORDIO_TRACE_HCI_PACKETS
 void wsf_mbed_trace_hci(const uint8_t *pBuf, uint32_t len, const uint8_t *prefix);
 
-#define HCI_PDUMP_CMD(len, pBuf)    wsf_mbed_trace_hci(len, pBuf, "CMD")
-#define HCI_PDUMP_EVT(len, pBuf)    wsf_mbed_trace_hci(len, pBuf, "EVT")
-#define HCI_PDUMP_TX_ACL(len, pBuf) wsf_mbed_trace_hci(len, pBuf, "ACL_TX")
-#define HCI_PDUMP_RX_ACL(len, pBuf) wsf_mbed_trace_hci(len, pBuf, "ACL_RX")
-#define HCI_PDUMP_TX_ISO(len, pBuf) wsf_mbed_trace_hci(len, pBuf, "ISO_TX")
-#define HCI_PDUMP_RX_ISO(len, pBuf) wsf_mbed_trace_hci(len, pBuf, "ISO_RX")
-#endif // MBED_CONF_CORDIO_TRACE_HCI_PACKETS
+#  define HCI_PDUMP_CMD(len, pBuf)    wsf_mbed_trace_hci(len, pBuf, "CMD")
+#  define HCI_PDUMP_EVT(len, pBuf)    wsf_mbed_trace_hci(len, pBuf, "EVT")
+#  define HCI_PDUMP_TX_ACL(len, pBuf) wsf_mbed_trace_hci(len, pBuf, "ACL_TX")
+#  define HCI_PDUMP_RX_ACL(len, pBuf) wsf_mbed_trace_hci(len, pBuf, "ACL_RX")
+#  define HCI_PDUMP_TX_ISO(len, pBuf) wsf_mbed_trace_hci(len, pBuf, "ISO_TX")
+#  define HCI_PDUMP_RX_ISO(len, pBuf) wsf_mbed_trace_hci(len, pBuf, "ISO_RX")
+# else
+#  define HCI_PDUMP_CMD(len, pBuf)
+#  define HCI_PDUMP_EVT(len, pBuf)
+#  define HCI_PDUMP_TX_ACL(len, pBuf)
+#  define HCI_PDUMP_RX_ACL(len, pBuf)
+#  define HCI_PDUMP_TX_ISO(len, pBuf)
+#  define HCI_PDUMP_RX_ISO(len, pBuf)
+# endif // MBED_CONF_CORDIO_TRACE_HCI_PACKETS
 
+#else
+# define HCI_PDUMP_CMD(len, pBuf)
+# define HCI_PDUMP_EVT(len, pBuf)
+# define HCI_PDUMP_TX_ACL(len, pBuf)
+# define HCI_PDUMP_RX_ACL(len, pBuf)
+# define HCI_PDUMP_TX_ISO(len, pBuf)
+# define HCI_PDUMP_RX_ISO(len, pBuf)
 #endif // MBED_CONF_MBED_TRACE_ENABLE
 
 #endif // MBED_WSF_TRACE_H_

@@ -107,8 +107,8 @@ void PalBbTesterSetModifyTxPktTrigger(uint16_t hdrMask, uint16_t hdrValue);
  *  If adjustment value is out of range, maximum allowed value is used.
  */
 /*************************************************************************************************/
-
 void PalBbTesterAdjTxTifsNs(int16_t adjNs);
+
 #ifdef __cplusplus
 };
 #endif

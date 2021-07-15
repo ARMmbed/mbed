@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ enum
   LCTR_CONN_MSG_API_CIS_REQ_ACCEPT,     /*!< Peer CIS request accept API event. */
   LCTR_CONN_MSG_API_CIS_REQ_REJECT,     /*!< Peer CIS request accept API event. */
   LCTR_CONN_MSG_API_PWR_CTRL_REQ,       /*!< Peer power control request API event. */
-
+  LCTR_CONN_MSG_API_SUBRATE_REQ,        /*!< Subrate request API event. */
   /* Internal events */
   _LCTR_CONN_INT_EVENTS                 = 40,
   LCTR_CONN_DATA_PENDING,               /*!< New data pending. */
@@ -100,9 +100,12 @@ enum
   LCTR_CONN_LLCP_VERSION_EXCH,          /*!< LL initiated remote version exchange. */
   LCTR_CONN_LLCP_FEATURE_EXCH,          /*!< LL initiated remote feature exchange. */
   LCTR_CONN_LLCP_LENGTH_EXCH,           /*!< LL initiated data length exchange. */
-  LCTR_CONN_LLCP_PWR_CTRL_REQ,          /*!< LL initiated power control request. */
+  LCTR_CONN_LLCP_PWR_CTRL_SERVICE,      /*!< Service power control monitor. */
   LCTR_CONN_LLCP_TERM,                  /*!< LL initiated termination. */
+  LCTR_CONN_LLCP_CHANNEL_STATUS,        /*!< LL initiated channel status. */
+  LCTR_CONN_LLCP_CHANNEL_REPORTING,     /*!< LL initiated channel reporting. */
   LCTR_CONN_LLCP_PROC_CMPL,             /*!< LLCP procedure completed. */
+  LCTR_CONN_LLCP_PROC_ABORTED,          /*!< LLCP procedure aborted. */
   LCTR_CONN_LLCP_START_PENDING,         /*!< Start pending LLCP procedure. */
   LCTR_CONN_LLCP_SKIP_CONN_PARAM,       /*!< Skip connection parameter exchange. */
   LCTR_CONN_LLCP_REJECT_CONN_UPD,       /*!< Reject a connection update. */
@@ -240,6 +243,34 @@ typedef struct
   uint8_t           phy;                /*!< PHY requested. */
 } lctrMsgPwrCtrlReq_t;
 
+/*! \brief      Internal subrate request message. */
+typedef struct
+{
+  lctrMsgHdr_t      hdr;                /*!< Message Header. */
+  uint16_t          srMin;              /*!< Subrate minimum value. */
+  uint16_t          srMax;              /*!< Subrate maximum value. */
+  uint16_t          maxLatency;         /*!< Maximum latency. */
+  uint16_t          contNum;            /*!< Continuation number. */
+  uint16_t          svt;                /*!< Supervision timeout in 10ms units. */
+} lctrMsgSubrateReq_t;
+
+/*! \brief      Channel reporting indication message. */
+typedef struct
+{
+  lctrMsgHdr_t      hdr;                /*!< Message Header. */
+  uint8_t           enable;             /*!< Enable. */
+  uint8_t           minSpacing;         /*!< Minimum status report spacing. */
+  uint8_t           maxDelay;           /*!< Maximum status report delay. */
+} lctrMsgChRptInd_t;
+
+/*! \brief      Channel status indication message. */
+typedef struct
+{
+  lctrMsgHdr_t      hdr;                /*!< Message Header. */
+  uint8_t           chanStatus[LL_MAX_NUM_CHAN_DATA];
+                                        /*!< Status of used channels. */
+} lctrMsgChStatusInd_t;
+
 /*! \brief      Link layer controller message data. */
 typedef union
 {
@@ -258,6 +289,9 @@ typedef union
   lctrPerAdvSyncTrsf_t    perAdvSyncTrsf;   /*!< Periodic advertising sync transfer data. */
   lctrScaReq_t            scaReq;           /*!< Sleep clock accuracy request. */
   lctrMsgPwrCtrlReq_t     pwrCtrlReq;       /*!< Power control request. */
+  lctrMsgSubrateReq_t     subrateReq;       /*!< Subrate request. */
+  lctrMsgChRptInd_t       chanRptInd;       /*!< Channel report indication. */
+  lctrMsgChStatusInd_t    chanStatusInd;    /*!< Channel status indication. */
 
   /* CIS */
   lctrCreateCis_t         createCis;        /*!< Create CIS message data. */
@@ -314,6 +348,8 @@ void LctrVsConnInit(const LctrVsHandlers_t *pHdlrs);
 uint8_t LctrValidateConnSpec(const LlConnSpec_t *pConnSpec);
 uint8_t LctrValidateModifyScaParam(uint8_t action);
 bool_t LctrIsProcActPended(uint16_t handle, uint8_t event);
+bool_t LctrIsFeatExchHostInit(uint16_t handle);
+void LctrSetHostNotifyFeatExch(uint16_t handle);
 
 /* Status */
 bool_t LctrIsConnHandleEnabled(uint16_t handle);
@@ -326,6 +362,7 @@ uint64_t LctrGetChannelMap(uint16_t handle);
 uint64_t LctrGetUsedFeatures(uint16_t handle);
 uint8_t LctrGetTxPhy(uint16_t handle);
 uint8_t LctrGetRxPhy(uint16_t handle);
+bool_t LctrCisTerminationInProgress(uint16_t handle);
 void LctrGetPeerMinUsedChan(uint16_t handle, uint8_t *pPeerMinUsedChan);
 bool_t LctrIsWaitingForReply(uint16_t handle, uint8_t reply);
 bool_t LctrIsCisEnabled(uint16_t handle);
@@ -340,7 +377,6 @@ void LctrGetEncMode(uint16_t handle, LlEncMode_t *pMode);
 bool_t LctrSetEncMode(uint16_t handle, const LlEncMode_t *pMode);
 void LctrSetConnOpFlags(uint16_t handle, uint32_t flags, bool_t enable);
 uint8_t lctrSetPowerMonitorEnable(uint16_t handle, bool_t enable);
-
 
 /* Data path */
 void LctrTxAcl(uint8_t *pAclBuf);

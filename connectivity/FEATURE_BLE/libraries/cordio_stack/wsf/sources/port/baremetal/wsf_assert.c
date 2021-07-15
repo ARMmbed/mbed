@@ -1,10 +1,8 @@
 /*************************************************************************************************/
 /*!
- *  \file   wsf_assert.c
+ *  \file
  *
  *  \brief  Assert implementation.
- *
- *  Copyright (c) 2009-2018 Arm Ltd. All Rights Reserved.
  *
  *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
@@ -47,16 +45,12 @@ void WsfAssert(const char *pFile, uint16_t line)
 #endif
 {
   /* Possibly unused parameters */
+  (void)line;
 #if WSF_TOKEN_ENABLED == TRUE
   (void)modId;
-#else
-  (void)pFile;
-#endif
-  (void)line;
-
-#if WSF_TOKEN_ENABLED == TRUE
   WSF_TRACE_ERR2("Assertion detected on %s:%u", modId, line);
 #else
+  (void)pFile;
   WSF_TRACE_ERR2("Assertion detected on %s:%u", pFile, line);
 #endif
 

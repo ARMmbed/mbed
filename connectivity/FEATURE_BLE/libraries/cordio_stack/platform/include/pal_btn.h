@@ -65,7 +65,8 @@ enum
   PAL_BTN_AUDIO_RWD,            /*!< Fast Rewind button. */
   PAL_BTN_AUDIO_VOL_UP,         /*!< Volume Up button. */
   PAL_BTN_AUDIO_VOL_DN,         /*!< Volume Down button. */
-  PAL_BTN_AUDIO_MUTE            /*!< Mute button. */
+  PAL_BTN_AUDIO_MUTE,           /*!< Mute button. */
+  PAL_BTN_PAUSE                 /*!< Pause button. */
 };
 
 /**************************************************************************************************

@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -66,22 +66,23 @@ typedef struct
     struct
     {
       /* Data */
-      wsfQueue_t txDataQ;           /*!< Transmit ISO queue. */
-      uint8_t    numTxSduComp;      /*!< Number of Tx completed SDUs. */
-      lctrIsoalTxCtx_t isoalTxCtx;  /*!< ISOAL transmit context. */
-    } slv;                          /*!< BIS slave specific data. */
+      wsfQueue_t           txDataQ;       /*!< Transmit ISO queue. */
+      uint8_t              numTxSduComp;  /*!< Number of Tx completed SDUs. */
+      lctrIsoalTxCtx_t     isoalTxCtx;    /*!< ISOAL transmit context. */
+      lctrInDataPathCtx_t  dataPathInCtx; /*!< Datapath input context. */
+    } slv;                                /*!< BIS slave specific data. */
 
     struct
     {
       /* Data */
-      wsfQueue_t rxDataQ;           /*!< Receive ISO Data PDU pending queue. */
-      wsfQueue_t rxIsoSduQ;         /*!< Receive ISO SDU PDU pending queue. */
-      lctrIsoalRxCtx_t isoalRxCtx;  /*!< ISOAL Receive context. */
+      wsfQueue_t            rxDataQ;        /*!< Receive ISO Data PDU pending queue. */
+      lctrIsoalRxCtx_t      isoalRxCtx;     /*!< ISOAL receive context. */
+      lctrOutDataPathCtx_t  dataPathOutCtx; /*!< Output data path context. */
 
       /* ISO test */
-      LlIsoTestCtrs_t stats;        /*!< Rx statistics. */
-    } mst;                          /*!< BIS master specific data. */
-  } roleData;                       /*!< Role specific data. */
+      LlIsoTestCtrs_t       stats;          /*!< Rx statistics. */
+    } mst;                                  /*!< BIS master specific data. */
+  } roleData;                               /*!< Role specific data. */
 
   /* ISO test */
   struct
@@ -93,22 +94,21 @@ typedef struct
     {
       struct
       {
-        uint32_t    payloadCtr;     /*!< Payload counter for framed transmissions. */
-      } framed;                     /*!< Framed context. */
+        uint32_t    payloadCtr; /*!< Payload counter for framed transmissions. */
+      } framed;
       struct
       {
-        uint8_t     payloadOffset;  /*!< Payload offset for unframed transmissions. */
-      } unframed;                   /*!< Unframed context. */
-    } util;                         /*!< Role-based utility variables. */
-    LlIsoPldType_t pldType:8;       /*!< Test payload type. */
-  } test;                           /*!< ISO Test data. */
+        uint8_t     burstIdx;   /*!< BN Index for unframed transmissions. */
+      } unframed;
+    } util;
+    LlIsoPldType_t pldType:8;   /*!< Test payload type. */
+  } test;
 
   /* BB */
   lmgrChanParam_t chSelInfo;    /*!< Channel selection state. */
   PalBbBleChan_t chan;          /*!< Channelization parameters. */
 
   /* Data */
-  LlIsoDataPath_t path:8;       /*!< Input audio data path. */
   LlIsoLlid_t   lastLlid:8;     /*!< Last LLID. */
 } lctrBisCtx_t;
 
@@ -164,19 +164,26 @@ typedef struct lctrBigCtx_tag
       uint8_t   bisIdx[LL_MAX_BIS];   /*!< List of indices of BISes. */
 
       /* Sync timeout */
-      uint32_t   bigSyncTimeoutMs;    /*!< Synchronization timeout in microseconds. */
       wsfTimer_t bigSyncTmr;          /*!< Synchronization timeout timer. */
-
-      /* Event state */
-      uint16_t  totalAcc;       /*!< Total clock accuracy. */
-      uint16_t  extraWwUsec;    /*!< Extra window widening time in microseconds. */
-      uint32_t  rxSyncTime;     /*!< Last received BIG anchor point. */
-      uint32_t  anchorPoint;    /*!< BIG anchor point. */
+      uint32_t   bigSyncTimeoutMs;    /*!< Synchronization timeout in microseconds. */
 
       /* Encryption */
-      uint8_t bcstCode[LL_BC_LEN];  /*!< Broadcast Code. */
-    } mst;                      /*!< BIG master specific data. */
-  } roleData;                   /*!< Role-specific data. */
+      uint8_t bcstCode[LL_BC_LEN];    /*!< Broadcast Code. Array address should be word-aligned. */
+
+      /* Event state */
+      uint16_t  totalAcc;             /*!< Total clock accuracy. */
+      uint16_t  initWwUsec;           /*!< Initial synchronization window widening time in microseconds. */
+      uint32_t  rxSyncTime;           /*!< Last received BIG anchor point. */
+      uint32_t  anchorPoint;          /*!< BIG anchor point. */
+      lctrBisCtx_t *pFirstBisCtx;     /*!< First BIS context (ISR optimization to reduce lookups). */
+      lctrBisCtx_t *pSecondBisCtx;    /*!< Second BIS context (ISR optimization to reduce lookups). */
+      uint32_t  firstBisOffsUsec;     /*!< First BIS offset from the anchor point in microseconds. */
+      uint8_t firstBisEvtIdx;         /*!< First BIS index. */
+
+      /* Reception status. */
+      bool_t    lastPduMissed;        /*!< Rx failure on last PDU. */
+    } mst;                            /*!< BIG master specific data. */
+  } roleData;                         /*!< Role-specific data. */
 
   /* Control */
   struct
@@ -210,9 +217,6 @@ typedef struct lctrBigCtx_tag
   bool_t        encrypt;                /*!< Encryption enable for BIS. */
   uint8_t       giv[LL_GIV_LEN];        /*!< GIV. */
   uint8_t       gskd[LL_GSKD_LEN];      /*!< GSKD. */
-
-  /* Reception status. */
-  bool_t        lastPduMissed;          /*!< Rx failure on last PDU. */
 } lctrBigCtx_t;
 
 /*! \brief  ISR subevent context. */
@@ -245,7 +249,6 @@ bool_t lctrIsBigSynchronizing(void);
 
 /* BIS Context */
 lctrBisCtx_t *lctrAllocBisCtx(lctrBigCtx_t *pBigCtx);
-void lctrCleanupBisCtx(lctrBisCtx_t *pBisCtx);
 void lctrFreeBisCtx(lctrBisCtx_t *pBisCtx);
 lctrBisCtx_t *lctrFindBisByHandle(uint16_t bisHandle);
 uint8_t lctrGetNumAvailBisCtx(void);
@@ -266,11 +269,11 @@ void lctrBigTxCtrlQueuePopCleanup(lctrBigCtx_t *pBigCtx);
 
 /* BIS Rx Data Path */
 uint8_t *lctrBisRxIsoSduDeq(lctrBisCtx_t *pBisCtx);
-void lctrBisRxIsoSduEnq(lctrBisCtx_t *pBisCtx, uint8_t *pBuf);
 uint8_t *lctrBisRxIsoDataPduAlloc(void);
 void lctrBisRxIsoDataPduFree(uint8_t *pPdu);
-void lctrBisEnqueueRxDataPdu(lctrBisCtx_t *pBisCtx, uint8_t *pRxBuf, uint64_t evtCtr);
-uint8_t *lctrBisDequeueRxDataPdu(lctrBisCtx_t *pBisCtx, uint8_t *pEvtCtrLsb);
+void lctrBisEnqueueRxDataPdu(lctrBisCtx_t *pBisCtx, uint8_t *pRxBuf, uint8_t burstIdx);
+uint8_t *lctrBisDequeueRxDataPdu(lctrBisCtx_t *pBisCtx, uint8_t burstIdx);
+uint8_t *lctrBisDequeueRxDataPduTop(lctrBisCtx_t *pBisCtx);
 
 /* ISO Test mode */
 uint8_t lctrBisTxTest(lctrBisCtx_t *pBisCtx, uint8_t pldType);
@@ -281,9 +284,8 @@ uint8_t LctrBisReadTestCounters(lctrBisCtx_t *pBisCtx, LlIsoTestCtrs_t *pStats);
 void lctrBisDefaults(void);
 void lctrNotifyIsoTxComplete(lctrBigCtx_t *pBigCtx);
 void lctrBisCalcGroupSessionKey(const uint8_t *pGSKD, const uint8_t *pBC, uint8_t *pGSK);
-uint8_t lctrBisSetDataPath(lctrBisCtx_t *pBisCtx, LlIsoDataPathDir_t dpDir, LlIsoDataPath_t dpId);
-bool_t lctrSlvBisCalcNextIdxSequential(lctrBigCtx_t *pBigCtx, lctrSeCtx_t *pSeCtx, uint8_t numSePkts);
-bool_t lctrSlvBisCalcNextIdxInterleaved(lctrBigCtx_t *pBigCtx, lctrSeCtx_t *pSeCtx, uint8_t numSePkts);
+bool_t lctrBisCalcNextIdxSequential(lctrBigCtx_t *pBigCtx, lctrSeCtx_t *pSeCtx, uint8_t numSePkts);
+bool_t lctrBisCalcNextIdxInterleaved(lctrBigCtx_t *pBigCtx, lctrSeCtx_t *pSeCtx, uint8_t numSePkts);
 
 #ifdef __cplusplus
 };

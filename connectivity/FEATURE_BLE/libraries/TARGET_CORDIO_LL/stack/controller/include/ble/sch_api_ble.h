@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ extern "C" {
 enum
 {
   SCH_RM_PREF_PERFORMANCE,            /*!< Performance is preferred, search from minimum interval. */
-  SCH_RM_PREF_CAPACITY                /*!< Capacity is preferred, search from maximum interval.    */
+  SCH_RM_PREF_CAPACITY                /*!< Capacity is preferred, search from maximum interval. */
 };
 
 /**************************************************************************************************

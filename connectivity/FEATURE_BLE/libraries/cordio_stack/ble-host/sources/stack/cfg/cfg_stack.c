@@ -64,7 +64,6 @@ l2cCfg_t *pL2cCfg = (l2cCfg_t *) &l2cCfg;
 /**************************************************************************************************
   ATT
 **************************************************************************************************/
-
 #if MBED_CONF_CORDIO_DESIRED_ATT_MTU < ATT_DEFAULT_MTU || MBED_CONF_CORDIO_DESIRED_ATT_MTU > ATT_MAX_MTU
 #error "CORDIO_CFG_DESIRED_ATT_MTU value is outside valid range"
 #endif
@@ -94,7 +93,7 @@ const eattCfg_t eattCfg =
   FALSE,                            /* Authorization required */
   DM_SEC_LEVEL_NONE,                /* Security level required */
   0,                                /* Number of enhanced l2cap channels per connection */
-  NULL                              /* Channel priority table */
+  NULL                              /* Min channel priority table. Set NULL to map priority to L2CAP channel index. */
 };
 
 /* Configuration pointer */

@@ -82,23 +82,23 @@ typedef struct
 } lctrIsoTxBufDesc_t;
 
 /*! \brief      Start stream call signature. */
-typedef bool_t (*lctrCodecStartStream)(uint16_t id, PalCodecSreamParam_t *pParam);
+typedef bool_t (*lctrCodecStartStream)(uint16_t id, PalCodecStreamParam_t *pParam);
 
 /*! \brief      Stop stream call signature. */
-typedef void (*lctrCodecStopStream)(uint16_t id);
+typedef void (*lctrCodecStopStream)(uint16_t id, PalCodecDir_t dir);
 
-/*! \brief      Stream in data call signature. */
-typedef uint16_t (*lctrCodecStreamIn)(uint16_t id, uint8_t *pBuf, uint16_t len, uint32_t *pPktCtr);
+/*! \brief      Stream in data request call signature. */
+typedef void (*lctrCodecStreamInReq)(uint16_t id, uint8_t *pData, uint16_t len);
 
 /*! \brief      Stream out data call signature. */
-typedef void (*lctrCodecStreamOut)(uint16_t id, const uint8_t *pBuf, uint16_t len, uint32_t pktCtr);
+typedef void (*lctrCodecStreamOut)(uint16_t id, const uint8_t *pBuf, uint16_t len, uint32_t sduRef);
 
 /*! \brief      Codec event handlers. */
 typedef struct
 {
   lctrCodecStartStream  start;          /*!< Start stream. */
   lctrCodecStopStream   stop;           /*!< Stop stream. */
-  lctrCodecStreamIn     in;             /*!< Stream data input. */
+  lctrCodecStreamInReq  inReq;          /*!< Stream data input request. */
   lctrCodecStreamOut    out;            /*!< Stream data output. */
 } lctrCodecHandlers_t;
 
@@ -134,7 +134,7 @@ typedef struct
     {
       wsfQueue_t    pendSduQ;           /*!< Pending PDU fragments. */
       uint16_t      curLen;             /*!< Current length of SDU being received. */
-      uint8_t       ps;                 /*!< Packet status. */
+      lctrPktStatus_t ps:8;             /*!< Packet status. */
     } unframed;                         /*!< Unframed specific data. */
   } data;                               /*!< Framing-specific data. */
 } lctrIsoalRxCtx_t;
@@ -142,30 +142,55 @@ typedef struct
 /*! \brief      Input datapath context. */
 typedef struct
 {
-  LlIsoDataPath_t   id;                 /*!< Input data path ID. */
-} lctrInDataPathCtx_t;                  /*!< Input datapath configuration. */
+  LlIsoDataPath_t   id:8;               /*!< Input data path ID. */
+
+  union
+  {
+    struct
+    {
+      uint16_t         streamId;        /*!< Stream ID. */
+    } codec;                            /*!< Codec-specific configuration. */
+  } cfg;                                /*!< Data path specific configuration. */
+} lctrInDataPathCtx_t;                  /*!< Input data path configuration. */
 
 /*! \brief      Output datapath context. */
 typedef struct
 {
-  LlIsoDataPath_t   id;                 /*!< Output data path ID. */
+  LlIsoDataPath_t   id:8;               /*!< Output data path ID. */
 
   union
   {
     struct
     {
       wsfQueue_t    rxDataQ;            /*!< Receive data pending queue. */
-      uint8_t       numRxPend;          /*!< Number of messages pending in the RX queue. */
+      uint8_t       numRxPend;          /*!< Number of messages pending in the Rx queue. */
     } hci;                              /*!< HCI data path configuration. */
-  } cfg;                                /*!< Datapath-specific configuration parameters. */
-} lctrOutDataPathCtx_t;                 /*!< Output datapath configuration. */
 
-/*! \brief      Datapath context. */
+    struct
+    {
+      wsfQueue_t    rxDataQ;            /*!< Receive data pending queue. */
+      uint8_t       numRxPend;          /*!< Number of messages pending in the Rx queue. */
+      uint16_t      streamId;           /*!< Stream ID. */
+    } codec;                            /*!< Codec-specific configuration. */
+  } cfg;                                /*!< Data path specific configuration parameters. */
+} lctrOutDataPathCtx_t;                 /*!< Output data path configuration. */
+
+/*! \brief      Data path context. */
 typedef union
 {
   lctrInDataPathCtx_t  in;       /*!< Input context. */
   lctrOutDataPathCtx_t out;      /*!< Output context. */
-} lctrDataPathCtx_t;             /*!< Datapath context collection. */
+} lctrDataPathCtx_t;             /*!< Data path context collection. */
+
+/*! \brief      Data path setup parameters. */
+typedef struct
+{
+  uint16_t handle;                      /*!< ISO Handle. */
+  uint32_t isoInt;                      /*!< ISO interval. */
+  uint32_t pktCtr;                      /*!< Current packet counter. */
+  uint8_t dpDir;                        /*!< Data path direction. */
+  lctrDataPathCtx_t *pDataPathCtx;      /*!< Data path context. */
+} lctrDpParams_t;
 
 /**************************************************************************************************
   Function Declarations
@@ -179,15 +204,17 @@ void lctrNotifyHostIsoEventComplete(uint8_t handle, uint32_t evtCtr);
 /* ISO data path */
 lctrIsoTxBufDesc_t *lctrAllocIsoTxBufDesc(void);
 void lctrFreeIsoTxBufDesc(lctrIsoTxBufDesc_t *pDesc);
-uint8_t lctrSetupIsoDataPath( LlIsoSetupDataPath_t *pSetupDataPath, lctrDataPathCtx_t *pDataPathCtx);
-void lctrIsoSendCodecSdu(uint16_t id);
-bool_t lctrIsoRxConnEnq(lctrOutDataPathCtx_t *pOutDataPathCtx, uint16_t handle, uint8_t *pBuf);
-void lctrIsoOutDataPathClear(lctrOutDataPathCtx_t *pOutCtx);
+uint8_t lctrIsoSetupDataPath(lctrDpParams_t *pDpParam, LlIsoSetupDataPath_t *pSetupDataPath);
+void lctrIsoSendCodecSdu(uint16_t id, uint32_t pktCtr, uint32_t ts, uint8_t *pData, uint16_t actLen);
+bool_t lctrIsoRxConnEnq(lctrOutDataPathCtx_t *pOutDataPathCtx, uint16_t handle, uint32_t pktCtr, uint8_t *pBuf);
+void lctrIsoInDataPathClear(lctrDpParams_t *pDpParam);
+void lctrIsoOutDataPathClear(lctrDpParams_t *pDpParam);
 void lctrIsoalRxDataPathClear(lctrIsoalRxCtx_t *pRxCtx, uint8_t framing);
-void lctrIsoOutDataPathSetup(lctrOutDataPathCtx_t *pOutCtx);
+uint8_t lctrIsoInDataPathSetup(lctrDpParams_t *pDpParam, LlIsoSetupDataPath_t *pSetupDataPath);
+uint8_t lctrIsoOutDataPathSetup(lctrDpParams_t *pDpParam, LlIsoSetupDataPath_t *pSetupDataPath);
 uint8_t *lctrIsoRxConnDeq(lctrOutDataPathCtx_t *pOutCtx);
-bool_t lctrIsoUnframedRxSduPendQueue(lctrIsoalRxCtx_t *pRxCtx, uint8_t *pSdu, uint16_t handle,
-                                     uint16_t dataLen, uint8_t llid);
+uint8_t *lctrRxSduAlloc(void);
+bool_t lctrRecombineRxUnframedSdu(lctrIsoalRxCtx_t *pRxCtx, uint8_t *pSduFrag);
 
 /* ISO Test mode. */
 uint8_t *lctrGenerateIsoTestData(uint16_t handle, LlIsoPldType_t pldType, uint16_t maxSdu, uint32_t pktCtr);
@@ -205,11 +232,11 @@ uint8_t *lctrTxIsoDataPduAlloc(void);
 /*************************************************************************************************/
 static inline void lctrIsoSduTxIncAvailBuf(void)
 {
-  WSF_CS_INIT();
+  WSF_CS_INIT(cs);
 
-  WSF_CS_ENTER();
+  WSF_CS_ENTER(cs);
   lmgrIsoCb.availTxBuf++;
-  WSF_CS_EXIT();
+  WSF_CS_EXIT(cs);
 }
 
 /*************************************************************************************************/
@@ -219,11 +246,11 @@ static inline void lctrIsoSduTxIncAvailBuf(void)
 /*************************************************************************************************/
 static inline void lctrIsoSduTxDecAvailBuf(void)
 {
-  WSF_CS_INIT();
+  WSF_CS_INIT(cs);
 
-  WSF_CS_ENTER();
+  WSF_CS_ENTER(cs);
   lmgrIsoCb.availTxBuf--;
-  WSF_CS_EXIT();
+  WSF_CS_EXIT(cs);
 }
 
 /*************************************************************************************************/
@@ -235,11 +262,11 @@ static inline void lctrIsoSduTxDecAvailBuf(void)
 /*************************************************************************************************/
 static inline void lctrIsoDataRxIncAvailBuf(uint8_t numBufs)
 {
-  WSF_CS_INIT();
+  WSF_CS_INIT(cs);
 
-  WSF_CS_ENTER();
+  WSF_CS_ENTER(cs);
   lmgrIsoCb.availRxBuf += numBufs;
-  WSF_CS_EXIT();
+  WSF_CS_EXIT(cs);
 }
 
 /*************************************************************************************************/
@@ -249,11 +276,11 @@ static inline void lctrIsoDataRxIncAvailBuf(uint8_t numBufs)
 /*************************************************************************************************/
 static inline void lctrIsoDataRxDecAvailBuf(void)
 {
-  WSF_CS_INIT();
+  WSF_CS_INIT(cs);
 
-  WSF_CS_ENTER();
+  WSF_CS_ENTER(cs);
   lmgrIsoCb.availRxBuf--;
-  WSF_CS_EXIT();
+  WSF_CS_EXIT(cs);
 }
 
 #ifdef __cplusplus

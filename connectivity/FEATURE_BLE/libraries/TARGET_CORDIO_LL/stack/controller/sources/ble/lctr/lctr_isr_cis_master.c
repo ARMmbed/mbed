@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -70,16 +70,28 @@ static void lctrMstCisInitIsr(lctrCisCtx_t *pCisCtx)
   pCisCtx->txDataCounter = 0;
   pCisCtx->rxDataCounter = 0;
 
-  pCisCtx->txFtParamList.pHead->ftParam.subEvtCounter = 0;
-  pCisCtx->rxFtParamList.pHead->ftParam.subEvtCounter = 0;
-
-  if (pCisCtx->txFtParamList.pHead->ftParam.bn == 0)
+  /* List may be empty if BN_S_To_M is 0 */
+  if (pCisCtx->rxFtParamList.pHead != NULL)
   {
-    pCisCtx->isTxDone = TRUE;
+    pCisCtx->rxFtParamList.pHead->ftParam.subEvtCounter = 0;
+  }
+
+  /* List may be empty if BN_M_To_S is 0 */
+  if (pCisCtx->txFtParamList.pHead != NULL)
+  {
+    pCisCtx->txFtParamList.pHead->ftParam.subEvtCounter = 0;
+    if (pCisCtx->txFtParamList.pHead->ftParam.bn == 0)
+    {
+      pCisCtx->isTxDone = TRUE;
+    }
+    else
+    {
+      pCisCtx->isTxDone = FALSE;
+    }
   }
   else
   {
-    pCisCtx->isTxDone = FALSE;
+    pCisCtx->isTxDone = TRUE;
   }
 
   /*** Setup for transmit ***/
@@ -115,7 +127,7 @@ static void lctrMstCisSetupRx(lctrCigCtx_t *pCigCtx, lctrCisCtx_t *pCisCtx)
 
   /*** Setup for receive ***/
 
-  if ((pBuf = lctrCisRxPduAlloc(pCisCtx->localDataPdu.maxRxLen)) != NULL)
+  if ((pBuf = lctrCisRxPduAlloc()) != NULL)
   {
 #if (LL_ENABLE_TESTER)
     /* Invalidate access address if trigger is set. */
@@ -136,12 +148,13 @@ static void lctrMstCisSetupRx(lctrCigCtx_t *pCigCtx, lctrCisCtx_t *pCisCtx)
     }
 #endif
 
+    lctrSetBbCisPacketCounterRx(pCisCtx);
     BbBleCisRxData(pBuf, LCTR_CIS_DATA_PDU_LEN(pCisCtx->localDataPdu.maxRxLen));
     /* Rx may fail; no more important statements in this code path */
   }
   else
   {
-    LL_TRACE_ERR1("!!! OOM while initializing receive buffer at start of CE, cisHandle=%u", pCisCtx->cisHandle);
+    LL_TRACE_ERR2("!!! OOM while initializing receive buffer at start of CE, cisHandle=%u, eventCounter=%u", pCisCtx->cisHandle, pCisCtx->cisEvtCounter);
     BbSetBodTerminateFlag();
   }
 }
@@ -196,7 +209,7 @@ static void lctrCisCheckTxFtAfterRx(lctrCisCtx_t *pCisCtx)
       if (pFtParam->subEvtCounter == pFtParam->lastSubEvtFt[pFtParam->pduCounter])
       {
         /* PDU needs to be flushed. */
-        pCisCtx->txHdr.sn++;
+        pCisCtx->dataSn++;
         pFtParam->isPduDone[pFtParam->pduCounter] = TRUE;       /* The PDU is done. */
 
         if (pFtParam->pduType[pFtParam->pduCounter] == LCTR_CIS_PDU_NON_EMPTY)
@@ -205,12 +218,17 @@ static void lctrCisCheckTxFtAfterRx(lctrCisCtx_t *pCisCtx)
           lctrCisTxPduAck(pCisCtx);
           pCisCtx->pduFlushed = TRUE;   /* Set the flag, lctrCisProcessTxAckCleanup will be called to do the cleanup later in the lctrMstCisCigPostSubEvt. */
         }
-        pFtParam->pduCounter++;
+
         lctrCisIncPacketCounterTx(pCisCtx);
         pCisCtx->isoLinkQualStats.txUnAckPkt++;
+        pFtParam->pduCounter++;
+      }
+      else /* Implies that a retransmit will happen. */
+      {
+        pCisCtx->isoLinkQualStats.retransmitPkt++;
       }
     }
-    else /* Implies that a retransmit will happen. */
+    else
     {
       pCisCtx->isoLinkQualStats.retransmitPkt++;
     }
@@ -253,12 +271,6 @@ static void lctrCisCheckRxFtAfterRx(lctrCisCtx_t *pCisCtx)
     return;
   }
 
-  if (pCisCtx->rxHdr.np)
-  {
-    /* NULL PDU doesn't need to be acked or flushed. */
-    return;
-  }
-
   lctrFtParam_t *pFtParam = &pCisCtx->rxFtParamList.pHead->ftParam;
 
   if (pFtParam->pduRcved)
@@ -282,6 +294,11 @@ static void lctrCisCheckRxFtAfterRx(lctrCisCtx_t *pCisCtx)
         pCisCtx->isoalRxCtx.pduFlushed = TRUE;
         pCisCtx->isoalRxCtx.packetSequence++;
         pCisCtx->numRxMissed++;
+        if (pCisCtx->framing == LL_ISO_PDU_TYPE_UNFRAMED)
+        {
+          /* Indicate SDU has missing data. */
+          pCisCtx->isoalRxCtx.data.unframed.ps = LCTR_PS_INVALID;
+        }
       }
     }
   }
@@ -317,12 +334,6 @@ static void lctrCisCheckTxFtAfterBod(lctrCisCtx_t *pCisCtx)
     return;
   }
 
-  if (pCisCtx->txHdr.np)
-  {
-    /* NULL PDU doesn't need to be acked or flushed. */
-    return;
-  }
-
   lctrFtParamNode_t *pNode = pCisCtx->txFtParamList.pHead;
 
   /* Increment interval counter for all the node in the list. */
@@ -340,7 +351,7 @@ static void lctrCisCheckTxFtAfterBod(lctrCisCtx_t *pCisCtx)
         pFtParam->intervalCounter == pFtParam->intervalTotal)      /* Check if the PDU needs to be flush in this interval. */
     {
       pFtParam->isPduDone[i] = TRUE;
-      pCisCtx->txHdr.sn++;
+      pCisCtx->dataSn++;
 
       if (pFtParam->pduType[i] == LCTR_CIS_PDU_NON_EMPTY)
       {
@@ -349,6 +360,8 @@ static void lctrCisCheckTxFtAfterBod(lctrCisCtx_t *pCisCtx)
         lctrCisTxQueuePopCleanup(pCisCtx);
       }
       pFtParam->pduCounter++;
+
+      lctrCisIncPacketCounterTx(pCisCtx);
     }
   }
 
@@ -403,7 +416,9 @@ static void lctrCisCheckRxFtAfterBod(lctrCisCtx_t *pCisCtx)
     {
       pFtParam->isPduDone[i] = TRUE;
       pCisCtx->txHdr.nesn++;
+      lctrCisIncPacketCounterRx(pCisCtx);
       pFtParam->pduCounter++;
+      pCisCtx->isoalRxCtx.pduFlushed = TRUE;
     }
   }
 
@@ -452,6 +467,98 @@ static void lctrCisCheckFtAfterBod(lctrCisCtx_t *pCisCtx)
 /**************************************************************************************************
   External Functions
 **************************************************************************************************/
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Check whether continue the current operation.
+ *
+ *  \param  pOp          Operation.
+ *  \param  pNewCisCtx   A new CIS operation.
+ *
+ *  \return zero
+ */
+/*************************************************************************************************/
+uint32_t lctrMstCisCheckContOpPostCback(BbOpDesc_t *pOp, bool_t *pNewCisCtx)
+{
+  lctrCigCtx_t * const pCigCtx = pOp->pCtx;
+  lctrCisCtx_t *pCisCtx = pCigCtx->pCisCtx;
+  BbBleData_t *pBle = &pCisCtx->bleData;
+
+  if (*pNewCisCtx == FALSE)
+  {
+    return 0;
+  }
+
+  if (pCigCtx->packing == LL_PACKING_INTERLEAVED)
+  {
+    if ((pCisCtx = lctrCisGetNextCis(&pCigCtx->list, pCisCtx)) == NULL)
+    {
+      /* End of the list, loop back to the head of the CIS. */
+      pCisCtx = lctrCisGetHeadCis(&pCigCtx->list);
+      pCigCtx->isLoopBack = TRUE;
+
+      pBle = &pCisCtx->bleData;
+
+      /* Point to the next CIS. */
+      pOp->prot.pBle = pBle;
+      pCigCtx->pCisCtx = pCisCtx;
+      memcpy(&pBle->chan, &pCigCtx->pCisCtx->bleData.chan, sizeof(pBle->chan));
+      pBle->chan.chanIdx = pCisCtx->nextSubEvtChanIdx;  /* Next subevent channel index is pre-calculated. */
+
+      /* For interleaved CIS there is always a switch to a new CisCtx, so nextSubEvtChanIdx is not updated in bbMstCisRxCompCback()*/
+      if (pCisCtx->subEvtCounter <= pCisCtx->nse)
+      {
+        lctrMstCisCigPostSubEvt(pOp, BB_STATUS_SUCCESS);
+      }
+    }
+    else
+    {
+      /* TODO need to check whether this pCisCtx->rxHdr.cie || pCisCtx->txHdr.cie and no sending more PDU for this CIS. */
+
+      /* Get the next CIS in the list. */
+      if (pCigCtx->isLoopBack == FALSE)
+      {
+        lctrFtParam_t txFtParam, rxFtParam;
+
+        if (pCisCtx->bnMToS)
+        {
+          lctrCisInitFtParam(&txFtParam, pCisCtx->bnMToS, pCisCtx->ftMToS, pCisCtx->nse);
+          (void)lctrCisFtInsertTail(&pCisCtx->txFtParamList, &txFtParam); /* Assume there is memory. */
+        }
+
+        if (pCisCtx->bnSToM)
+        {
+          lctrCisInitFtParam(&rxFtParam, pCisCtx->bnSToM, pCisCtx->ftSToM, pCisCtx->nse);
+          (void)lctrCisFtInsertTail(&pCisCtx->rxFtParamList, &rxFtParam); /* Assume there is memory. */
+        }
+
+        lctrMstCisInitIsr(pCisCtx);
+      }
+
+      pBle = &pCisCtx->bleData;
+
+      /* Point to the next CIS. */
+      pOp->prot.pBle = pBle;
+      pCigCtx->pCisCtx = pCisCtx;
+      memcpy(&pBle->chan, &pCigCtx->pCisCtx->bleData.chan, sizeof(pBle->chan));
+      if (pCigCtx->isLoopBack == FALSE)
+      {
+        pBle->chan.chanIdx = pCigCtx->pCisCtx->chIdx;     /* Set the next channel to the first channel in the next CIS. */
+      }
+      else
+      {
+        pBle->chan.chanIdx = pCisCtx->nextSubEvtChanIdx;  /* Next subevent channel index is pre-calculated. */
+
+        /* For interleaved CIS there is always a switch to a new CisCtx, so nextSubEvtChanIdx is not updated in bbMstCisRxCompCback()*/
+        if (pCisCtx->subEvtCounter <= pCisCtx->nse)
+        {
+          lctrMstCisCigPostSubEvt(pOp, BB_STATUS_SUCCESS);
+        }
+      }
+    }
+  }
+  return 0;
+}
 
 /*************************************************************************************************/
 /*!
@@ -622,18 +729,8 @@ SwitchInt:
         goto Done;
       }
 
-      /* End of the list, loop back to the head of the CIS. */
-      pCisCtx = lctrCisGetHeadCis(&pCigCtx->list);
-      pCigCtx->isLoopBack = TRUE;
-
-      pBle = &pCisCtx->bleData;
       *pNewCisCtx = TRUE;
-
-      /* Point to the next CIS. */
-      pOp->prot.pBle = pBle;
-      pCigCtx->pCisCtx = pCisCtx;
-      memcpy(&pBle->chan, &pCigCtx->pCisCtx->bleData.chan, sizeof(pBle->chan));
-      pBle->chan.chanIdx = pCisCtx->nextSubEvtChanIdx;  /* Next subevent channel index is pre-calculated. */
+      /* Processing will continue in the lctrMstCisCheckContOpPostCback() */
 
       return delayUsec; /* Return the offset from the old CIS */
     }
@@ -684,43 +781,8 @@ SwitchInt:
         return (subIntervUsec - addDelayUsec);
       }
 
-      /* TODO need to check whether this pCisCtx->rxHdr.cie || pCisCtx->txHdr.cie and no sending more PDU for this CIS. */
-
-      /* Get the next CIS in the list. */
-      if (pCigCtx->isLoopBack == FALSE)
-      {
-        lctrFtParam_t txFtParam, rxFtParam;
-
-        if (pCisCtx->bnMToS)
-        {
-          lctrCisInitFtParam(&txFtParam, pCisCtx->bnMToS, pCisCtx->ftMToS, pCisCtx->nse);
-          (void)lctrCisFtInsertTail(&pCisCtx->txFtParamList, &txFtParam); /* Assume there is memory. */
-        }
-
-        if (pCisCtx->bnSToM)
-        {
-          lctrCisInitFtParam(&rxFtParam, pCisCtx->bnSToM, pCisCtx->ftSToM, pCisCtx->nse);
-          (void)lctrCisFtInsertTail(&pCisCtx->rxFtParamList, &rxFtParam); /* Assume there is memory. */
-        }
-
-        lctrMstCisInitIsr(pCisCtx);
-      }
-
-      pBle = &pCisCtx->bleData;
       *pNewCisCtx = TRUE;
-
-      /* Point to the next CIS. */
-      pOp->prot.pBle = pBle;
-      pCigCtx->pCisCtx = pCisCtx;
-      memcpy(&pBle->chan, &pCigCtx->pCisCtx->bleData.chan, sizeof(pBle->chan));
-      if (pCigCtx->isLoopBack == FALSE)
-      {
-        pBle->chan.chanIdx = pCigCtx->pCisCtx->chIdx;     /* Set the next channel to the first channel in the next CIS. */
-      }
-      else
-      {
-        pBle->chan.chanIdx = pCisCtx->nextSubEvtChanIdx;  /* Next subevent channel index is pre-calculated. */
-      }
+      /* Processing will continue in the lctrMstCisCheckContOpPostCback() */
 
       return delayUsec; /* Return the offset from the old CIS */
     }
@@ -850,6 +912,14 @@ void lctrMstCisCigEndOp(BbOpDesc_t *pOp)
 
   while (pCisCtx)
   {
+    /* Check for unframed flushed PDUs. */
+    if ((pCisCtx->framing == LL_ISO_PDU_TYPE_UNFRAMED) &&
+        (pCisCtx->isoalRxCtx.pduFlushed == TRUE))
+    {
+      pCisCtx->isoalRxCtx.pduFlushed = FALSE;
+      lctrCisCheckUnframedFlush(pCisCtx);
+    }
+
     pConnCtx = LCTR_GET_CONN_CTX(pCisCtx->aclHandle);
 
     /* LL_CIS_TERMINATION case */
@@ -857,10 +927,20 @@ void lctrMstCisCigEndOp(BbOpDesc_t *pOp)
         (pConnCtx->enabled == FALSE) ||
         (lctrResetEnabled == TRUE))
     {
-      /* This variable set to TRUE means it is a CIS disconnect that requires an event generation. */
-      if (pCisCtx->isClosing == TRUE)
+      /* Notify host when terminate happens unless reseted. */
+      if (lctrResetEnabled == FALSE)
       {
-        /* This was a host-initiated termination of the CIS. */
+        if (pConnCtx->enabled == FALSE)
+        {
+          pCisCtx->reason = HCI_ERR_REMOTE_TERMINATED;
+        }
+        /* If host initiates the termination, the reason code shall be HCI_ERR_LOCAL_TERMINATED in the disconnect complete event. */
+        else if (pCisCtx->hostInitTerm)
+        {
+          pCisCtx->reason = HCI_ERR_LOCAL_TERMINATED;
+          pCisCtx->hostInitTerm = FALSE;
+        }
+
         lctrNotifyHostCisTerm(pCisCtx);
       }
 
@@ -993,6 +1073,21 @@ void lctrMstCisCigEndOp(BbOpDesc_t *pOp)
           }
         }
 
+        if (pCisCtx->sduSizeMToS &&
+            (pCisCtx->dataPathInCtx.id == LL_ISO_DATA_PATH_VS))
+        {
+          uint8_t *pSduBuf;
+          if ((pSduBuf = lctrTxIsoDataPduAlloc()) != NULL)
+          {
+            WSF_ASSERT(lctrCodecHdlr.inReq);
+            lctrCodecHdlr.inReq(pCisCtx->cisHandle, pSduBuf + HCI_ISO_HDR_LEN + HCI_ISO_DL_MAX_LEN, pCisCtx->sduSizeMToS);
+          }
+          else
+          {
+            LL_TRACE_WARN1("!!! Out of memory; dropping input SDU, handle=%u", pCisCtx->cisHandle);
+          }
+        }
+
         /* Assemble framed data. */
         if ((pCisCtx->framing == LL_ISO_PDU_TYPE_FRAMED) &&
              pCisCtx->isoalTxCtx.pendQueueSize)
@@ -1028,7 +1123,7 @@ void lctrMstCisCigEndOp(BbOpDesc_t *pOp)
     }
 
     pCisCtx = lctrCisGetHeadCis(&pCigCtx->list);
-    LL_TRACE_WARN1("!!! CIS master schedule conflict eventCounter=%u", pCisCtx->cisEvtCounter);
+    LL_TRACE_WARN2("!!! CIS master schedule conflict handle=%u, eventCounter=%u", pCisCtx->cisHandle, pCisCtx->cisEvtCounter);
   }
 
   if (lmgrCb.sendIsoCmplEvt)
@@ -1047,6 +1142,8 @@ void lctrMstCisCigEndOp(BbOpDesc_t *pOp)
 void lctrMstCisCigAbortOp(BbOpDesc_t *pOp)
 {
   lctrCigCtx_t * const pCigCtx = pOp->pCtx;
+
+  LL_TRACE_WARN1("!!! CIG Master BOD aborted, cigHandle=%u", pCigCtx->cigHandle);
 
   /* Need to setup Tx/Rx flush timeout parameter first since some field will be used in the lctrSlvCisInitIsr. */
 
@@ -1093,7 +1190,10 @@ void lctrMstCisCigTxCompletion(BbOpDesc_t *pOp, uint8_t status)
   lctrCigCtx_t * const pCigCtx = pOp->pCtx;
   lctrCisCtx_t      *pCisCtx = pCigCtx->pCisCtx;
 
-  pCisCtx->txFtParamList.pHead->ftParam.subEvtCounter++;
+  if (pCisCtx->txFtParamList.pHead != NULL)
+  {
+    pCisCtx->txFtParamList.pHead->ftParam.subEvtCounter++;
+  }
 }
 
 /*************************************************************************************************/
@@ -1110,21 +1210,29 @@ void lctrMstCisCigRxCompletion(BbOpDesc_t *pOp, uint8_t *pRxBuf, uint8_t status)
   lctrCigCtx_t * const pCigCtx = pOp->pCtx;
   lctrCisCtx_t *pCisCtx = pCigCtx->pCisCtx;
   lctrConnCtx_t *pConnCtx = LCTR_GET_CONN_CTX(pCisCtx->aclHandle);
-  BbBleData_t * const pBle = &pCisCtx->bleData;
 
-  pCisCtx->txFtParamList.pHead->ftParam.pduAcked = FALSE;
-  pCisCtx->rxFtParamList.pHead->ftParam.subEvtCounter++;
-  pCisCtx->rxFtParamList.pHead->ftParam.pduRcved = FALSE;
+  if (pCisCtx->txFtParamList.pHead != NULL)
+  {
+    pCisCtx->txFtParamList.pHead->ftParam.pduAcked = FALSE;
+  }
+
+  if (pCisCtx->rxFtParamList.pHead != NULL)
+  {
+    pCisCtx->rxFtParamList.pHead->ftParam.subEvtCounter++;
+    pCisCtx->rxFtParamList.pHead->ftParam.pduRcved = FALSE;
+  }
+
   pCisCtx->validRx = FALSE;
   pCisCtx->txPduIsAcked = FALSE;
   pCisCtx->pduFlushed = FALSE;
+  pCisCtx->isoalRxCtx.pduFlushed = FALSE;
 
   if (status == BB_STATUS_CRC_FAILED)
   {
     pCisCtx->isoLinkQualStats.crcErrPkt++;
   }
 
-  /*** Cancellation processing ***/
+  /*** Cancelled processing ***/
 
   if (status == BB_STATUS_CANCELED)
   {
@@ -1134,21 +1242,57 @@ void lctrMstCisCigRxCompletion(BbOpDesc_t *pOp, uint8_t *pRxBuf, uint8_t status)
 
   /*** Receive packet pre-processing ***/
 
-  if (status == BB_STATUS_SUCCESS)
+  /* Add RSSI to average if monitoring power. */
+  if ((pConnCtx->monitoringState == LCTR_PC_MONITOR_ENABLED) &&
+      (pConnCtx->powerMonitorScheme == LCTR_PC_MONITOR_AUTO))
   {
+    int8_t rssi = (status == LL_SUCCESS) ? pOp->prot.pBle->op.mstCis.rssi : 0x80;
+
+    /* Calculations handled on timer expiration for tmrPowerCtrl. */
+    /* Use a positive value to hold accumulated RSSI, as RSSI will never be positive. */
+    pConnCtx->cisAccumulatedRssi += (uint32_t) -rssi;
+    pConnCtx->cisTotalAccumulatedRssi++;
+  }
+
+  switch (status)
+  {
+  case BB_STATUS_SUCCESS:
     pCisCtx->firstFromPeer = TRUE;
     pCisCtx->data.mst.rxFromSlave = TRUE;
-  }
-  else if (status == BB_STATUS_CRC_FAILED ||
-           status == BB_STATUS_RX_TIMEOUT ||
-           status == BB_STATUS_FAILED)
-  {
-    LL_TRACE_WARN2("lctrMstCisCigRxCompletion: BB failed with status=%u, handle=%u", status, pCisCtx->cisHandle);
-    LL_TRACE_WARN2("lctrMstCisCigRxCompletion: BB failed with cisEvtCounter=%d, bleChan=%u", pCisCtx->cisEvtCounter, pCisCtx->bleData.chan.chanIdx);
+    break;
+
+  case BB_STATUS_CRC_FAILED:
+    LL_TRACE_WARN3("lctrMstCisCigRxCompletion: BB failed with status=CRC_FAILED, handle=%u, bleChan=%u, eventCounter=%u", pCisCtx->cisHandle, pCisCtx->bleData.chan.chanIdx, pCisCtx->cisEvtCounter);
     goto PostProcessing;
+
+  case BB_STATUS_RX_TIMEOUT:
+    LL_TRACE_WARN3("lctrMstCisCigRxCompletion: BB failed with status=RX_TIMEOUT, handle=%u, bleChan=%u, eventCounter=%u", pCisCtx->cisHandle, pCisCtx->bleData.chan.chanIdx, pCisCtx->cisEvtCounter);
+    pCisCtx->validRx = FALSE;
+    pCisCtx->txPduIsAcked = FALSE;
+    goto PostProcessing;
+
+  case BB_STATUS_FAILED:
+    LL_TRACE_WARN3("lctrMstCisCigRxCompletion: BB failed with status=FAILED, handle=%u, bleChan=%u, eventCounter=%u", pCisCtx->cisHandle, pCisCtx->bleData.chan.chanIdx, pCisCtx->cisEvtCounter);
+    pCisCtx->validRx = FALSE;
+    pCisCtx->txPduIsAcked = FALSE;
+    goto PostProcessing;
+
+  default:
+    break;
   }
 
   lctrCisUnpackDataPduHdr(&pCisCtx->rxHdr, pRxBuf);
+
+  /* Check for MIC failure and if this is not a re-transmission */
+  if ((status == BB_STATUS_MIC_FAILED) &&
+      ((pCisCtx->rxHdr.sn ^ pCisCtx->txHdr.nesn) & 1) == 0)
+  {
+    LL_TRACE_WARN3("lctrMstCisCigRxCompletion: BB failed with MIC_FAILED, handle=%u, rxPacketNum=%u, eventCounter=%u", pCisCtx->cisHandle, pCisCtx->rxPktCounter, pCisCtx->cisEvtCounter);
+    lctrSendCisMsg(pCisCtx, LCTR_CIS_MSG_CIS_TERM_MIC_FAILED);
+    lctrCisRxPduFree(pRxBuf);
+    BbSetBodTerminateFlag();
+    goto Done;
+  }
 
 #if (LL_ENABLE_TESTER)
   if ((llTesterCb.cisAckMode != LL_TESTER_ACK_MODE_NORMAL) ||
@@ -1172,34 +1316,22 @@ void lctrMstCisCigRxCompletion(BbOpDesc_t *pOp, uint8_t *pRxBuf, uint8_t status)
   /*** Packet post-processing ***/
 
 PostProcessing:
-  /* Save the Rx buffer and process in the lctrMstCisCigPostSubEvt. */
-  pCisCtx->pRxBuf = pRxBuf;
 
-  /* Check rssi value if power monitoring. */
-  if (pConnCtx->monitoringState == LCTR_PC_MONITOR_ENABLED)
-  {
-    lctrCisPowerMonitorCheckRssi(pOp->prot.pBle->op.mstCis.rssi,
-                                  status,
-                                  pCisCtx->phySToM +
-                                    (((pCisCtx->phySToM == LL_PHY_LE_CODED) &&
-                                    (pBle->chan.initTxPhyOptions == LL_PHY_OPTIONS_S2_PREFERRED)) ? 1 : 0),
-                                  pConnCtx);
-  }
+  lctrCisCheckFtAfterRx(pCisCtx);
+
+  /* Tx post-processing. */
+  lctrCisProcessTxAckCleanup(pCisCtx);
+
+  /* Rx post-processing. */
+  lctrCisRxPostProcessing(pCisCtx, pRxBuf);
+
+  return;
 
   /*** ISR complete ***/
 
 Done:
+
   lctrCisCheckFtAfterRx(pCisCtx);
 
-  if (status == BB_STATUS_SUCCESS ||
-      status == BB_STATUS_RX_TIMEOUT ||
-      status == BB_STATUS_CRC_FAILED ||
-      status == BB_STATUS_FAILED)
-  {
-
-    lctrCisProcessTxAckCleanup(pCisCtx);
-    lctrCisRxPostProcessing(pCisCtx, pCisCtx->pRxBuf);
-  }
-
-  return;
+  lctrCisProcessTxAckCleanup(pCisCtx);
 }

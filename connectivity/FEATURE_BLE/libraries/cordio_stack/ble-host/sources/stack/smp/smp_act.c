@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2010-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -569,7 +569,6 @@ bool_t smpSendKey(smpCcb_t *pCcb, uint8_t keyDist)
       UINT8_TO_BSTREAM(p, SMP_CMD_ID_ADDR_INFO);
       UINT8_TO_BSTREAM(p, DmSecGetLocalIdentityAddrType());
       BDA_TO_BSTREAM(p, DmSecGetLocalIdentityAddr());
-
     }
     else if ((keyDist & SMP_KEY_DIST_SIGN) &&
              (pCcb->lastSentKey == 0 || pCcb->lastSentKey == SMP_CMD_ID_ADDR_INFO ||
@@ -661,6 +660,7 @@ bool_t smpProcRcvKey(smpCcb_t *pCcb, dmSecKeyIndEvt_t *pKeyInd, uint8_t *pBuf, u
   {
     /* parse signing information packet */
     Calc128Cpy(pKeyInd->keyData.csrk.key, pBuf);
+    pKeyInd->secLevel = (pCcb->auth & SMP_AUTH_MITM_FLAG) ? DM_SEC_LEVEL_ENC_AUTH : DM_SEC_LEVEL_ENC;
     pKeyInd->type = DM_KEY_CSRK;
     keyIndReady = TRUE;
   }

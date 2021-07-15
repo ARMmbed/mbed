@@ -562,7 +562,7 @@ uint8_t LlSetPeriodicAdvData(uint8_t handle, uint8_t op, uint8_t len, const uint
   }
 
   if ((LL_API_PARAM_CHECK == 1) &&
-      (op > LL_ADV_DATA_OP_COMP))
+      (op > LL_ADV_DATA_OP_UNCHANGED))
   {
     return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
   }

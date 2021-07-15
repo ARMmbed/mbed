@@ -120,12 +120,6 @@ static void lctrMstBigControlEncrypt(lctrBigCtx_t *pBigCtx)
   uint64_t pktCtr = pBigCtx->eventCounter * pBigCtx->bn;
   pBigCtx->ctrChan.enc.pTxPktCounter = &pktCtr;
 
-  /* Set the new packet counter for inline encryption. */
-  if (lctrSetEncryptPktCountHdlr)
-  {
-    lctrSetEncryptPktCountHdlr(&pBigCtx->ctrChan.enc, pktCtr);
-  }
-
   if (pBigCtx->encrypt && lctrPktEncryptHdlr)
   {
     uint16_t len = lctrSlvBisIsr.pCtrlBuf[LCTR_ISO_DATA_PDU_LEN_OFFSET];
@@ -173,6 +167,13 @@ static void lctrSlvBisTxControl(lctrBigCtx_t *pBigCtx)
   /* Update Control PDU flags. */
   LCTR_BIS_WR_CSSN(desc.pBuf[LCTR_ISO_DATA_PDU_FC_OFFSET], pBigCtx->bcp.cssn);
   LCTR_BIS_CLR_CSTF(desc.pBuf[LCTR_ISO_DATA_PDU_FC_OFFSET]);
+
+  /* Set the control packet counter for inline encryption. */
+  if (pBigCtx->encrypt && lctrSetEncryptPktCountHdlr)
+  {
+    uint64_t pktCtr = pBigCtx->eventCounter * pBigCtx->bn;
+    lctrSetEncryptPktCountHdlr(pktCtr);
+  }
 
   BbBleBisTxData(&desc, 1, 0, NULL);
 }
@@ -241,6 +242,13 @@ static void lctrSlvBisTxData(lctrBigCtx_t *pBigCtx)
     }
   }
 #endif
+
+  /* set the inline encryption packet counter to the current bisPayloadCounter */
+  if (pBigCtx->encrypt && lctrSetEncryptPktCountHdlr)
+  {
+    uint64_t pktCtr = (pBigCtx->eventCounter * pBigCtx->bn) + lctrSlvBisIsr.se.burstIdx;
+    lctrSetEncryptPktCountHdlr(pktCtr);
+  }
 
   BbBleBisTxData(pTxDesc, descCnt,
                  pBigCtx->bod.dueUsec + lctrSlvBisIsr.nextSeOffs,
@@ -480,7 +488,7 @@ void lctrSlvBisTxCompletionSequential(BbOpDesc_t *pOp, uint8_t status)
 
   size_t numSePkts = (pBigCtx->bn * pBigCtx->irc) + lctrSlvBisIsr.se.ptIdx;
 
-  if (!lctrSlvBisCalcNextIdxSequential(pBigCtx, &lctrSlvBisIsr.se, numSePkts))
+  if (!lctrBisCalcNextIdxSequential(pBigCtx, &lctrSlvBisIsr.se, numSePkts))
   {
     if (lctrSlvBisIsr.pCtrlBuf)
     {
@@ -495,13 +503,20 @@ void lctrSlvBisTxCompletionSequential(BbOpDesc_t *pOp, uint8_t status)
 
   /* Compute next channel. */
   lctrSeCtx_t nextSe = lctrSlvBisIsr.se;
-  if (lctrSlvBisCalcNextIdxSequential(pBigCtx, &nextSe, numSePkts))
+  if (lctrBisCalcNextIdxSequential(pBigCtx, &nextSe, numSePkts))
   {
     lctrSlvBisIsr.pNextChan = &pBigCtx->pBisCtx[nextSe.bisEvtIdx]->chan;
   }
   else
   {
-    lctrSlvBisIsr.pNextChan = &pBigCtx->ctrChan;
+    if (lctrSlvBisIsr.pCtrlBuf == NULL)
+    {
+      lctrSlvBisIsr.pNextChan = NULL;
+    }
+    else
+    {
+      lctrSlvBisIsr.pNextChan = &pBigCtx->ctrChan;
+    }
   }
 
   /* Compute next packet time. */
@@ -542,7 +557,7 @@ void lctrSlvBisTxCompletionInterleaved(BbOpDesc_t *pOp, uint8_t status)
 
   /* BIS loop. */
 
-  if (!lctrSlvBisCalcNextIdxInterleaved(pBigCtx, &lctrSlvBisIsr.se, numSePkts))
+  if (!lctrBisCalcNextIdxInterleaved(pBigCtx, &lctrSlvBisIsr.se, numSePkts))
   {
     if (lctrSlvBisIsr.pCtrlBuf)
     {
@@ -558,13 +573,20 @@ void lctrSlvBisTxCompletionInterleaved(BbOpDesc_t *pOp, uint8_t status)
 
   /* Compute next channel. */
   lctrSeCtx_t nextSe = lctrSlvBisIsr.se;
-  if (lctrSlvBisCalcNextIdxInterleaved(pBigCtx, &nextSe, numSePkts))
+  if (lctrBisCalcNextIdxInterleaved(pBigCtx, &nextSe, numSePkts))
   {
     lctrSlvBisIsr.pNextChan = &pBigCtx->pBisCtx[nextSe.bisEvtIdx]->chan;
   }
   else
   {
-    lctrSlvBisIsr.pNextChan = &pBigCtx->ctrChan;
+    if (lctrSlvBisIsr.pCtrlBuf == NULL)
+    {
+      lctrSlvBisIsr.pNextChan = NULL;
+    }
+    else
+    {
+      lctrSlvBisIsr.pNextChan = &pBigCtx->ctrChan;
+    }
   }
 
   /* Compute next packet time. */
@@ -724,9 +746,28 @@ void lctrSlvBigEndOp(BbOpDesc_t *pOp)
     LL_TRACE_WARN2("!!! BIG schedule conflict handle=%u, ec[15:0]=%u", pBigCtx->handle, pBigCtx->eventCounter);
   }
 
-  /* SDU generator. */
+  /* SDU input. */
 
   lctrSlvBisTxTestPayloadHandler(pBigCtx);
+
+  for (unsigned int i = 0; i < pBigCtx->numBis; i++)
+  {
+    lctrBisCtx_t * const pBisCtx = pBigCtx->pBisCtx[i];
+
+    if (pBisCtx->roleData.slv.dataPathInCtx.id == LL_ISO_DATA_PATH_VS)
+    {
+      uint8_t *pSduBuf;
+      if ((pSduBuf = WsfMsgAlloc(pLctrRtCfg->maxIsoSduLen + HCI_ISO_DL_MAX_LEN)) != NULL)
+      {
+        WSF_ASSERT(lctrCodecHdlr.inReq);
+        lctrCodecHdlr.inReq(pBisCtx->handle, pSduBuf + HCI_ISO_HDR_LEN + HCI_ISO_DL_MAX_LEN, pBigCtx->maxSdu);
+      }
+      else
+      {
+        LL_TRACE_WARN1("!!! Out of memory; dropping input SDU, handle=%u", pBisCtx->handle);
+      }
+    }
+  }
 
   /* Update BIG Info. */
 
@@ -740,9 +781,13 @@ void lctrSlvBigEndOp(BbOpDesc_t *pOp)
 
   /* SDU queue maintenance. */
 
-  if (pBigCtx->framing == LL_ISO_PDU_TYPE_FRAMED)
+  switch (pBigCtx->framing)
   {
-    lctrSlvCheckPendingSdu(pBigCtx);
+    case LL_ISO_PDU_TYPE_FRAMED:
+      lctrSlvCheckPendingSdu(pBigCtx);
+      break;
+    default:
+      break;
   }
 
   /* Notifications. */
@@ -765,7 +810,10 @@ void lctrSlvBigAbortOp(BbOpDesc_t *pOp)
   WSF_ASSERT(pOp->protId == BB_PROT_BLE);
   WSF_ASSERT(pOp->prot.pBle->chan.opType == BB_BLE_OP_SLV_BIS_EVENT);
 
-  LL_TRACE_WARN1("BIG BOD aborted, eventCounter=%u", ((lctrBigCtx_t *)pOp->pCtx)->eventCounter);
+  LL_TRACE_WARN1("!!! BIG Broadcaster BOD aborted, eventCounter=%u", ((lctrBigCtx_t *)pOp->pCtx)->eventCounter);
+
+  /* Clear state since abort is called without lctrMstBigBeginOp() initializing state. */
+  memset(&lctrSlvBisIsr, 0, sizeof(lctrSlvBisIsr));
 
   lctrSlvBigEndOp(pOp);
 }

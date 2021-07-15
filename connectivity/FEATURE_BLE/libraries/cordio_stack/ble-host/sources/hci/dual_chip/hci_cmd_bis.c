@@ -4,7 +4,7 @@
  *
  *  \brief  HCI Broadcast Isochronous Stream (BIS) command module.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@
 
 /*************************************************************************************************/
 /*!
- *  \brief      HCI LE create BGS command.
+ *  \brief      HCI LE create BIG command.
  *
  *  \param      pCreateBis    Create BIG parameters.
  *

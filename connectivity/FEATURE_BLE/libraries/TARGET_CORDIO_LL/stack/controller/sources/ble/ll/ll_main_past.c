@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@
  *  \brief      Enable or disable reports for the periodic advertising sync.
  *
  *  \param      syncHandle        Periodic sync handle.
- *  \param      enable            1 to enable reports, 0 to disable reports.
+ *  \param      enable            Enable settings.
  *
  *  \return     Status error code.
  *
@@ -65,7 +65,7 @@ uint8_t LlSetPeriodicAdvRcvEnable(uint16_t syncHandle, uint8_t enable)
     return LL_ERROR_CODE_UNKNOWN_ADV_ID;
   }
 
-  LctrMstPerSetRcvEnable (syncHandle, (bool_t)enable);
+  LctrMstPerSetRcvEnable(syncHandle, enable);
 
   return LL_SUCCESS;
 }

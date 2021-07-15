@@ -1,12 +1,10 @@
 /*************************************************************************************************/
 /*!
- *  \file   wsf_efs.c
+ *  \file
  *
  *  \brief  Embedded File System service.
  *
- *  Copyright (c) 2014-2018 Arm Ltd. All Rights Reserved.
- *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -88,7 +86,7 @@ wsfEfsControl_t *WsfEfsGetFileByHandle(wsfEfsHandle_t handle)
  *  \return TRUE if overlap, else FALSE.
  */
 /*************************************************************************************************/
-static bool_t wsfEfsFileOverlap(wsfEfsHandle_t handle, uint8_t media, uint32_t address, uint32_t size)
+static bool_t wsfEfsFileOverlap(wsfEfsHandle_t handle, uint8_t media, efsAddr_t address, uint32_t size)
 {
   if (wsfEfsMediaValid(media))
   {
@@ -98,17 +96,21 @@ static bool_t wsfEfsFileOverlap(wsfEfsHandle_t handle, uint8_t media, uint32_t a
         (wsfEfsFileTbl[handle].media == media))
     {
       /* Calculate the top and bottom addresses of the files */
-      uint32_t top1 = wsfEfsFileTbl[handle].address;
-      uint32_t bottom1 = wsfEfsFileTbl[handle].address + wsfEfsFileTbl[handle].maxSize - 1;
-      uint32_t top2 = address;
-      uint32_t bottom2 = address + size - 1;
+      efsAddr_t top1 = wsfEfsFileTbl[handle].address;
+      efsAddr_t bottom1 = wsfEfsFileTbl[handle].address + wsfEfsFileTbl[handle].maxSize - 1;
+      efsAddr_t top2 = address;
+      efsAddr_t bottom2 = address + size - 1;
 
       /* Check for overlap */
       if ((top2 >= top1) && (top2 <= bottom1))
+      {
         return TRUE;
+      }
 
       if ((bottom2 >= top1) && (bottom2 <= bottom1))
+      {
         return TRUE;
+      }
     }
   }
 
@@ -126,12 +128,12 @@ static bool_t wsfEfsFileOverlap(wsfEfsHandle_t handle, uint8_t media, uint32_t a
  *  \return The next available offset.
  */
 /*************************************************************************************************/
-static uint32_t wsfEfsFindAvailableOffset(uint8_t media, uint32_t size)
+static efsAddr_t wsfEfsFindAvailableOffset(uint8_t media, uint32_t size)
 {
   if (wsfEfsMediaValid(media))
   {
     int8_t i;
-    uint32_t address = wsfEfsMediaTbl[media]->startAddress;
+    efsAddr_t address = wsfEfsMediaTbl[media]->startAddress;
 
     for (i=0; i<WSF_EFS_MAX_FILES; i++)
     {
@@ -144,7 +146,9 @@ static uint32_t wsfEfsFindAvailableOffset(uint8_t media, uint32_t size)
         i = -1;
 
         if (address + size > wsfEfsMediaTbl[media]->endAddress)
+        {
           return WSF_EFS_INVALID_OFFSET;
+        }
       }
     }
 
@@ -157,8 +161,6 @@ static uint32_t wsfEfsFindAvailableOffset(uint8_t media, uint32_t size)
 /*************************************************************************************************/
 /*!
  *  \brief  Initialize the embedded file system.
- *
- *  \return none.
  */
 /*************************************************************************************************/
 void WsfEfsInit(void)
@@ -190,7 +192,7 @@ void WsfEfsInit(void)
 wsfEfsHandle_t WsfEfsAddFile(uint32_t maxSize, uint8_t media, wsfEsfAttributes_t *pAttr, uint32_t offset)
 {
   wsfEfsHandle_t handle;
-  uint32_t address = offset;
+  efsAddr_t address = offset;
   wsfEfsControl_t *pFile = NULL;
 
   if (wsfEfsMediaValid(media))
@@ -212,7 +214,9 @@ wsfEfsHandle_t WsfEfsAddFile(uint32_t maxSize, uint8_t media, wsfEsfAttributes_t
         address = wsfEfsFindAvailableOffset(media, maxSize);
 
         if (address == WSF_EFS_INVALID_OFFSET)
+        {
           return WSF_EFS_INVALID_HANDLE;
+        }
       }
       else
       {
@@ -233,7 +237,9 @@ wsfEfsHandle_t WsfEfsAddFile(uint32_t maxSize, uint8_t media, wsfEsfAttributes_t
         for (i=0; i<WSF_EFS_MAX_FILES; i++)
         {
           if (wsfEfsFileOverlap(i, media, address, maxSize) == TRUE)
+          {
             return WSF_EFS_INVALID_HANDLE;
+          }
         }
       }
 
@@ -300,10 +306,10 @@ uint8_t WsfEfsErase(wsfEfsHandle_t handle)
 
       if (wsfEfsMediaTbl[media]->erase)
       {
-        uint32_t address = pFile->address;
+        efsAddr_t address = pFile->address;
         uint32_t size = pFile->maxSize;
 
-        status = wsfEfsMediaTbl[media]->erase((uint8_t *) address, size);
+        status = wsfEfsMediaTbl[media]->erase(address, size);
         pFile->size = 0;
       }
     }
@@ -389,14 +395,14 @@ uint16_t WsfEfsGet(wsfEfsHandle_t handle, uint32_t offset, uint8_t *pBuffer, uin
         }
         else if (offset < pFile->size)
         {
-          uint32_t address = pFile->address + offset;
+          efsAddr_t address = pFile->address + offset;
 
           if (offset + len > pFile->size)
           {
             len = (uint16_t) (pFile->size - offset);
           }
 
-          wsfEfsMediaTbl[media]->read(pBuffer, (uint8_t *) address, len);
+          wsfEfsMediaTbl[media]->read(pBuffer, address, len);
 
           return len;
         }
@@ -438,14 +444,14 @@ uint16_t WsfEfsPut(wsfEfsHandle_t handle, uint32_t offset, const uint8_t *pBuffe
         }
         else if (offset < pFile->maxSize)
         {
-          uint32_t address = pFile->address + offset;
+          efsAddr_t address = pFile->address + offset;
 
           if (offset + len > pFile->maxSize)
           {
             len = (uint16_t) (pFile->maxSize - offset);
           }
 
-          wsfEfsMediaTbl[media]->write(pBuffer, (uint8_t *) address, len);
+          wsfEfsMediaTbl[media]->write(pBuffer, address, len);
 
           /* If writing to the end of the file, update the file size */
           if (offset + len > pFile->size)

@@ -262,8 +262,6 @@ dmCisCcb_t *dmCisCcbById(uint8_t cigId, uint8_t cisId)
     }
   }
 
-  DM_TRACE_INFO2("dmCisCcbById not found cigId:%d cisId:%d", cigId, cisId);
-
   return NULL;
 }
 
@@ -575,7 +573,7 @@ void DmCisClose(uint16_t handle, uint8_t reason)
  *  \brief  For internal use only.  Find the Connected Isochronous Stream (CIS) ID with matching 
  *          handle.
  *
- *  \param  handle  CIS identifer.
+ *  \param  handle  CIS connection handle.
  *
  *  \return CIS identifier or DM_CIS_ID_NONE if error.
  */
@@ -590,6 +588,29 @@ uint8_t DmCisIdByHandle(uint16_t handle)
   }
 
   return DM_CIS_ID_NONE;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  For internal use only.  Find the Connected Isochronous Stream (CIS) handle with matching 
+ *          CIG and CIS identifiers.
+ *
+ *  \param  handle  CIG ID.
+ *  \param  handle  CIS ID.
+ *
+ *  \return CIS connection handle or DM_CONN_HCI_HANDLE_NONE if error.
+ */
+/*************************************************************************************************/
+uint16_t DmCisHandleById(uint8_t cigId, uint8_t cisId)
+{
+  dmCisCcb_t  *pCcb;
+
+  if ((pCcb = dmCisCcbById(cigId, cisId)) != NULL)
+  {
+    return pCcb->cisHandle;
+  }
+
+  return DM_CONN_HCI_HANDLE_NONE;
 }
 
 /*************************************************************************************************/
@@ -612,6 +633,27 @@ bool_t DmCisConnInUse(uint16_t handle)
   }
 
   return FALSE;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  For internal use only.  Return the CIS connection role indicating master or slave.
+ *
+ *  \param  handle  CIS connection handle.
+ *
+ *  \return CIS connection role.
+ */
+/*************************************************************************************************/
+uint8_t DmCisConnRole(uint16_t handle)
+{
+  dmCisCcb_t  *pCcb;
+
+  if ((pCcb = dmCisCcbByHandle(handle)) != NULL)
+  {
+    return pCcb->role;
+  }
+
+  return DM_ROLE_SLAVE;
 }
 
 /*************************************************************************************************/

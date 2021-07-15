@@ -87,7 +87,7 @@ typedef struct
 /*! \brief  OS structure */
 typedef struct
 {
-  wsfOsTask_t                 task;
+  wsfOsTask_t           task;
   /* PORTING: sleep checking funcs removed as not needed as handled by mbedos */
 } wsfOs_t;
 
@@ -148,7 +148,6 @@ void WsfSetEvent(wsfHandlerId_t handlerId, wsfEventMask_t event)
   wsfOs.task.taskEventMask |= WSF_HANDLER_EVENT;
   WSF_CS_EXIT(cs);
 
-  /* set event in OS */
   wsf_mbed_ble_signal_event();
 }
 
@@ -170,8 +169,7 @@ void WsfTaskSetReady(wsfHandlerId_t handlerId, wsfTaskEvent_t event)
   WSF_CS_ENTER(cs);
   wsfOs.task.taskEventMask |= event;
   WSF_CS_EXIT(cs);
-
-  /* set event in OS */
+  
   wsf_mbed_ble_signal_event();
 }
 
@@ -225,7 +223,6 @@ bool_t wsfOsReadyToSleep(void)
 {
   return (wsfOs.task.taskEventMask == 0);
 }
-
 /*************************************************************************************************/
 /*!
 *  \brief  Initialize OS control structure.

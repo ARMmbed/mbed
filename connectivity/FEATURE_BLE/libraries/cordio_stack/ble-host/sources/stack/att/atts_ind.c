@@ -314,6 +314,9 @@ static void attsIndMsgCback(attsApiMsg_t *pMsg)
       return;
     }
 
+    /* Release the EATT context lock */
+    pCcb->pMainCcb->sccb[pMsg->slot].control &= ~ATT_CCB_STATUS_CONTEXT_LOCK;
+
     /* verify no API message already pending */
     if (attsPendIndNtfHandle(pCcb, pMsg->pPkt))
     {
@@ -499,10 +502,21 @@ void attsHandleValueIndNtf(dmConnId_t connId, uint16_t handle, uint8_t slot, uin
   }
 
   /* if packet wasn't sent and it's a zero-copy packet */
-  if (!pktSent && zeroCpy)
+  if (!pktSent)
   {
-    /* free packet buffer provided */
-    AttMsgFree(pValue, opcode);
+    attCcb_t *pAttCcb = attCcbByConnId(connId);
+
+    /* Release the slot */
+    if (pAttCcb)
+    {
+      pAttCcb->sccb[slot].control &= ~ATT_CCB_STATUS_CONTEXT_LOCK;
+    }
+
+    if (zeroCpy)
+    {
+      /* free packet buffer provided */
+      AttMsgFree(pValue, opcode);
+    }
   }
 }
 
@@ -560,9 +574,6 @@ void AttsIndInit(void)
 {
   uint8_t    i, j;
   attsCcb_t  *pCcb;
-
-  /* Number of slots times channels cannot excede 0xFF */
-  WSF_ASSERT(((ATT_BEARER_MAX) * DM_CONN_MAX) > sizeof(uint8_t))
 
   /* Initialize control block CCBs */
   for (i = 0; i < DM_CONN_MAX; i++)

@@ -4,7 +4,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -118,6 +118,9 @@ void LlInitLhciInit(void)
         #if (BT_VER >= LL_VER_BT_CORE_SPEC_5_1)
           LhciPastInit();
         #endif
+        #if (BT_VER >= LL_VER_BT_CORE_SPEC_SYDNEY)
+          LhciEnhConnUpdateInit();
+        #endif
       #endif
     #endif
   #endif
@@ -141,6 +144,7 @@ void LlInitLhciInit(void)
     #endif
 
     LhciIsoInit();
+    LhciPowerControlInit();
   #endif
 }
 
@@ -163,6 +167,13 @@ uint32_t LlInitControllerInit(LlInitRtCfg_t *pCfg)
   LlInitLhciInit();
   LlInitLhciHandler();
   LhciInitFinalize();
+
+  #if (CHCI_TR_COMP_ENA)
+  {
+    extern void LhciTrEventComplete(void);
+    LhciRegisterSendTrCompleteHandler(LhciTrEventComplete);
+  }
+  #endif
 
   return totalMemUsed;
 }

@@ -4,8 +4,6 @@
  *
  *  \brief  Token trace decode.
  *
- *  Copyright (c) 2018 Arm Ltd. All Rights Reserved.
- *
  *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,7 +52,7 @@
  *  \brief  Initialize detoken trace.
  */
 /*************************************************************************************************/
-void WsfDetokenInit()
+void WsfDetokenInit(void)
 {
   /* Take no action - place holder should future platform require initialization */
 }
@@ -83,6 +81,8 @@ void WsfDetokenEnable(bool_t enable)
  *  \brief  Find token by id via binary search
  *
  *  \param  token     Token identifier.
+ *
+ *  \return Returns a pointer to token.
  */
 /*************************************************************************************************/
 static const tokenElem_t *wsfDetokenFindToken(uint32_t token)
@@ -123,6 +123,8 @@ static const tokenElem_t *wsfDetokenFindToken(uint32_t token)
  *  \brief  Find token string by id via binary search
  *
  *  \param  token     Token identifier.
+ *
+ *  \return Returns a token string.
  */
 /*************************************************************************************************/
 static const char *wsfDetokenFindTokenString(uint32_t token)

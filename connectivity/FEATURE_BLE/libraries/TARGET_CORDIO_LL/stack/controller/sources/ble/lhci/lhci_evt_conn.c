@@ -287,7 +287,7 @@ static uint8_t lhciPackPowerReportEvt(uint8_t *pBuf, const LlPowerReportInd_t *p
  *  \return Packet length.
  */
 /*************************************************************************************************/
-static uint8_t lhciPackPathLossEvt(uint8_t *pBuf, const LlPathLossThresholdEvt_t *pEvt)
+static uint8_t lhciPackPathLossEvt(uint8_t *pBuf, const LlPathLossThresholdInd_t *pEvt)
 {
   const uint8_t len = HCI_LEN_LE_PATH_LOSS_ZONE;
 
@@ -511,7 +511,7 @@ bool_t lhciConnEncodeEvtPkt(LlEvt_t *pEvt)
       {
         if ((pEvtBuf = lhciAllocEvt(HCI_LE_META_EVT, HCI_LEN_LE_PATH_LOSS_ZONE)) != NULL)
         {
-          lhciPackPathLossEvt(pEvtBuf, &pEvt->pathLossEvt);
+          lhciPackPathLossEvt(pEvtBuf, &pEvt->pathLossInd);
         }
       }
       break;

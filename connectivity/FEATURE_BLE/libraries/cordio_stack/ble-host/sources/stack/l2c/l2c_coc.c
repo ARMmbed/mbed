@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2014-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -1273,7 +1273,7 @@ static void l2cCocSendData(l2cChanCb_t *pChanCb)
   uint16_t  len;
   uint8_t   *pBuf;
 
-  L2C_TRACE_INFO3("l2cCocSendData pTxPkt:%x peerCredits:%d flowDisabled:%d", (uint32_t)pChanCb->pTxPkt, pChanCb->peerCredits, pChanCb->pConnCb->flowDisabled);
+  L2C_TRACE_INFO3("l2cCocSendData pTxPkt:%p peerCredits:%d flowDisabled:%d", pChanCb->pTxPkt, pChanCb->peerCredits, pChanCb->pConnCb->flowDisabled);
 
   /* while we have data and peer credits and flow is not disabled */
   while (pChanCb->pTxPkt != NULL && pChanCb->peerCredits > 0 && !pChanCb->pConnCb->flowDisabled)
@@ -2230,7 +2230,21 @@ static void l2cCocCtrlCback(wsfMsgHdr_t *pMsg)
   if (!pConnCb->flowDisabled)
   {
     /* check for pending data to be sent on this connection */
-    //tbd
+    for (uint8_t i = 0; i < L2C_COC_CHAN_MAX; i++)
+    {
+      l2cChanCb_t *pChanCb = &l2cCocCb.chanCb[i];
+
+      if (pConnCb->flowDisabled)
+      {
+        return;
+      }
+
+      if ((pChanCb->pConnCb == pConnCb) && (pChanCb->state == L2C_CHAN_STATE_CONNECTED) &&
+          (pChanCb->pTxPkt))
+      {
+        l2cCocSendData(pChanCb);
+      }
+    }
   }
 }
 
@@ -2276,7 +2290,7 @@ static void l2cCocApiDataReq(l2cCocMsg_t *pMsg)
 {
   l2cChanCb_t     *pChanCb = l2cChanCbByCid(pMsg->dataReq.localCid);
 
-  L2C_TRACE_INFO2("l2cCocApiDataReq sduLen:%d peerMps:%d", pMsg->dataReq.sduLen, pChanCb->peerMps);
+  L2C_TRACE_INFO3("l2cCocApiDataReq cid: %d sduLen:%d peerMps:%d", pMsg->dataReq.localCid, pMsg->dataReq.sduLen, pChanCb->peerMps);
 
   /* if channel connected */
   if (pChanCb->state == L2C_CHAN_STATE_CONNECTED)

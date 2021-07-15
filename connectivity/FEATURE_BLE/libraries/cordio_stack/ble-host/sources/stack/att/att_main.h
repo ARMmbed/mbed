@@ -78,6 +78,7 @@ extern "C" {
 #define ATT_CCB_STATUS_TX_TIMEOUT     (1<<2)        /* ATT transaction timed out */
 #define ATT_CCB_STATUS_RSP_PENDING    (1<<3)        /* ATTS write rsp pending */
 #define ATT_CCB_STATUS_CNF_PENDING    (1<<4)        /* ATTC confirm pending */
+#define ATT_CCB_STATUS_CONTEXT_LOCK   (1<<5)        /* Slot held until API is processed in ATT */
 
 /* Number of ATT bearers */
 #define ATT_BEARER_MAX                (EATT_CONN_CHAN_MAX + 1)
@@ -189,6 +190,9 @@ void *attMsgAlloc(uint16_t len);
 void attL2cDataReq(attCcb_t *pCcb, uint8_t slot, uint16_t len, uint8_t *pPacket);
 uint16_t attMsgParam(dmConnId_t connId, uint8_t slot);
 void attDecodeMsgParam(uint16_t param, dmConnId_t *pConnId, uint8_t *pSlot);
+
+void attErrRsp(attCcb_t *pCcb, uint8_t slot, uint8_t opcode, uint16_t attHandle, uint8_t reason);
+void attSendOpNotSupportedErr(attCcb_t *pCcb, uint8_t slot, uint8_t opcode);
 
 #ifdef __cplusplus
 };

@@ -3,10 +3,10 @@
  *  \file
  *
  *  \brief  PAL flash driver.
- *
+ * 
  *  Copyright (c) 2018-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,9 +38,6 @@ extern "C" {
   Data Types
 **************************************************************************************************/
 
-/*! \brief      Callback. This may be returned in interrupt context. */
-typedef void (*PalFlashCback_t)(bool_t status);
-
 /*! \brief      Operational states. */
 typedef enum
 {
@@ -50,24 +47,39 @@ typedef enum
   PAL_FLASH_STATE_BUSY          /*!< Busy state. */
 } PalFlashState_t;
 
+/*! \brief      Partition. */
+typedef enum
+{
+  PAL_FLASH_PART_NVM = 0,       /*!< Non-Volatile Memory partition. */
+  PAL_FLASH_PART_FOTA_FW,       /*!< Firmware image partition. */
+  PAL_FLASH_PART_FOTA_AUTH,     /*!< Firmware image authentication partition. */
+  PAL_FLASH_PART_MAX            /*!< Maximum number of partitions. */
+} PalFlashPartition_t;
+
+/*! \brief      Operation completion callback (may be called in interrupt context).. */
+typedef void (*PalFlashCback_t)(void);
+
 /**************************************************************************************************
   Function Declarations
 **************************************************************************************************/
 
 /* Initialization */
-void PalFlashInit(PalFlashCback_t actCback);
+void PalFlashInit(void);
 void PalFlashDeInit(void);
 
 /* Control and Status */
-PalFlashState_t PalNvmGetState(void);
-uint32_t PalNvmGetTotalSize(void);
-uint32_t PalNvmGetSectorSize(void);
+PalFlashState_t PalFlashGetState(PalFlashPartition_t part);
+uint32_t PalFlashGetTotalSize(PalFlashPartition_t part);
+uint32_t PalFlashGetSectorSize(PalFlashPartition_t part);
+bool_t PalFlashService(void);
 
 /* Data Transfer */
-void PalFlashRead(void *pBuf, uint32_t size, uint32_t srcAddr);
-void PalFlashWrite(void *pBuf, uint32_t size, uint32_t dstAddr);
-void PalFlashEraseSector(uint32_t size, uint32_t startAddr);
-void PalFlashEraseChip(void);
+void PalFlashRead(PalFlashPartition_t part, void *pBuf, uint32_t size, uint32_t offset, 
+                  PalFlashCback_t compCback);
+void PalFlashWrite(PalFlashPartition_t part, void *pBuf, uint32_t size, 
+                   uint32_t offset, PalFlashCback_t compCback);
+void PalFlashEraseSector(PalFlashPartition_t part, uint32_t size, uint32_t offset, 
+                         PalFlashCback_t compCback);
 
 /*! \} */    /* PAL_FLASH */
 

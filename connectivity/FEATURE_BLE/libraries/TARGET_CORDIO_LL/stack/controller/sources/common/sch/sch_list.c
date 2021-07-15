@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -48,15 +48,9 @@
 /*! \brief      Is BOD[a] due time after BOD[b] completion time. */
 #define SCH_IS_DUE_AFTER(a, b)          (BbGetTargetTimeDelta(SCH_END_TIME(b), ((a)->dueUsec)) == 0)
 
-/*! \brief      Minimum time in microseconds to start scheduler timer. */
-#define SCH_MIN_TIMER_USEC      200
-
-/*! \brief      Margin in microseconds to cancel a BOD. */
-#define SCH_CANCEL_MARGIN_USEC           15
-
 #ifndef SCH_TRACE_ENABLE
 /*! \brief      Enable scheduler trace. */
-#define SCH_TRACE_ENABLE  FALSE
+#define SCH_TRACE_ENABLE                FALSE
 #endif
 
 #if SCH_TRACE_ENABLE
@@ -74,11 +68,10 @@
 /*! \brief      Warning trace with 1 parameters. */
 #define SCH_TRACE_WARN1(msg, var1)
 #endif
-/*! \brief      Maximum allowed number of deleted BOD due to conflicts. */
-#define SCH_MAX_DELETE_BOD                  8
+
 #ifndef SCH_CHECK_LIST_INTEGRITY
 /*! \brief      Check list requirements upon insertions and removals. */
-#define SCH_CHECK_LIST_INTEGRITY            FALSE
+#define SCH_CHECK_LIST_INTEGRITY        FALSE
 #endif
 
 #if (SCH_CHECK_LIST_INTEGRITY)
@@ -129,30 +122,6 @@ static inline bool_t SchCheckIsInserted(BbOpDesc_t *pBod)
 
 /*************************************************************************************************/
 /*!
- *  \brief      Is BOD due within next BOD if not already started.
- *
- *  \param      pBod    Target BOD.
- *
- *  \return     TRUE if BOD is cancelable, FALSE otherwise.
- */
-/*************************************************************************************************/
-static inline bool_t SchEnoughTimeToCancel(BbOpDesc_t *pBod)
-{
-  bool_t result = FALSE;
-
-  const uint32_t curTime = PalBbGetCurrentTime();
-  const uint32_t delta = BbGetTargetTimeDelta(pBod->dueUsec, curTime);
-
-  if (delta >= BbGetSchSetupDelayUs())
-  {
-    result = TRUE;
-  }
-
-  return result;
-}
-
-/*************************************************************************************************/
-/*!
  *  \brief      Check and return the status of whether it is ok to cancel the head BOD.
  *
  *  \return     TRUE if successful, FALSE otherwise.
@@ -160,26 +129,7 @@ static inline bool_t SchEnoughTimeToCancel(BbOpDesc_t *pBod)
 /*************************************************************************************************/
 static inline bool_t schCheckCancelHead(void)
 {
-  bool_t result = FALSE;
-#if SCH_TIMER_REQUIRED == TRUE
-  if (schCb.state == SCH_STATE_IDLE)
-  {
-    result = SchEnoughTimeToCancel(schCb.pHead);
-  }
-  else
-  {
-    /* If head BOD is executing, it can't be canceled. */
-    result = FALSE;
-  }
-#else
-  /* For platforms without sch timer, cancel the head. */
-  if ((result = SchEnoughTimeToCancel(schCb.pHead)) == TRUE)
-  {
-    BbCancelBod();
-    schCb.state = SCH_STATE_IDLE;
-  }
-#endif
-  return result;
+  return (schCb.state != SCH_STATE_EXECUTE);
 }
 
 /*************************************************************************************************/
@@ -331,88 +281,6 @@ static void schRemoveMiddle(BbOpDesc_t *pBod)
 
 /*************************************************************************************************/
 /*!
- *  \brief      Remove item from list for conflict.
- *
- *  \param      pBod    Element to remove.
- *
- *  \return     Return TRUE if removed successfully, FALSE if item not in the list or could not be
- *              removed.
- *
- *  Remove item from list.
- */
-/*************************************************************************************************/
-static bool_t schRemoveForConflict(BbOpDesc_t *pBod)
-{
-  if (schCb.pHead == NULL)
-  {
-    return FALSE;
-  }
-
-  bool_t result = FALSE;
-
-#if SCH_TIMER_REQUIRED == FALSE
-  if (schCb.pHead == pBod)
-  {
-    if ((result = SchEnoughTimeToCancel(pBod)) == TRUE)
-    {
-      /* Stop timer for canceled BOD. */
-      PalTimerStop();
-
-      schRemoveHead();
-
-      if (schCb.pHead)
-      {
-        PalTimerStart(schGetTimeToExecBod(schCb.pHead));
-      }
-      schCb.state = SCH_STATE_IDLE;
-      result = TRUE;
-    }
-  }
-#else
-  if (schCb.pHead == pBod)
-  {
-    if (schCb.state == SCH_STATE_IDLE && (result = SchEnoughTimeToCancel(pBod)) == TRUE)
-    {
-      /* Stop timer for canceled BOD. */
-      PalTimerStop();
-
-      schRemoveHead();
-
-      if (schCb.pHead)
-      {
-        PalTimerStart(schGetTimeToExecBod(schCb.pHead));
-      }
-      result = TRUE;
-    }
-  }
-  else if (schCb.pHead->pNext == pBod && schCb.state == SCH_STATE_EXEC)
-  {
-    if ((result = SchEnoughTimeToCancel(pBod)) == TRUE)
-    {
-      /* Stop timer for next BOD. */
-      PalTimerStop();
-
-      schRemoveMiddle(pBod);
-
-      if (schCb.pHead->pNext)
-      {
-        PalTimerStart(schGetTimeToExecBod(schCb.pHead->pNext));
-      }
-      result = TRUE;
-    }
-  }
-#endif
-  else
-  {
-    schRemoveMiddle(pBod);
-    result = TRUE;
-  }
-
-  return result;
-}
-
-/*************************************************************************************************/
-/*!
  *  \brief      Check whether the conflict between BODs is resolvable.
  *
  *  \param      pItem           Item to insert.
@@ -422,7 +290,7 @@ static bool_t schRemoveForConflict(BbOpDesc_t *pBod)
  *  \return     TRUE if conflict is resolvable, FALSE otherwise.
  */
 /*************************************************************************************************/
-static bool_t SchIsBodResolvable(BbOpDesc_t *pItem, BbOpDesc_t *pTgt, BbConflictAct_t conflictCback)
+static bool_t SchIsBodConflictResolvable(BbOpDesc_t *pItem, BbOpDesc_t *pTgt, BbConflictAct_t conflictCback)
 {
   bool_t result = FALSE;
 
@@ -454,6 +322,10 @@ static bool_t SchIsBodResolvable(BbOpDesc_t *pItem, BbOpDesc_t *pTgt, BbConflict
  *  \param      pItem   Item to insert.
  *  \param      pTgt    Target position.
  *
+ *  \note       Atypical modification to the head element occurs for conflict only. This routine
+ *              will attempt to remove and modify the head element in order for the a new BOD
+ *              to be inserted correctly in time order.
+ *
  *  \note       Resolve the conflict between the pItem and pTgt. It is possible that
  *              there is a conflict between the pItem and BODs after pTgt. But these conflict
  *              resolutions will be delayed until the BODs are executed.
@@ -461,77 +333,85 @@ static bool_t SchIsBodResolvable(BbOpDesc_t *pItem, BbOpDesc_t *pTgt, BbConflict
  *  \return     TRUE if \a pItem is inserted, FALSE for no change.
  */
 /*************************************************************************************************/
-static bool_t SchResolveConflict(BbOpDesc_t *pItem, BbOpDesc_t *pTgt)
+static bool_t schResolveConflict(BbOpDesc_t *pItem, BbOpDesc_t *pTgt)
 {
-  bool_t result = FALSE;
-  BbOpDesc_t *pCur = pTgt;
-  int numDeletedBod = 0;
-  BbOpDesc_t *pDeleted[SCH_MAX_DELETE_BOD];
-
   WSF_ASSERT(pTgt);
   WSF_ASSERT(pItem);
 
-  while (TRUE)
+  /* List of aborted BODs. */
+  BbOpDesc_t *pRemHead = pTgt;
+  BbOpDesc_t *pRemTail = pTgt;
+
+  if (pTgt == schCb.pHead)
   {
-    if (numDeletedBod == SCH_MAX_DELETE_BOD)
+    while (schCb.pHead)
     {
-      result = FALSE;
-      break;
-    }
-
-    pDeleted[numDeletedBod++] = pCur;
-
-    if ((pCur->pNext == NULL) ||                                /* pCur is the tail. */
-        (SCH_IS_DONE_BEFORE(pItem, pCur->pNext)))               /* Only conflict with pCur. */
-    {
-      /* Remove only 1 conflicting BOD. */
-      result = schRemoveForConflict(pCur);
-      break;
-    }
-    else
-    {
-      /* Remove all conflicting BODs until it fails. */
-      if ((result = schRemoveForConflict(pCur)) == FALSE)
+      if (SCH_IS_DONE_BEFORE(pItem, schCb.pHead))
       {
+        /* No more conflicts. */
         break;
       }
+
+      pRemTail = schCb.pHead;
+      schRemoveHead();
+
+      /* Return to IDLE since old BOD at head was removed. */
+      schCb.state = SCH_STATE_IDLE;
     }
 
-    /* Traverse to the next BOD. */
-    pCur = pCur->pNext;
-  }
-
-  if (result == TRUE)
-  {
-    if (pCur->pNext)
+    /* Insert new BOD. */
+    if (schCb.pHead)
     {
-      schInsertBefore(pItem, pCur->pNext);
-    }
-    else if (pTgt->pPrev)
-    {
-      schInsertAfter(pItem, pTgt->pPrev);
+      schInsertBefore(pItem, schCb.pHead);
     }
     else
     {
-      /* Insert at head. */
       schInsertToEmptyList(pItem);
-    }
-
-    /* Call abort callback for all removed BODs. */
-    for (int i = 0; i < numDeletedBod; i++)
-    {
-      if (pDeleted[i]->abortCback)
-      {
-        pDeleted[i]->abortCback(pDeleted[i]);
-      }
     }
   }
   else
   {
-    LL_TRACE_WARN0("!!! Could not remove existing BOD");
+    /* Linkage may change with every loop; use BOD prior to target as start reference. */
+    BbOpDesc_t *pStart = pTgt->pPrev;
+
+    while (pStart->pNext)
+    {
+      if (SCH_IS_DONE_BEFORE(pItem, pStart->pNext))
+      {
+        /* No more conflicts. */
+        break;
+      }
+
+      pRemTail = pStart->pNext;
+      schRemoveMiddle(pStart->pNext);
+    }
+
+    /* Insert new BOD. */
+    schInsertAfter(pItem, pStart);
   }
 
-  return result;
+  /* Now that the new BOD is inserted, the removed BODs may be aborted. Insertion of the
+   * higher priority BOD must occur first such that the abort() callbacks can manipulate
+   * the BOD list appropriately. */
+  while (TRUE)
+  {
+    /* Store next BOD since aborting may adjust linkage. */
+    BbOpDesc_t *pCur = pRemHead;
+    pRemHead = pRemHead->pNext;
+
+    if (pCur->abortCback)
+    {
+      pCur->abortCback(pCur);
+    }
+
+    if (pCur == pRemTail)
+    {
+      /* End of removal list. */
+      break;
+    }
+  }
+
+  return TRUE;
 }
 
 /*************************************************************************************************/
@@ -561,13 +441,13 @@ static bool_t SchIsConflictResolvable(BbOpDesc_t *pItem, BbOpDesc_t *pTgt, BbCon
         (SCH_IS_DONE_BEFORE(pItem, pCur->pNext)))     /* Only conflict with pCur. */
     {
       /* Only 1 conflicting BOD. */
-      result = SchIsBodResolvable(pItem, pCur, conflictCback);
+      result = SchIsBodConflictResolvable(pItem, pCur, conflictCback);
       break;
     }
     else
     {
       /* Check all conflicting BODs. */
-      if ((result = SchIsBodResolvable(pItem, pCur, conflictCback)) == FALSE)
+      if ((result = SchIsBodConflictResolvable(pItem, pCur, conflictCback)) == FALSE)
       {
         break;
       }
@@ -577,65 +457,6 @@ static bool_t SchIsConflictResolvable(BbOpDesc_t *pItem, BbOpDesc_t *pTgt, BbCon
   }
 
   return result;
-}
-
-/*************************************************************************************************/
-/*!
- *  \brief      Try to load or add scheduler timer for inserted item if possible.
- *
- *  \param      pBod    Inserted BOD.
- */
-/*************************************************************************************************/
-static inline void SchInsertTryLoadBod(BbOpDesc_t *pBod)
-{
-  uint32_t execTimeUsec = schGetTimeToExecBod(pBod);
-
-  WSF_ASSERT(pBod);
-  WSF_ASSERT(schCb.pHead);
-
-  /* If inserted BOD is head. */
-  if (pBod == schCb.pHead)
-  {
-    /* At this moment, head BOD should not be loaded. */
-    WSF_ASSERT(schCb.state == SCH_STATE_IDLE);
-    if (execTimeUsec >= SCH_MIN_TIMER_USEC)
-    {
-      /* If HEAD BOD due time is not close, add scheduler timer to load it in the future.
-       * Always stop existing timer first for simplicity.
-       */
-      PalTimerStop();
-      PalTimerStart(execTimeUsec);
-    }
-    else
-    {
-      /* Send scheduler load event. */
-      SchLoadHandler();
-    }
-  }
-#if SCH_TIMER_REQUIRED == TRUE
-  /* If head is executing and inserted BOD is the second one in the list,
-   * we might need to add scheduler timer or do curtail load.
-   */
-  else if (pBod == schCb.pHead->pNext && schCb.state == SCH_STATE_EXEC)
-  {
-    /* At this moment, head BOD should be in the past.  */
-    WSF_ASSERT(schGetTimeToExecBod(schCb.pHead) < SCH_MIN_TIMER_USEC);
-
-    if (execTimeUsec >= SCH_MIN_TIMER_USEC)
-    {
-      /* If BOD due time is not close, add scheduler timer to load it in the future.
-       * Always stop existing timer first for simplicity.
-       */
-      PalTimerStop();
-      PalTimerStart(execTimeUsec);
-    }
-    else
-    {
-      /* Send scheduler load event. */
-      SchLoadHandler();
-    }
-  }
-#endif
 }
 
 /*************************************************************************************************/
@@ -674,8 +495,13 @@ void SchInsertNextAvailable(BbOpDesc_t *pBod)
     {
       WSF_ASSERT(pBod != pCur);
 
-      /* Only update due time when pCur ends in the future. */
-      if (!SCH_IS_DONE_BEFORE(pCur, pBod))
+      if ((pCur == schCb.pHead) &&
+          (pCur->maxDurUsec > 0))
+      {
+        /* Allow current head BOD to complete naturally. */
+        pBod->dueUsec = pCur->dueUsec + pCur->maxDurUsec + BbGetSchSetupDelayUs();
+      }
+      else
       {
         pBod->dueUsec = SCH_END_TIME(pCur);
       }
@@ -691,7 +517,11 @@ void SchInsertNextAvailable(BbOpDesc_t *pBod)
     }
   }
 
-  SchInsertTryLoadBod(pBod);
+  if (pBod == schCb.pHead)
+  {
+    /* Restart the scheduler since the head element is modified. */
+    schSetBodStartEvent();
+  }
 }
 
 /*************************************************************************************************/
@@ -733,24 +563,31 @@ bool_t SchInsertAtDueTime(BbOpDesc_t *pBod, BbConflictAct_t conflictCback)
 
     while (TRUE)
     {
-      WSF_ASSERT(pBod != pCur);
-      if (SCH_IS_DONE_BEFORE(pBod, pCur))          /* BOD is due and done before pCur(no overlap), try to insert before. */
+      if (SCH_IS_DONE_BEFORE(pBod, pCur))          /* pBod is due and done before pCur with no overlap. */
       {
-        if (pCur == schCb.pHead)
+        if ((pCur == schCb.pHead) &&
+            (!schCheckCancelHead()))
         {
-          (void) schCheckCancelHead();
+          /* Cannot modify head. */
+          break;
         }
-        /* Insert before head case. */
+
         schInsertBefore(pBod, pCur);
         result = TRUE;
         break;
       }
-      else if (!SCH_IS_DONE_BEFORE(pCur, pBod))    /* pCur has overlap with pBod, check priority and resolve BOD. */
+      else if (!SCH_IS_DONE_BEFORE(pCur, pBod))    /* pCur has overlap with pBod, check priority and resolve conflict. */
       {
+        if ((pCur == schCb.pHead) &&
+            (!schCheckCancelHead()))
+        {
+          /* Cannot modify head. */
+          break;
+        }
+
         if ((result = SchIsConflictResolvable(pBod, pCur, conflictCback)) == TRUE)
         {
-          /* Resolve conflict here otherwise delay conflict resolution when BOD is executed. */
-          result = SchResolveConflict(pBod, pCur);
+          result = schResolveConflict(pBod, pCur);
         }
         break;
       }
@@ -766,9 +603,14 @@ bool_t SchInsertAtDueTime(BbOpDesc_t *pBod, BbConflictAct_t conflictCback)
     }
   }
 
-  if (result)
+  if (result &&
+      (pBod == schCb.pHead))
   {
-    SchInsertTryLoadBod(pBod);
+    /* Halt execution of previous head BOD. */
+    PalTimerStop();
+
+    /* Restart the scheduler since the head element is modified. */
+    schSetBodStartEvent();
   }
 
   return result;
@@ -798,14 +640,14 @@ bool_t SchInsertEarlyAsPossible(BbOpDesc_t *pBod, uint32_t min, uint32_t max)
 
   bool_t result = FALSE;
 
-  const uint32_t dueOrigin = pBod->dueUsec;
+  uint32_t dueOrigin = pBod->dueUsec;
 
   /* Try inserting at minimum interval. */
   pBod->dueUsec += min;
 
   if (!schDueTimeInFuture(pBod))
   {
-    if (max != SCH_MAX_SPAN)
+    if (max < SCH_MAX_SPAN)
     {
       /* Reset due time origin. */
       pBod->dueUsec = dueOrigin;
@@ -813,8 +655,9 @@ bool_t SchInsertEarlyAsPossible(BbOpDesc_t *pBod, uint32_t min, uint32_t max)
     }
     else
     {
-      /* With SCH_MAX_SPAN, this function will insert the BOD regardless of the current due. */
+      /* When max=SCH_MAX_SPAN, this function will insert the BOD regardless of the current due. */
       pBod->dueUsec = PalBbGetCurrentTime() + BbGetSchSetupDelayUs();
+      dueOrigin = pBod->dueUsec;
     }
   }
 
@@ -877,9 +720,11 @@ bool_t SchInsertEarlyAsPossible(BbOpDesc_t *pBod, uint32_t min, uint32_t max)
     }
   }
 
-  if (result)
+  if (result &&
+      (pBod == schCb.pHead))
   {
-    SchInsertTryLoadBod(pBod);
+    /* Restart the scheduler since the head element is modified. */
+    schSetBodStartEvent();
   }
 
   if (!result)
@@ -991,9 +836,11 @@ bool_t SchInsertLateAsPossible(BbOpDesc_t *pBod, uint32_t min, uint32_t max)
     }
   }
 
-  if (result)
+  if (result &&
+      (pBod == schCb.pHead))
   {
-    SchInsertTryLoadBod(pBod);
+    /* Restart the scheduler since the head element is modified. */
+    schSetBodStartEvent();
   }
 
   if (!result)
@@ -1007,108 +854,58 @@ bool_t SchInsertLateAsPossible(BbOpDesc_t *pBod, uint32_t min, uint32_t max)
 
 /*************************************************************************************************/
 /*!
- *  \brief      Remove BOD from list.
+ *  \brief      Request BOD removal from list.
  *
  *  \param      pBod    Element to remove.
  *
- *  \return     Return TRUE if removed successfully, FALSE if item not in the list or there is not enough time to cancel.
- *
- *  Remove item from list.
+ *  Request BOD removal from list. Request will require BOD list manipulation in the SchHandler() .
  */
 /*************************************************************************************************/
-bool_t SchRemove(BbOpDesc_t *pBod)
+void SchRemove(BbOpDesc_t *pBod)
 {
   WSF_ASSERT(pBod);
 
   if (!SchCheckIsInserted(pBod))
   {
-    LL_TRACE_WARN0("No such BOD to remove");
-    return FALSE;
+    LL_TRACE_WARN1("Remove failed, BOD not found, pBod=0x%08x", pBod);
+    return;
   }
 
-  bool_t result = FALSE;
-
-#if SCH_TIMER_REQUIRED == FALSE
   if (schCb.pHead == pBod)
   {
-    if ((result = SchEnoughTimeToCancel(pBod)) == TRUE)
+    switch (schCb.state)
     {
-      /* Stop timer for canceled BOD. */
-      PalTimerStop();
-
-      /* Call callback after removing from list. */
-      schRemoveHead();
-
-      if (schCb.pHead)
-      {
-        PalTimerStart(schGetTimeToExecBod(schCb.pHead));
-      }
-
-      schCb.state = SCH_STATE_IDLE;
-      result = TRUE;
-    }
-    else
-    {
+    case SCH_STATE_EXECUTE:
+      /* Gracefully complete BOD before removal. */
       BbSetBodTerminateFlag();
-    }
-  }
-#else
-  if (schCb.pHead == pBod)
-  {
-    if (schCb.state == SCH_STATE_IDLE && (result = SchEnoughTimeToCancel(pBod)) == TRUE)
-    {
-      /* Stop timer for canceled BOD. */
-      PalTimerStop();
+      break;
 
-      /* Call callback after removing from list. */
+    case SCH_STATE_LOAD:
+      schSetBodAbortEvent();
+      break;
+
+    default:
       schRemoveHead();
-
-      if (schCb.pHead)
+      if (pBod->abortCback)
       {
-        PalTimerStart(schGetTimeToExecBod(schCb.pHead));
+        pBod->abortCback(pBod);
       }
-      result = TRUE;
-    }
-    else
-    {
-      BbSetBodTerminateFlag();
+      break;
     }
   }
-  else if (schCb.pHead->pNext == pBod && schCb.state == SCH_STATE_EXEC)
-  {
-    if ((result = SchEnoughTimeToCancel(pBod)) == TRUE)
-    {
-      /* Stop timer for next BOD. */
-      PalTimerStop();
-
-      schRemoveMiddle(pBod);
-
-      if (schCb.pHead->pNext)
-      {
-        PalTimerStart(schGetTimeToExecBod(schCb.pHead->pNext));
-      }
-      result = TRUE;
-    }
-  }
-#endif
+  /* TODO Consider resetting the curtail timer. */
   else
   {
     /* Call callback after removing from list. */
     schRemoveMiddle(pBod);
-    result = TRUE;
-  }
-
-  if (result)
-  {
     if (pBod->abortCback)
     {
       pBod->abortCback(pBod);
     }
-    SCH_TRACE_INFO1("--| SchRemove            |-- pBod=0x%08x", (uint32_t)pBod);
-    SCH_TRACE_INFO1("--|                      |--     .dueUsec=%u", pBod->dueUsec);
   }
 
-  return result;
+  SCH_TRACE_INFO1("--| SchRemove            |-- pBod=0x%08x", (uint32_t)pBod);
+  SCH_TRACE_INFO1("--|                      |--     .dueUsec=%u", pBod->dueUsec);
 }
 
 /*************************************************************************************************/
@@ -1125,9 +922,8 @@ void SchReload(BbOpDesc_t *pBod)
   if ((schCb.pHead == pBod) &&
       schCheckCancelHead())
   {
-    PalTimerStop();
-
-    SchInsertTryLoadBod(pBod);
+    /* Restart the scheduler since the head element is modified. */
+    schSetBodStartEvent();
   }
 }
 
@@ -1138,22 +934,15 @@ void SchReload(BbOpDesc_t *pBod)
  *  \param      pBod    Element to be cancelled
  *
  *  \return     TRUE if BOD can be cancelled, FALSE otherwise.
- *
- *  Check if BOD can be cancelled.
  */
 /*************************************************************************************************/
 bool_t SchIsBodCancellable(BbOpDesc_t *pBod)
 {
-  WSF_ASSERT(pBod);
-
-  bool_t result = FALSE;
-  const uint32_t curTime = PalBbGetCurrentTime();
-  const uint32_t delta = BbGetTargetTimeDelta(pBod->dueUsec, curTime);
-
-  if (delta >= (uint32_t)(BbGetSchSetupDelayUs() + SCH_CANCEL_MARGIN_USEC))
+  if ((schCb.pHead != pBod) ||
+      schCheckCancelHead())
   {
-    result = TRUE;
+    return TRUE;
   }
 
-  return result;
+  return FALSE;
 }

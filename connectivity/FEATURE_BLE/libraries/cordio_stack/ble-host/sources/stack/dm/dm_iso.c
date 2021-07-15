@@ -4,7 +4,7 @@
  *
  *  \brief  DM Isochronous (ISO) data path management.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@
 #include "dm_main.h"
 #include "dm_conn.h"
 #include "dm_cis.h"
+#include "hci_core_iso.h"
 
 /**************************************************************************************************
   Macros
@@ -44,8 +45,8 @@
 /*! Number of columns in the state machine state tables */
 #define DM_ISO_NUM_COLS             2
 
-/*! Number of data path directions */
-#define DM_ISO_NUM_DIR              2
+/*!  Data path direction none */
+#define DM_ISO_DATA_DIR_NONE        0xFF
 
 /**************************************************************************************************
   Data Types
@@ -122,14 +123,25 @@ typedef union
 /*! ISO connection control block */
 typedef struct
 {
-  uint16_t                            handle;               /*!< Connection handle of CIS or BIS. */
-  uint8_t                             state[DM_ISO_NUM_DIR];/*!< Main state for each direction. */
-  bool_t                              rmReqEvtSent;         /*!< TRUE if remove data path request or event been sent. */
-  uint8_t                             inUse;                /*!< TRUE if entry in use. */
+  uint16_t                            handle;                   /*!< Connection handle of CIS or BIS. */
+  uint8_t                             state[DM_ISO_NUM_DIR];    /*!< Main state for each direction. */
+  uint8_t                             dpDir;                    /*!< Direction being setup. */
+  uint8_t                             directionBits;            /*!< Directions being removed. */
+  uint8_t                             inUse;                    /*!< TRUE if entry in use. */
+} dmIsoConnCb_t;
+
+/*! ISO control block */
+typedef struct
+{
+  dmIsoConnCb_t                       ccb[DM_ISO_DATA_PATH_MAX];/*!< ISO connection control block. */
+  hciIsoCback_t                       cisCback;                 /*!< ISO CIS callback. */
+  hciIsoCback_t                       bisCback;                 /*!< ISO BIS callback. */
+  dmIsoDataPathSetupCback_t           setupCback;               /*!< ISO data path setup callback. */
+  dmIsoDataPathRemoveCback_t          removeCback;              /*!< ISO data path remove callback. */
 } dmIsoCb_t;
 
 /*! Action functions */
-typedef void (*dmIsoAct_t)(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState);
+typedef void (*dmIsoAct_t)(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState);
 
 /**************************************************************************************************
   Local Functions
@@ -139,13 +151,13 @@ static void dmIsoReset(void);
 static void dmIsoMsgHandler(wsfMsgHdr_t *pMsg);
 static void dmIsoHciHandler(hciEvt_t *pEvent);
 
-static void dmIsoSmActNone(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState);
-static void dmIsoSmActSetup(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState);
-static void dmIsoSmActSetupSuccess(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState);
-static void dmIsoSmActSetupFailed(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState);
-static void dmIsoSmActRemove(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState);
-static void dmIsoSmActRemoved(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState);
-static void dmIsoSmActRemoveFailed(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState);
+static void dmIsoSmActNone(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState);
+static void dmIsoSmActSetup(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState);
+static void dmIsoSmActSetupSuccess(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState);
+static void dmIsoSmActSetupFailed(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState);
+static void dmIsoSmActRemove(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState);
+static void dmIsoSmActRemoved(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState);
+static void dmIsoSmActRemoveFailed(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState);
 
 /**************************************************************************************************
   Local Variables
@@ -217,7 +229,53 @@ static const dmFcnIf_t dmIsoFcnIf =
 };
 
 /*! DM ISO control block */
-static dmIsoCb_t dmIsoCb[DM_ISO_DATA_PATH_MAX];
+static dmIsoCb_t dmIsoCb;
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Set an ISO data path setup event.
+ *
+ *  \param  pIsoCcb   CIG control block.
+ *  \param  pMsg     WSF message.
+ *  \param  pEvt     Event to be set.
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+static void dmIsoSetDataPathSetupEvt(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg,
+                                     dmSetupIsoDataPathEvt_t *pEvt)
+{
+  pEvt->hdr.event = DM_ISO_DATA_PATH_SETUP_IND;
+  pEvt->hdr.param = pMsg->hdr.param;
+  pEvt->hdr.status = pMsg->hdr.status;
+
+  pEvt->handle = pMsg->hciLeSetupIsoDataPathCmdCmpl.handle;
+  pEvt->status = pMsg->hciLeSetupIsoDataPathCmdCmpl.status;
+  pEvt->dpDir = pIsoCcb->dpDir;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Set an ISO data path remove event.
+ *
+ *  \param  pIsoCcb   CIG control block.
+ *  \param  pMsg     WSF message.
+ *  \param  pEvt     Event to be set.
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+static void dmIsoSetDataPathRemoveEvt(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg,
+                                      dmRemoveIsoDataPathEvt_t *pEvt)
+{
+  pEvt->hdr.event = DM_ISO_DATA_PATH_REMOVE_IND;
+  pEvt->hdr.param = pMsg->hdr.param;
+  pEvt->hdr.status = pMsg->hdr.status;
+
+  pEvt->handle = pMsg->hciLeRemoveIsoDataPathCmdCmpl.handle;
+  pEvt->status = pMsg->hciLeRemoveIsoDataPathCmdCmpl.status;
+  pEvt->directionBits = pIsoCcb->directionBits;
+}
 
 /*************************************************************************************************/
 /*!
@@ -228,23 +286,24 @@ static dmIsoCb_t dmIsoCb[DM_ISO_DATA_PATH_MAX];
  *  \return Pointer to ISO control block or NULL if failure.
  */
 /*************************************************************************************************/
-dmIsoCb_t *dmIsoCbAlloc(uint16_t handle)
+dmIsoConnCb_t *dmIsoCbAlloc(uint16_t handle)
 {
-  dmIsoCb_t *pIsoCb = dmIsoCb;
+  dmIsoConnCb_t *pIsoCcb = dmIsoCb.ccb;
   uint8_t       i;
 
-  for (i = 0; i < DM_ISO_DATA_PATH_MAX; i++, pIsoCb++)
+  for (i = 0; i < DM_ISO_DATA_PATH_MAX; i++, pIsoCcb++)
   {
-    if (pIsoCb->inUse == FALSE)
+    if (pIsoCcb->inUse == FALSE)
     {
-      memset(pIsoCb, 0, sizeof(dmIsoCb_t));
+      memset(pIsoCcb, 0, sizeof(dmIsoConnCb_t));
 
-      pIsoCb->handle = handle;
-      pIsoCb->inUse = TRUE;
+      pIsoCcb->handle = handle;
+      pIsoCcb->inUse = TRUE;
+      pIsoCcb->dpDir = DM_ISO_DATA_DIR_NONE;
 
       DM_TRACE_ALLOC1("dmIsoCbAlloc %d", handle);
 
-      return pIsoCb;
+      return pIsoCcb;
     }
   }
 
@@ -257,16 +316,16 @@ dmIsoCb_t *dmIsoCbAlloc(uint16_t handle)
 /*!
  *  \brief  Deallocate a DM ISO control block.
  *
- *  \param  pIsoCb   ISO control block.
+ *  \param  pIsoCcb   ISO control block.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-void dmIsoCbDealloc(dmIsoCb_t *pIsoCb)
+void dmIsoCbDealloc(dmIsoConnCb_t *pIsoCcb)
 {
-  DM_TRACE_FREE1("dmIsoCbDealloc %d", pIsoCb->handle);
+  DM_TRACE_FREE1("dmIsoCbDealloc %d", pIsoCcb->handle);
 
-  pIsoCb->inUse = FALSE;
+  pIsoCcb->inUse = FALSE;
 }
 
 /*************************************************************************************************/
@@ -278,16 +337,16 @@ void dmIsoCbDealloc(dmIsoCb_t *pIsoCb)
  *  \return Pointer to ISO control block. NULL if not found.
  */
 /*************************************************************************************************/
-dmIsoCb_t *dmIsoCbByHandle(uint16_t handle)
+dmIsoConnCb_t *dmIsoCbByHandle(uint16_t handle)
 {
-  dmIsoCb_t   *pIsoCb = dmIsoCb;
+  dmIsoConnCb_t   *pIsoCcb = dmIsoCb.ccb;
   uint8_t      i;
 
-  for (i = DM_ISO_DATA_PATH_MAX; i > 0; i--, pIsoCb++)
+  for (i = DM_ISO_DATA_PATH_MAX; i > 0; i--, pIsoCcb++)
   {
-    if (pIsoCb->inUse && (pIsoCb->handle == handle))
+    if (pIsoCcb->inUse && (pIsoCcb->handle == handle))
     {
-      return pIsoCb;
+      return pIsoCcb;
     }
   }
 
@@ -300,14 +359,14 @@ dmIsoCb_t *dmIsoCbByHandle(uint16_t handle)
 /*!
  *  \brief  Empty action.
  *
- *  \param  pIsoCb   CIG control block.
+ *  \param  pIsoCcb   CIG control block.
  *  \param  pMsg     WSF message.
  *  \param  oldState Old state.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-static void dmIsoSmActNone(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState)
+static void dmIsoSmActNone(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState)
 {
   return;
 }
@@ -316,34 +375,48 @@ static void dmIsoSmActNone(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState
 /*!
  *  \brief  Setup ISO data path for the given connection handle.
  *
- *  \param  pIsoCb   CIG control block.
+ *  \param  pIsoCcb   CIG control block.
  *  \param  pMsg     WSF message.
  *  \param  oldState Old state.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-static void dmIsoSmActSetup(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState)
+static void dmIsoSmActSetup(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState)
 {
   dmIsoApiSetup_t *pSetup = &pMsg->apiSetup;
 
   /* if connection handle is for CIS, BIS or BIS Sync */
-  if (DmCisConnInUse(pIsoCb->handle) || DmBisInUse(pIsoCb->handle) || DmBisSyncInUse(pIsoCb->handle))
+  if (DmCisConnInUse(pIsoCcb->handle) || DmBisInUse(pIsoCcb->handle) || DmBisSyncInUse(pIsoCcb->handle))
   {
     /* setup ISO data path */
     HciLeSetupIsoDataPathCmd(&pSetup->dataPathParam);
+
+    /* if also need to setup ISO data path in the Host */
+    if (dmIsoCb.setupCback != NULL)
+    {
+      (*dmIsoCb.setupCback)(&pSetup->dataPathParam);
+    }
+
+    /* if no pending setup command */
+    if (pIsoCcb->dpDir == DM_ISO_DATA_DIR_NONE)
+    {
+      /* save data path direction */
+      pIsoCcb->dpDir = pSetup->dataPathParam.dpDir;
+    }
+    /* else direction will be set when command complete received */
   }
   else
   {
-    DM_TRACE_WARN1("dmIsoSmActSetup: connection handle (%d) isn't for CIS or BIS", pIsoCb->handle);
+    DM_TRACE_WARN1("dmIsoSmActSetup: connection handle (%d) isn't for CIS or BIS", pIsoCcb->handle);
 
     pMsg->hdr.status = HCI_ERR_UNKNOWN_HANDLE;
 
     /* restore old state */
-    pIsoCb->state[pSetup->dataPathParam.dpDir] = oldState;
+    pIsoCcb->state[pSetup->dataPathParam.dpDir] = oldState;
 
     /* notify app about failure */
-    dmIsoSmActSetupFailed(pIsoCb, pMsg, oldState);
+    dmIsoSmActSetupFailed(pIsoCcb, pMsg, oldState);
   }
 }
 
@@ -351,66 +424,83 @@ static void dmIsoSmActSetup(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldStat
 /*!
  *  \brief  Handle a ISO data path setup successful event from HCI.
  *
- *  \param  pIsoCb   CIG control block.
+ *  \param  pIsoCcb   CIG control block.
  *  \param  pMsg     WSF message.
  *  \param  oldState Old state.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-static void dmIsoSmActSetupSuccess(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState)
+static void dmIsoSmActSetupSuccess(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState)
 {
-  pMsg->hdr.event = DM_ISO_DATA_PATH_SETUP_IND;
-  (*dmCb.cback)((dmEvt_t *) pMsg);
+  dmSetupIsoDataPathEvt_t evt;
+
+  dmIsoSetDataPathSetupEvt(pIsoCcb, pMsg, &evt);
+
+  (*dmCb.cback)((dmEvt_t *) &evt);
 }
 
 /*************************************************************************************************/
 /*!
  *  \brief  Handle a ISO data path setup failure event from HCI.
  *
- *  \param  pIsoCb   CIG control block.
+ *  \param  pIsoCcb   CIG control block.
  *  \param  pMsg     WSF message.
  *  \param  oldState Old state.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-static void dmIsoSmActSetupFailed(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState)
+static void dmIsoSmActSetupFailed(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState)
 {
+  dmSetupIsoDataPathEvt_t evt;
+
+  dmIsoSetDataPathSetupEvt(pIsoCcb, pMsg, &evt);
+
   /* if both data path directions in idle state */
-  if ((pIsoCb->state[HCI_ISO_DATA_DIR_INPUT]  == DM_ISO_SM_ST_IDLE) &&
-      (pIsoCb->state[HCI_ISO_DATA_DIR_OUTPUT] == DM_ISO_SM_ST_IDLE))
+  if ((pIsoCcb->state[HCI_ISO_DATA_DIR_INPUT]  == DM_ISO_SM_ST_IDLE) &&
+      (pIsoCcb->state[HCI_ISO_DATA_DIR_OUTPUT] == DM_ISO_SM_ST_IDLE))
   {
-    dmIsoCbDealloc(pIsoCb);
+    dmIsoCbDealloc(pIsoCcb);
   }
 
-  pMsg->hdr.event = DM_ISO_DATA_PATH_SETUP_IND;
-  (*dmCb.cback)((dmEvt_t *) pMsg);
+  (*dmCb.cback)((dmEvt_t *) &evt);
 }
 
 /*************************************************************************************************/
 /*!
  *  \brief  Remove ISO data path for the given connection handle.
  *
- *  \param  pIsoCb   CIG control block.
+ *  \param  pIsoCcb   CIG control block.
  *  \param  pMsg     WSF message.
  *  \param  oldState Old state.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-static void dmIsoSmActRemove(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState)
+static void dmIsoSmActRemove(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState)
 {
   dmIsoApiRemove_t *pRemove = &pMsg->apiRemove;
 
-  /* if remove data path request hasn't been sent down for this handle */
-  if (pIsoCb->rmReqEvtSent == FALSE)
+  /* if remove data path request hasn't been sent down for both directions */
+  if (pIsoCcb->directionBits != (HCI_ISO_DATA_PATH_INPUT_BIT | HCI_ISO_DATA_PATH_OUTPUT_BIT))
   {
     /* remove ISO data path */
     HciLeRemoveIsoDataPathCmd(pMsg->hdr.param, pRemove->directionBits);
 
-    /* in case if both data path directions are being removed together */
-    pIsoCb->rmReqEvtSent = TRUE;
+    /* if also need to remove ISO data path in the Host */
+    if (dmIsoCb.removeCback != NULL)
+    {
+      (*dmIsoCb.removeCback)(pMsg->hdr.param, pRemove->directionBits);
+    }
+
+    /* if no pending remove command */
+    if (pIsoCcb->directionBits == 0)
+    {
+      /* save data path directions */
+      pIsoCcb->directionBits = pRemove->directionBits;
+    }
+    /* else direction will be set when command complete received */
   }
 }
 
@@ -418,33 +508,32 @@ static void dmIsoSmActRemove(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldSta
 /*!
  *  \brief  Handle a ISO data path removed event from HCI.
  *
- *  \param  pIsoCb   CIG control block.
+ *  \param  pIsoCcb   CIG control block.
  *  \param  pMsg     WSF message.
  *  \param  oldState Old state.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-static void dmIsoSmActRemoved(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState)
+static void dmIsoSmActRemoved(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState)
 {
   /* if remove data path event hasn't been sent up for this handle */
-  if (pIsoCb->rmReqEvtSent == FALSE)
+  if (pIsoCcb->directionBits != 0)
   {
-    uint8_t event = pMsg->hdr.event;
+    dmRemoveIsoDataPathEvt_t evt;
 
-    pMsg->hdr.event = DM_ISO_DATA_PATH_REMOVE_IND;
-    (*dmCb.cback)((dmEvt_t *) pMsg);
+    dmIsoSetDataPathRemoveEvt(pIsoCcb, pMsg, &evt);
 
-    /* in case if both data path directions are being removed with single command */
-    pMsg->hdr.event = event;
-    pIsoCb->rmReqEvtSent = TRUE;
+    (*dmCb.cback)((dmEvt_t *) &evt);
+
+    pIsoCcb->directionBits = 0;
   }
 
   /* if both data path directions in idle state */
-  if ((pIsoCb->state[HCI_ISO_DATA_DIR_INPUT]  == DM_ISO_SM_ST_IDLE) &&
-      (pIsoCb->state[HCI_ISO_DATA_DIR_OUTPUT] == DM_ISO_SM_ST_IDLE))
+  if ((pIsoCcb->state[HCI_ISO_DATA_DIR_INPUT]  == DM_ISO_SM_ST_IDLE) &&
+      (pIsoCcb->state[HCI_ISO_DATA_DIR_OUTPUT] == DM_ISO_SM_ST_IDLE))
   {
-    dmIsoCbDealloc(pIsoCb);
+    dmIsoCbDealloc(pIsoCcb);
   }
 }
 
@@ -452,35 +541,43 @@ static void dmIsoSmActRemoved(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldSt
 /*!
  *  \brief  Handle a ISO data path remove failure event from HCI.
  *
- *  \param  pIsoCb   CIG control block.
+ *  \param  pIsoCcb   CIG control block.
  *  \param  pMsg     WSF message.
  *  \param  oldState Old state.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-static void dmIsoSmActRemoveFailed(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t oldState)
+static void dmIsoSmActRemoveFailed(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t oldState)
 {
-  pMsg->hdr.event = DM_ISO_DATA_PATH_REMOVE_IND;
-  (*dmCb.cback)((dmEvt_t *) pMsg);
+  if (pIsoCcb->directionBits != 0)
+  {
+    dmRemoveIsoDataPathEvt_t evt;
+
+    dmIsoSetDataPathRemoveEvt(pIsoCcb, pMsg, &evt);
+
+    (*dmCb.cback)((dmEvt_t *) &evt);
+
+    pIsoCcb->directionBits = 0;
+  }
 }
 
 /*************************************************************************************************/
 /*!
  *  \brief  Execute the DM ISO state machine.
  *
- *  \param  pIsoCb     ISO control block.
+ *  \param  pIsoCcb     ISO control block.
  *  \param  pMsg       WSF message.
  *  \param  direction  Data path direction.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-void dmIsoSmExecute(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t direction)
+void dmIsoSmExecute(dmIsoConnCb_t *pIsoCcb, dmIsoMsg_t *pMsg, uint8_t direction)
 {
   uint8_t action;
   uint8_t event;
-  uint8_t state = pIsoCb->state[direction];
+  uint8_t state = pIsoCcb->state[direction];
 
   DM_TRACE_INFO2("dmIsoSmExecute event=%d state=%d", pMsg->hdr.event, state);
 
@@ -491,10 +588,10 @@ void dmIsoSmExecute(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t direction)
   action = dmIsoStateTbl[state][event][DM_ISO_ACTION];
 
   /* set next state */
-  pIsoCb->state[direction] = dmIsoStateTbl[state][event][DM_ISO_NEXT_STATE];
+  pIsoCcb->state[direction] = dmIsoStateTbl[state][event][DM_ISO_NEXT_STATE];
 
   /* execute action function */
-  (*dmIsoAct[action])(pIsoCb, pMsg, state);
+  (*dmIsoAct[action])(pIsoCcb, pMsg, state);
 }
 
 /*************************************************************************************************/
@@ -506,14 +603,14 @@ void dmIsoSmExecute(dmIsoCb_t *pIsoCb, dmIsoMsg_t *pMsg, uint8_t direction)
 /*************************************************************************************************/
 static void dmIsoReset(void)
 {
-  dmIsoCb_t  *pIsoCb = dmIsoCb;
+  dmIsoConnCb_t  *pIsoCcb = dmIsoCb.ccb;
   uint8_t    i;
 
-  for (i = 0; i < DM_ISO_DATA_PATH_MAX; i++, pIsoCb++)
+  for (i = 0; i < DM_ISO_DATA_PATH_MAX; i++, pIsoCcb++)
   {
-    if (pIsoCb->inUse)
+    if (pIsoCcb->inUse)
     {
-      dmIsoCbDealloc(pIsoCb);
+      dmIsoCbDealloc(pIsoCcb);
     }
   }
 }
@@ -529,35 +626,32 @@ static void dmIsoReset(void)
 /*************************************************************************************************/
 static void dmIsoMsgHandler(wsfMsgHdr_t *pMsg)
 {
-  dmIsoCb_t *pIsoCb;
+  dmIsoConnCb_t *pIsoCcb;
 
   /* look up cb from handle */
-  if ((pIsoCb = dmIsoCbByHandle(pMsg->param)) != NULL)
+  if ((pIsoCcb = dmIsoCbByHandle(pMsg->param)) != NULL)
   {
     if (pMsg->event == DM_ISO_MSG_API_SETUP)
     {
       /* execute state machine */
-      dmIsoSmExecute(pIsoCb, (dmIsoMsg_t *) pMsg, ((dmIsoApiSetup_t *) pMsg)->dataPathParam.dpDir);
+      dmIsoSmExecute(pIsoCcb, (dmIsoMsg_t *) pMsg, ((dmIsoApiSetup_t *) pMsg)->dataPathParam.dpDir);
     }
     else /* DM_ISO_MSG_API_REMOVE */
     {
       uint8_t directionBits = ((dmIsoApiRemove_t *) pMsg)->directionBits;
-      
-      /* in case if both data path directions are being removed with single command */
-      pIsoCb->rmReqEvtSent = FALSE;
 
       /* if input direction being removed */
       if (directionBits & HCI_ISO_DATA_PATH_INPUT_BIT)
       {
         /* execute state machine */
-        dmIsoSmExecute(pIsoCb, (dmIsoMsg_t *) pMsg, HCI_ISO_DATA_DIR_INPUT);
+        dmIsoSmExecute(pIsoCcb, (dmIsoMsg_t *) pMsg, HCI_ISO_DATA_DIR_INPUT);
       }
 
       /* if output direction being removed */
       if (directionBits & HCI_ISO_DATA_PATH_OUTPUT_BIT)
       {
         /* execute state machine */
-        dmIsoSmExecute(pIsoCb, (dmIsoMsg_t *) pMsg, HCI_ISO_DATA_DIR_OUTPUT);
+        dmIsoSmExecute(pIsoCcb, (dmIsoMsg_t *) pMsg, HCI_ISO_DATA_DIR_OUTPUT);
       }
     }
   }
@@ -574,16 +668,14 @@ static void dmIsoMsgHandler(wsfMsgHdr_t *pMsg)
 /*************************************************************************************************/
 static void dmIsoDpHciHandler(hciEvt_t *pEvent)
 {
-  dmIsoCb_t *pIsoCb;
+  dmIsoConnCb_t *pIsoCcb;
 
   /* look up cb from handle */
-  if ((pIsoCb = dmIsoCbByHandle(pEvent->hdr.param)) != NULL)
+  if ((pIsoCcb = dmIsoCbByHandle(pEvent->hdr.param)) != NULL)
   {
     /* translate HCI event to state machine event */
     if (pEvent->hdr.event == HCI_LE_SETUP_ISO_DATA_PATH_CMD_CMPL_CBACK_EVT)
     {
-      uint8_t direction;
-
       if (pEvent->hdr.status == HCI_SUCCESS)
       {
         pEvent->hdr.event =  DM_ISO_MSG_HCI_LE_SETUP_ISO_DATA_PATH_CMD_CMPL;
@@ -593,21 +685,27 @@ static void dmIsoDpHciHandler(hciEvt_t *pEvent)
         pEvent->hdr.event = DM_ISO_MSG_HCI_LE_SETUP_ISO_DATA_PATH_CMD_CMPL_FAIL;
       }
 
-      /* find out direction being set up */
-      if (pIsoCb->state[HCI_ISO_DATA_DIR_INPUT] == DM_ISO_SM_ST_CONFIGING)
+      /* execute state machine */
+      dmIsoSmExecute(pIsoCcb, (dmIsoMsg_t *) pEvent, pIsoCcb->dpDir);
+
+      /* if there's pending setup command for other direction */
+      if (pIsoCcb->state[HCI_ISO_DATA_DIR_INPUT] == DM_ISO_SM_ST_CONFIGING)
       {
-        direction = HCI_ISO_DATA_DIR_INPUT;
+        pIsoCcb->dpDir = HCI_ISO_DATA_DIR_INPUT;
+      }
+      else if (pIsoCcb->state[HCI_ISO_DATA_DIR_OUTPUT] == DM_ISO_SM_ST_CONFIGING)
+      {
+        pIsoCcb->dpDir = HCI_ISO_DATA_DIR_OUTPUT;
       }
       else
       {
-        direction = HCI_ISO_DATA_DIR_OUTPUT;
+        pIsoCcb->dpDir = DM_ISO_DATA_DIR_NONE;
       }
-
-      /* execute state machine */
-      dmIsoSmExecute(pIsoCb, (dmIsoMsg_t *) pEvent, direction);
     }
     else /* HCI_LE_REMOVE_ISO_DATA_PATH_CMD_CMPL_CBACK_EVT */
     {
+      uint8_t directionBits = pIsoCcb->directionBits;
+
       if (pEvent->hdr.status == HCI_SUCCESS)
       {
         pEvent->hdr.event =  DM_ISO_MSG_HCI_LE_REMOVE_ISO_DATA_PATH_CMD_CMPL;
@@ -617,21 +715,32 @@ static void dmIsoDpHciHandler(hciEvt_t *pEvent)
         pEvent->hdr.event = DM_ISO_MSG_HCI_LE_REMOVE_ISO_DATA_PATH_CMD_CMPL_FAIL;
       }
 
-      /* in case if both data path directions are being removed with single command */
-      pIsoCb->rmReqEvtSent = FALSE;
-
       /* if input direction being removed */
-      if (pIsoCb->state[HCI_ISO_DATA_DIR_INPUT] == DM_ISO_SM_ST_REMOVING)
+      if (directionBits & HCI_ISO_DATA_PATH_INPUT_BIT)
       {
         /* execute state machine */
-        dmIsoSmExecute(pIsoCb, (dmIsoMsg_t *) pEvent, HCI_ISO_DATA_DIR_INPUT);
+        dmIsoSmExecute(pIsoCcb, (dmIsoMsg_t *) pEvent, HCI_ISO_DATA_DIR_INPUT);
       }
 
       /* if output direction being removed */
-      if (pIsoCb->state[HCI_ISO_DATA_DIR_OUTPUT] == DM_ISO_SM_ST_REMOVING)
+      if (directionBits & HCI_ISO_DATA_PATH_OUTPUT_BIT)
       {
         /* execute state machine */
-        dmIsoSmExecute(pIsoCb, (dmIsoMsg_t *) pEvent, HCI_ISO_DATA_DIR_OUTPUT);
+        dmIsoSmExecute(pIsoCcb, (dmIsoMsg_t *) pEvent, HCI_ISO_DATA_DIR_OUTPUT);
+      }
+
+      /* if there's pending remove command for other direction */
+      if (pIsoCcb->state[HCI_ISO_DATA_DIR_INPUT] == DM_ISO_SM_ST_REMOVING)
+      {
+        pIsoCcb->directionBits = HCI_ISO_DATA_PATH_INPUT_BIT;
+      }
+      else if (pIsoCcb->state[HCI_ISO_DATA_DIR_OUTPUT] == DM_ISO_SM_ST_REMOVING)
+      {
+        pIsoCcb->directionBits = HCI_ISO_DATA_PATH_OUTPUT_BIT;
+      }
+      else
+      {
+        pIsoCcb->directionBits = 0;
       }
     }
   }
@@ -686,6 +795,72 @@ static void dmIsoHciHandler(hciEvt_t *pEvent)
 
 /*************************************************************************************************/
 /*!
+ *  \brief  Default HCI ISO data callback function for CIS connections.
+ *
+ *  \param  pPacket   A buffer containing an ISO packet.
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+static void dmIsoCisCback(uint8_t *pPacket)
+{
+  hciIsoDataPkt_t isoPkt;
+
+  hciCoreUnpackIsoDataPkt(pPacket, &isoPkt);
+
+  if (isoPkt.ps == HCI_SUCCESS)
+  {
+    DM_TRACE_INFO2("dmIsoCisCback: CIS Packet of isoLen %u received for handle = %d",
+                   isoPkt.isoLen, isoPkt.handle);
+
+    /* If role is master, loopback data to slave */
+    if (DmCisConnRole(isoPkt.handle) == DM_ROLE_MASTER)
+    {
+      /* Make new buffer and copy ISO packet over. */
+      uint8_t *pBuf = WsfMsgAlloc(HCI_GET_SDU_HDR_LEN(FALSE) + isoPkt.sduLen);
+      if (pBuf)
+      {
+        memcpy(pBuf + HCI_GET_SDU_HDR_LEN(FALSE), isoPkt.pIsoSdu, isoPkt.isoLen);
+
+        DmSendIsoData(isoPkt.handle, isoPkt.sduLen, pBuf, FALSE, 0);
+      }
+    }
+  }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Default HCI ISO data callback function for BIS connections.
+ *
+ *  \param  pPacket   A buffer containing an ISO packet.
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+static void dmIsoBisCback(uint8_t *pPacket)
+{
+  hciIsoDataPkt_t isoPkt;
+
+  hciCoreUnpackIsoDataPkt(pPacket, &isoPkt);
+
+  if (isoPkt.ps == HCI_SUCCESS)
+  {
+    /* if insufficient security for Broadcast_Code */
+    if (DmBigSyncGetSecLevel(isoPkt.handle) > DM_SEC_LEVEL_BCAST_NONE)
+    {
+      DM_TRACE_INFO2("dmIsoBisCback: BIS packet of isoLen %d dropped for handle = %d",
+                     isoPkt.isoLen, isoPkt.handle);
+      return;
+    }
+
+    /* Handle BIS packet here. */
+    DM_TRACE_INFO2("dmIsoBisCback: BIS Packet of sduLen %d received for handle = %d",
+                   isoPkt.sduLen, isoPkt.handle);
+  }
+}
+
+/*************************************************************************************************/
+/*!
  *  \brief  HCI ISO data callback function.
  *
  *  \param  pPacket   A buffer containing an ISO packet.
@@ -696,25 +871,28 @@ static void dmIsoHciHandler(hciEvt_t *pEvent)
 static void dmIsoHciIsoCback(uint8_t *pPacket)
 {
   uint16_t  handle;
-  uint16_t  hciLen;
-  uint8_t   *p = pPacket;
 
-  /* parse HCI handle and length */
-  BSTREAM_TO_UINT16(handle, p);
+  /* parse HCI handle */
+  BYTES_TO_UINT16(handle, pPacket);
   handle &= HCI_HANDLE_MASK;
-  BSTREAM_TO_UINT16(hciLen, p);
 
-  /* if connection handle is for BIS Sync */
+  /* if connection handle is for BIS sync */
   if (DmBisSyncInUse(handle))
   {
-    /* if insufficient security for Broadcast_Code */
-    if (DmBigSyncGetSecLevel(handle) > DM_SEC_LEVEL_BCAST_NONE)
-    {
-      DM_TRACE_INFO2("dmIsoHciIsoCback: BIS packet of length %u dropped for handle = %u", hciLen, handle);
-    }
+    (*dmIsoCb.bisCback)(pPacket);
+  }
+  /* if connection handle is for CIS */
+  else if (DmCisConnInUse(handle))
+  {
+    (*dmIsoCb.cisCback)(pPacket);
+  }
+  else
+  {
+    /* Packet was not handled. */
+    DM_TRACE_WARN1("dmIsoHciHandleIsoPkt: Packet not handled. handle = %u", handle);
   }
 
-  /* deallocate buffer */
+  /* Packet successfully handled. Free pointer. */
   WsfMsgFree(pPacket);
 }
 
@@ -746,10 +924,50 @@ void DmIsoInit(void)
 
   dmFcnIfTbl[DM_ID_ISO] = (dmFcnIf_t *) &dmIsoFcnIf;
 
+  /* Initialize default ISO data callbacks */
+  dmIsoCb.cisCback = dmIsoCisCback;
+  dmIsoCb.bisCback = dmIsoBisCback;
+
   /* Register with HCI */
   HciIsoRegister(dmIsoHciIsoCback, dmIsoHciFlowCback);
 
   WsfTaskUnlock();
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Register CIS, BIS and setup callbacks for the HCI ISO data path.
+ *
+ *  \param  cisCback    CIS data callback function (may be NULL).
+ *  \param  bisCback    BIS data callback function (may be NULL).
+ *  \param  setupCback  ISO data path setup callback function (NULL when the codec in the LL).
+ *  \param  removeCback ISO data path remove callback function (NULL when the codec in the LL).
+ *
+ *  \return None.
+ */
+ /*************************************************************************************************/
+void DmIsoRegister(hciIsoCback_t cisCback, hciIsoCback_t bisCback,
+                   dmIsoDataPathSetupCback_t setupCback, dmIsoDataPathRemoveCback_t removeCback)
+{
+  if (cisCback != NULL)
+  {
+    dmIsoCb.cisCback = cisCback;
+  }
+
+  if (bisCback != NULL)
+  {
+    dmIsoCb.bisCback = bisCback;
+  }
+
+  if (setupCback != NULL)
+  {
+    dmIsoCb.setupCback = setupCback;
+  }
+
+  if (removeCback != NULL)
+  {
+    dmIsoCb.removeCback = removeCback;
+  }
 }
 
 /*************************************************************************************************/
@@ -764,22 +982,22 @@ void DmIsoInit(void)
 /*************************************************************************************************/
 void DmIsoDataPathSetup(HciIsoSetupDataPath_t *pDataPathParam)
 {
-  dmIsoCb_t        *pIsoCb = NULL;
+  dmIsoConnCb_t    *pIsoCcb = NULL;
   uint16_t         handle = pDataPathParam->handle;
   dmIsoApiSetup_t  *pMsg;
 
-  WSF_ASSERT(pDataPathParam->dpDir < DM_ISO_NUM_DIR)
+  WSF_ASSERT(pDataPathParam->dpDir < DM_ISO_NUM_DIR);
 
   /* make sure ISO cb not already allocated */
   WsfTaskLock();
-  if ((pIsoCb = dmIsoCbByHandle(handle)) == NULL)
+  if ((pIsoCcb = dmIsoCbByHandle(handle)) == NULL)
   {
     /* allocate Cig cb */
-    pIsoCb = dmIsoCbAlloc(handle);
+    pIsoCcb = dmIsoCbAlloc(handle);
   }
   WsfTaskUnlock();
 
-  if (pIsoCb != NULL)
+  if (pIsoCcb != NULL)
   {
     if ((pMsg = WsfMsgAlloc(sizeof(dmIsoApiSetup_t) + pDataPathParam->codecConfigLen)) != NULL)
     {
@@ -886,4 +1104,20 @@ void DmReadLocalSupCodecCap(HciReadLocalSupCodecCaps_t *pCodecParam)
 void DmReadLocalSupCtrDly(HciReadLocalSupControllerDly_t *pDelayParam)
 {
   HciReadLocalSupControllerDlyCmd(pDelayParam);
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Send ISO Data.
+ *
+ *  \param  handle  ISO Handle to send data.
+ *  \param  len     Length of data (Excluding header).
+ *  \param  pData   Pointer to start of ISO buffer.
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+void DmSendIsoData(uint16_t handle, uint16_t len, uint8_t *pData, bool_t useTs, uint32_t ts)
+{
+  hciSendIsoData(handle, len, pData, useTs, ts);
 }

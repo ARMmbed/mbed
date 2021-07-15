@@ -27,14 +27,15 @@
  *  NOTES:
  *
  *    While BB is enabled certain resources are consumed and are off limits during that time.
- *      Timer0 should not be touched while BB is enabled. It's available apart from that.
+ *      TIMER0 should not be touched while BB is enabled. It's available apart from that.
  *      PPI Channels 14 & 15 are used while BB is enabled. They are available apart from that.
  *
- *    Timer0's compare/capture registers are assigned specific uses:
+ *    TIMER0's compare/capture registers are assigned specific uses:
  *      CC[0] - triggers radio TXEN or RXEN task, PPI triggered
  *      CC[1] - RX timeout
  *      CC[2] - captures *every* radio PAYLOAD event time, PPI triggered
  *      CC[3] - manual capture of current time
+ *      CC[4] - captures *every* radio ADDRESS event time, PPI triggered
  *
  *    PPI Channel 14:
  *      Used to trigger TXEN or RXEN task on timer event COMPARE[0].
@@ -42,29 +43,36 @@
  *    PPI Channel 15:
  *      Used to trigger timer capture to CC[2] on every radio PAYLOAD event.
  *
+ *    PPI Channel 16:
+ *      Used to trigger timer capture to CC[4] on every radio ADDRESS event.
+ *
  *    If  BB_CLK_RATE_HZ == 32768 (low power mode):
  *
  *    Additional two channels of NRF RTC1 are controlled here.
- *      CC[1] - Compare value for NRF timer0 start task.
+ *      CC[1] - Compare value for NRF TIMER0 start task.
  *      CC[2] - Compare value for NRF HFCLK start task.
  */
 
 #include "pal_types.h"
 #include "pal_bb.h"
 #include "pal_rtc.h"
-#include "pal_bb.h"
 #include "pal_led.h"
 #include "pal_bb_ble.h"
 #include "pal_radio.h"
+#include "pal_timer.h"
 #include "ll_defs.h"
+
 #include "nrf.h"
 #include "nrf_gpio.h"
 #include "nrf_gpiote.h"
+
 #include <string.h>
 
 #if (LL_ENABLE_TESTER)
 #include "ll_tester_api.h"
 #endif
+
+#include "mbed_nrf5x_adaptation.h"
 
 /**************************************************************************************************
   Macros
@@ -109,8 +117,9 @@
 #define ENC_LPLUS4_LEN              1       /* length of the "L+4" field */
 #define ENC_RFU_LEN                 1       /* length of the "RFU" field */
 #define ENC_MIC_LEN                 4       /* length of the MIC field */
-#define ENC_TX_BUF_LEN              ( ENC_H_FIELD_LEN + ENC_LPLUS4_LEN + ENC_RFU_LEN + ENC_MAXPACKETSIZE )
-#define ENC_OUTPUT_BUF_LEN          ( ENC_TX_BUF_LEN  + ENC_MIC_LEN )
+#define ENC_PLAIN_BUF_LEN           ( ENC_H_FIELD_LEN + ENC_LPLUS4_LEN + ENC_RFU_LEN + ENC_MAXPACKETSIZE )
+#define ENC_ENCRYPTED_BUF_LEN       ( ENC_PLAIN_BUF_LEN  + ENC_MIC_LEN )
+#define ENC_RFU_OFFSET              2       /* offset of the "RFU" field */
 
 /* +/- range for TIFS adjustment */
 #define TIFS_ADJ_RANGE_USECS        8       /* the +/- maximums for TIFS adjustment */
@@ -155,10 +164,6 @@
 #define BB_ENABLE_INLINE_DEC_RX     FALSE
 #endif
 
-#ifndef DIAG_PINS_ENA
-#define DIAG_PINS_ENA               1
-#endif
-
 /* LED definitions */
 #ifndef BB_LED_ENA
 #define BB_LED_ENA             0
@@ -168,7 +173,7 @@
 #define BB_LED_1M_ON()        PalLedOn(0)
 #define BB_LED_2M_ON()        PalLedOn(1)
 #define BB_LED_CODED_ON()     PalLedOn(0); PalLedOn(1)
-#define BB_LED_OFF()          PalLedOff(0); PalLedOff(1)
+#define BB_LED_OFF()          PalLedOff(0); PalLedOff(1);
 #else
 #define BB_LED_1M_ON()
 #define BB_LED_2M_ON()
@@ -227,6 +232,8 @@ static uint8_t *palBbGetTxData(PalBbBleTxBufDesc_t descs[], uint8_t cnt);
 static void BbBleDrvTimerIRQHandler(void);
 static void BbBleDrvRadioIRQHandler(void);
 
+extern int8_t palRadioGetTxRfPathComp(void);
+
 /**************************************************************************************************
   Local Variables
 **************************************************************************************************/
@@ -250,23 +257,28 @@ uint8_t bbRxPhyOptions;
 uint8_t tifsTxPhyOptions;
 uint16_t bbTxLen;
 bool_t bbEncryptTxFlag;
+bool_t bbDecryptRxFlag;
 bool_t bbEncryptTxSuppressMic;
-uint8_t bbEncryptTxBuf[ENC_TX_BUF_LEN+2];           /* add two for overrun protection */
-uint8_t bbEncryptScratchBuf[ENC_SCRATCH_BUF_LEN+2]; /* add two for overrun protection */
-uint8_t bbEncryptOutBuf[ENC_OUTPUT_BUF_LEN+2];      /* add two for overrun protection */
+uint8_t bbEncryptType;
+uint8_t bbEncryptDirection;
+uint64_t bbEncryptPacketCounter;
+uint64_t bbDecryptPacketCounter;
+uint8_t bbEncryptPlainBuf[ENC_PLAIN_BUF_LEN+2];         /* add two for overrun protection */
+uint8_t bbEncryptScratchBuf[ENC_SCRATCH_BUF_LEN+2];     /* add two for overrun protection */
+uint8_t bbEncryptEncryptedBuf[ENC_ENCRYPTED_BUF_LEN+2]; /* add two for overrun protection */
 uint8_t bbEncryptCcmData[ENC_CCM_DATA_STRUCT_LEN];
 uint8_t bbTrlSave[BB_TRL_MAX_LEN];
 uint8_t *bbTrlSavedPtr = NULL;
 uint8_t bbTrlSavedLen;
 PalBbBleOpParam_t bbOpParam;
 
-#ifndef BB_ASSERT_ENABLED
-#define BB_ASSERT_ENABLED   FALSE
-#endif
-#if BB_ASSERT_ENABLED == TRUE
+#if BB_ENABLE_ASSERT == TRUE
 bool_t keySetFlag = 0;
 bool_t ivSetFlag = 0;
-bool_t packetCountSetFlag = 0;
+bool_t encryptTypeSetFlag = 0;
+bool_t directionSetFlag = 0;
+bool_t txPacketCountSetFlag = 0;
+bool_t rxPacketCountSetFlag = 0;
 #endif
 
 #if (LL_ENABLE_TESTER == TRUE)
@@ -297,7 +309,7 @@ bool_t invalidateAccAddrOnceTx = FALSE;
 
 /* enable BB assertions */
 #ifdef BB_ENABLE_ASSERT
-#define BB_ASSERT(x)       { if (!(X)) {  return; } }
+#define BB_ASSERT(x)       { if (!(x)) {  return; } }
 #else
 #define BB_ASSERT(x)
 #endif
@@ -385,7 +397,7 @@ uint16_t diagCancels               = 0;
 
 /*************************************************************************************************/
 /*!
- *  \brief      Config GPIO as input or output.
+ *  \brief      Configure GPIO as input or output.
  *
  *  \param      pin           Pin number.
  */
@@ -500,17 +512,17 @@ static inline void palBbSetRadioMode(uint8_t phy, uint8_t option)
 #if (USE_RTC_BB_CLK)
 /*************************************************************************************************/
 /*!
- *  \brief      Set the time for the timer0 to start.
+ *  \brief      Set the time for the PAL_BB_TIMER to start.
  *
- *  \param      startTime     timer0 start time.
+ *  \param      startTime     PAL_BB_TIMER start time.
  *
  */
 /*************************************************************************************************/
 static void palBbStartTimer(uint32_t startTime)
 {
-  bbEventStartTime = NRF_RTC1->CC[1] = startTime;
-  NRF_RTC1->EVENTS_COMPARE[1] = 0;
-  WAIT_FOR_WR_BUF_EMPTY(NRF_RTC1->EVENTS_COMPARE[1]);
+  bbEventStartTime = PAL_BB_RTC->CC[1] = startTime;
+  PAL_BB_RTC->EVENTS_COMPARE[1] = 0;
+  WAIT_FOR_WR_BUF_EMPTY(PAL_BB_RTC->EVENTS_COMPARE[1]);
 }
 #endif
 
@@ -525,18 +537,17 @@ void PalBbBleLowPower(void)
 {
   /* Stop high frequency timer between BLE events if low lower mode. */
 #if (USE_RTC_BB_CLK)
-  NRF_TIMER0->TASKS_STOP = 1;
-  NRF_TIMER0->TASKS_CLEAR = 1;
+  PAL_BB_TIMER->TASKS_STOP = 1;
+  PAL_BB_TIMER->TASKS_CLEAR = 1;
 #endif
 }
 
-#if (BB_ENABLE_INLINE_ENC_TX || BB_ENABLE_INLINE_DEC_RX)
+#if (BB_ENABLE_INLINE_ENC_TX)
 /*************************************************************************************************/
 /*!
  *  \brief      Enable or disable inline encryption on transmit.
  *
  *  \param      enable  Boolean flag to enable or disable TX encryption
- *
  */
 /*************************************************************************************************/
 static void palBbBleInlineEncryptTxEnable(bool_t enable)
@@ -546,13 +557,31 @@ static void palBbBleInlineEncryptTxEnable(bool_t enable)
   /* copy encryption enable to global variable */
   bbEncryptTxFlag = enable;
 }
+#endif
 
+#if (BB_ENABLE_INLINE_DEC_RX)
+/*************************************************************************************************/
+/*!
+ *  \brief      Enable or disable inline decryption on reception.
+ *
+ *  \param      enable  Boolean flag to enable or disable RX decryption
+ */
+/*************************************************************************************************/
+static void palBbBleInlineDecryptRxEnable(bool_t enable)
+{
+  BB_ASSERT(driverState == IDLE_STATE); /* driver must be idle */
+
+  /* copy decryption enable to global variable */
+  bbDecryptRxFlag = enable;
+}
+#endif
+
+#if (BB_ENABLE_INLINE_ENC_TX || BB_ENABLE_INLINE_DEC_RX)
 /*************************************************************************************************/
 /*!
  *  \brief      Set inline encryption/decryption MIC suppression.
  *
  *  \param      enable  Boolean flag to indicate if MIC is suppressed
- *
  */
 /*************************************************************************************************/
 static void palBbBleInlineEncryptDecryptSuppressMic(bool_t enable)
@@ -568,14 +597,13 @@ static void palBbBleInlineEncryptDecryptSuppressMic(bool_t enable)
  *  \brief      Set inline encryption/decryption key.
  *
  *  \param      key     Pointer to 16-byte key value
- *
  */
 /*************************************************************************************************/
 static void palBbBleInlineEncryptDecryptSetKey(uint8_t *pKey)
 {
   BB_ASSERT(driverState == IDLE_STATE); /* driver must be idle */
 
-  #if BB_ASSERT_ENABLED == TRUE
+  #if BB_ENABLE_ASSERT == TRUE
   keySetFlag = 1;
   #endif
 
@@ -591,14 +619,13 @@ static void palBbBleInlineEncryptDecryptSetKey(uint8_t *pKey)
  *  \brief      Set inline encryption/decryption IV (initialization vector).
  *
  *  \param      key     Pointer to 8-byte value for IV
- *
  */
 /*************************************************************************************************/
 static void palBbBleDrvInlineEncryptDecryptSetIv(uint8_t *pIV)
 {
   BB_ASSERT(driverState == IDLE_STATE); /* driver must be idle */
 
-  #if BB_ASSERT_ENABLED == TRUE
+  #if BB_ENABLE_ASSERT == TRUE
   ivSetFlag = 1;
   #endif
 
@@ -608,47 +635,72 @@ static void palBbBleDrvInlineEncryptDecryptSetIv(uint8_t *pIV)
 
 /*************************************************************************************************/
 /*!
+ *  \brief      Set inline encryption/decryption type.
+ *
+ *  \param      encType     0=PAL_BB_TYPE_ACL, CIS, BIS
+ */
+/*************************************************************************************************/
+static void palBbBleInlineEncryptSetType(uint8_t encType)
+{
+  #if BB_ENABLE_ASSERT == TRUE
+  encryptTypeSetFlag = 1;
+  #endif
+
+  bbEncryptType = encType;
+}
+
+/*************************************************************************************************/
+/*!
  *  \brief      Set inline encryption/decryption direction bit.
  *
  *  \param      dir     0=slave, non-zero=master
- *
  */
 /*************************************************************************************************/
-void PalBbBleInlineEncryptDecryptSetDirection(uint8_t dir)
+void palBbBleInlineEncryptDecryptSetDirection(uint8_t dir)
 {
-  if (dir)
-  {
-    /* master */
-    bbEncryptCcmData[24] = 1;
-  }
-  else
-  {
-    bbEncryptCcmData[24] = 0;
-  }
+  #if BB_ENABLE_ASSERT == TRUE
+  directionSetFlag = 1;
+  #endif
+
+  bbEncryptDirection = dir;
 }
 
 /*************************************************************************************************/
 /*!
  *  \brief      Set the inline encryption packet count for transmit.
  *
- *  \param      count   Packet counter value, a 39-bit value
- *
+ *  \param      pktCtr  Packet counter value, a 39-bit value (upper bits are ignored).
  */
 /*************************************************************************************************/
-void PalBbBleInlineEncryptSetPacketCount(uint64_t count)
+void PalBbBleSetInlineEncryptPacketCount(uint64_t pktCtr)
 {
   BB_ASSERT(driverState == IDLE_STATE); /* driver must be idle */
 
-  #if BB_ASSERT_ENABLED == TRUE
-  packetCountSetFlag = 1;
+  #if BB_ENABLE_ASSERT == TRUE
+  txPacketCountSetFlag = 1;
   #endif
 
   /* populate packet counter */
-  bbEncryptCcmData[16] = (count >>  0) & 0xFF;
-  bbEncryptCcmData[17] = (count >>  8) & 0xFF;
-  bbEncryptCcmData[18] = (count >> 16) & 0xFF;
-  bbEncryptCcmData[19] = (count >> 24) & 0xFF;
-  bbEncryptCcmData[20] = (count >> 32) & 0x7F; /* only 7-bits of MSB are used (packet count is 39 bits) */
+  bbEncryptPacketCounter = pktCtr;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Set the inline decryption packet count for receive.
+ *
+ *  \param      pktCtr  Packet counter value, a 39-bit value (upper bits are ignored).
+ */
+/*************************************************************************************************/
+void PalBbBleSetInlineDecryptPacketCount(uint64_t pktCtr)
+{
+  BB_ASSERT(driverState == IDLE_STATE); /* driver must be idle */
+
+  #if BB_ENABLE_ASSERT == TRUE
+  rxPacketCountSetFlag = 1;
+  #endif
+
+  /* populate packet counter */
+  bbDecryptPacketCounter = pktCtr;
 }
 #endif
 
@@ -708,21 +760,22 @@ void PalBbBleInit(void)
 
   /* set default of no encryption */
   bbEncryptTxFlag = 0;
+  bbDecryptRxFlag = 0;
 
 #if (USE_RTC_BB_CLK)
-  NRF_RTC1->EVTENCLR = RTC_EVTENCLR_COMPARE1_Msk;
-  NRF_RTC1->EVTENCLR = RTC_EVTENCLR_COMPARE2_Msk;
+  PAL_BB_RTC->EVTENCLR = RTC_EVTENCLR_COMPARE1_Msk;
+  PAL_BB_RTC->EVTENCLR = RTC_EVTENCLR_COMPARE2_Msk;
 #endif
 
   /* update driver state */
   driverState = SLEEP_STATE;
 
   /////////////////////////////////////////////////////////////////////////////////
-  #if BB_ASSERT_ENABLED
+  #if BB_ENABLE_ASSERT
   /* initialize buffers with 0xAA's, last two bytes used by assert to detect buffer overrun */
-  memset(bbEncryptTxBuf,      0xAA, sizeof(bbEncryptTxBuf));
-  memset(bbEncryptOutBuf,     0xAA, sizeof(bbEncryptOutBuf));
-  memset(bbEncryptScratchBuf, 0xAA, sizeof(bbEncryptScratchBuf));
+  memset(bbEncryptPlainBuf,     0xAA, sizeof(bbEncryptPlainBuf));
+  memset(bbEncryptEncryptedBuf, 0xAA, sizeof(bbEncryptEncryptedBuf));
+  memset(bbEncryptScratchBuf,   0xAA, sizeof(bbEncryptScratchBuf));
   #endif
   /////////////////////////////////////////////////////////////////////////////////
 
@@ -745,10 +798,10 @@ void PalBbBleInit(void)
 void PalBbBleEnable(void)
 {
   /* Give the BB the highest priority. */
-  NVIC_SetPriority(RADIO_IRQn, 0);
-  NVIC_SetPriority(TIMER0_IRQn, 0);
+  NVIC_SetPriority(RADIO_IRQn, 1);
+  NVIC_SetPriority(PAL_BB_IRQn, 1);
 
-  BB_ASSERT(NVIC_GetPriority(RADIO_IRQn) == NVIC_GetPriority(TIMER0_IRQn)); /* BB driver related interrupts must have same priority */
+  BB_ASSERT(NVIC_GetPriority(RADIO_IRQn) == NVIC_GetPriority(PAL_BB_IRQn)); /* BB driver related interrupts must have same priority */
   BB_ASSERT(driverState == SLEEP_STATE); /* the BB driver should never be re-enabled */
   BB_ASSERT(NRF_CLOCK->HFCLKSTAT & CLOCK_HFCLKSTAT_STATE_Msk); /* HF clock must be running */
 #if (USE_RTC_BB_CLK)
@@ -762,48 +815,48 @@ void PalBbBleEnable(void)
 #endif
 
   /* stop timer if it was somehow running (timer must be stopped for configuration) */
-  NRF_TIMER0->TASKS_STOP  = 1;
+  PAL_BB_TIMER->TASKS_STOP  = 1;
 
   /* clear timer to zero count */
-  NRF_TIMER0->TASKS_CLEAR = 1;
+  PAL_BB_TIMER->TASKS_CLEAR = 1;
 
   /* configure timer */
-  NRF_TIMER0->MODE      = TIMER_MODE_MODE_Timer;
-  NRF_TIMER0->BITMODE   = TIMER_BITMODE_BITMODE_32Bit;
-  NRF_TIMER0->PRESCALER = TIMER_PRESCALER;  /* f = 16MHz / (2 ^ TIMER_PRESCALER),  for TIMER_PRESCALER of 4, clock has 1us resolution
+  PAL_BB_TIMER->MODE      = TIMER_MODE_MODE_Timer;
+  PAL_BB_TIMER->BITMODE   = TIMER_BITMODE_BITMODE_32Bit;
+  PAL_BB_TIMER->PRESCALER = TIMER_PRESCALER;  /* f = 16MHz / (2 ^ TIMER_PRESCALER),  for TIMER_PRESCALER of 4, clock has 1us resolution
                                                                                        TIMER_PRESCALER of 3, clock is 0.5us resolution
                                                                                        TIMER_PRESCALER of 2, clock is 0.25us resolution
                                                                                        TIMER_PRESCALER of 1, clock is 0.125us resolution  */
 
   /*
-   *   Configure the PPI Channel 13 -  "Chan 13: RTC.COMPARE[0] -> TIMER[0].START"
+   *   Configure the PPI Channel 13 -  "Chan 13: RTC.COMPARE[0] -> TIMER[3].START"
    *
-   *   This channel is used to trigger starting TIMER[0] for radio operations.
+   *   This channel is used to trigger starting TIMER[3] for radio operations.
    */
 #if (USE_RTC_BB_CLK)
-  /* timer0 starts when RTC0.COMPARE[1] event is triggered */
-  NRF_PPI->CH[13].EEP = (uint32_t) &NRF_RTC1->EVENTS_COMPARE[1];
-  NRF_PPI->CH[13].TEP = (uint32_t) &NRF_TIMER0->TASKS_START;
+  /* TIMER0 starts when RTC0.COMPARE[1] event is triggered */
+  NRF_PPI->CH[13].EEP = (uint32_t) &PAL_BB_RTC->EVENTS_COMPARE[1];
+  NRF_PPI->CH[13].TEP = (uint32_t) &PAL_BB_TIMER->TASKS_START;
   NRF_PPI->CHENSET = PPI_CHENSET_CH13_Msk;                                        /* enable channel */
 
   /* HFCLK starts when RTC0.COMPARE[2] event is triggered */
-  NRF_PPI->CH[10].EEP = (uint32_t) &NRF_RTC1->EVENTS_COMPARE[2];
+  NRF_PPI->CH[10].EEP = (uint32_t) &PAL_BB_RTC->EVENTS_COMPARE[2];
   NRF_PPI->CH[10].TEP = (uint32_t) &NRF_CLOCK->TASKS_HFCLKSTART;
   NRF_PPI->CHENSET = PPI_CHENSET_CH10_Msk;                                        /* enable channel */
 #else
-  /* timer0 is a free running clock */
-  NRF_TIMER0->TASKS_START = 1;
+  /* TIMER0 is a free running clock */
+  PAL_BB_TIMER->TASKS_START = 1;
 #endif
 
   /*
-   *   Configure the PPI Channel 14 -  "Chan 14: TIMER[0].COMPARE[0] -> TXEN/RXEN"
+   *   Configure the PPI Channel 14 -  "Chan 14: TIMER[3].COMPARE[0] -> TXEN/RXEN"
    *
    *   This channel is used to trigger radio task TXEN, or RXEN, on timer event COMPARE[0].
    *   It is only enabled when needed. The PPI task parameter is meant to be configured just
    *   before the channel is enabled. This task will be either TXEN or RXEN depending on radio
    *   operation. The event is static and never changes. It is configured below.
    */
-  NRF_PPI->CH[14].EEP = (uint32_t) &NRF_TIMER0->EVENTS_COMPARE[0];   /* configure event */
+  NRF_PPI->CH[14].EEP = (uint32_t) &PAL_BB_TIMER->EVENTS_COMPARE[0];   /* configure event */
 
   /*
    *   Configure and enable PPI Channel 15 -  "Chan 15: PAYLOAD -> CAPTURE[2]"
@@ -815,8 +868,21 @@ void PalBbBleEnable(void)
    *   It will stay active until the BB driver is disabled.
    */
   NRF_PPI->CH[15].EEP = (uint32_t) &NRF_RADIO->EVENTS_PAYLOAD;        /* configure event */
-  NRF_PPI->CH[15].TEP = (uint32_t) &NRF_TIMER0->TASKS_CAPTURE[2];     /* configure task */
+  NRF_PPI->CH[15].TEP = (uint32_t) &PAL_BB_TIMER->TASKS_CAPTURE[2];     /* configure task */
   NRF_PPI->CHENSET = PPI_CHENSET_CH15_Msk;                            /* enable channel */
+
+  /*
+   *   Configure and enable PPI Channel 16 -  "Chan 16: ADDRESS -> CAPTURE[4]"
+   *
+   *   This channel is used to capture the timer value on every radio ADDRESS event.
+   *   It is configured to trigger timer task CAPTURE[4] which copies the timer to CC[4].
+   *
+   *   Once this channel is set up and enabled, it requires no further action.
+   *   It will stay active until the BB driver is disabled.
+   */
+  NRF_PPI->CH[16].EEP = (uint32_t) &NRF_RADIO->EVENTS_ADDRESS;        /* configure event */
+  NRF_PPI->CH[16].TEP = (uint32_t) &PAL_BB_TIMER->TASKS_CAPTURE[4];     /* configure task */
+  NRF_PPI->CHENSET = PPI_CHENSET_CH16_Msk;                            /* enable channel */
 
   /*
    *   NOTE: Per Nordic support team response, PPI channels do not require a reset.
@@ -825,10 +891,10 @@ void PalBbBleEnable(void)
    *         reference manual.)
    */
 
-  /* clear out and enable TIMER0 interrupts at system level */
-  NRF_TIMER0->INTENCLR = 0xFFFFFFFF;
-  NVIC_ClearPendingIRQ(TIMER0_IRQn);
-  NVIC_EnableIRQ(TIMER0_IRQn);
+  /* clear out and enable BB scheduler interrupts at system level */
+  PAL_BB_TIMER->INTENCLR = 0xFFFFFFFF;
+  NVIC_ClearPendingIRQ(PAL_BB_IRQn);
+  NVIC_EnableIRQ(PAL_BB_IRQn);
 
   /* clear out and enable RADIO interrupts at system level */
   NRF_RADIO->INTENCLR = 0xFFFFFFFF;
@@ -846,8 +912,8 @@ void PalBbBleEnable(void)
     */
 
 #if (USE_RTC_BB_CLK)
-  NRF_RTC1->EVTENSET = RTC_EVTENSET_COMPARE1_Msk;
-  NRF_RTC1->EVTENSET = RTC_EVTENSET_COMPARE2_Msk;
+  PAL_BB_RTC->EVTENSET = RTC_EVTENSET_COMPARE1_Msk;
+  PAL_BB_RTC->EVTENSET = RTC_EVTENSET_COMPARE2_Msk;
 #endif
 
   /* enable the radio "TIFS Expired" interrupt (triggers on radio PAYLOAD event) */
@@ -891,16 +957,17 @@ void PalBbBleDisable(void)
   /* disable PPI channels */
   NRF_PPI->CHENCLR = PPI_CHENCLR_CH14_Msk;   /* Chan 14: COMPARE[0] -> TXEN/RXEN */
   NRF_PPI->CHENCLR = PPI_CHENCLR_CH15_Msk;   /* Chan 15: PAYLOAD -> CAPTURE[2] */
+  NRF_PPI->CHENCLR = PPI_CHENCLR_CH16_Msk;   /* Chan 16: ADDRESS -> CAPTURE[4] */
 
 #if (USE_RTC_BB_CLK)
-  NRF_RTC1->EVTENCLR = RTC_EVTENCLR_COMPARE1_Msk;
-  NRF_RTC1->EVTENCLR = RTC_EVTENCLR_COMPARE2_Msk;
+  PAL_BB_RTC->EVTENCLR = RTC_EVTENCLR_COMPARE1_Msk;
+  PAL_BB_RTC->EVTENCLR = RTC_EVTENCLR_COMPARE2_Msk;
 #endif
 
   /* disable and clean up TIMER0 interrupts */
-  NVIC_DisableIRQ(TIMER0_IRQn);
-  NRF_TIMER0->INTENCLR = 0xFFFFFFFF;
-  NVIC_ClearPendingIRQ(TIMER0_IRQn);
+  NVIC_DisableIRQ(PAL_BB_IRQn);
+  PAL_BB_TIMER->INTENCLR = 0xFFFFFFFF;
+  NVIC_ClearPendingIRQ(PAL_BB_IRQn);
 
   /* disable and clean up RADIO interrupts */
   NVIC_DisableIRQ(RADIO_IRQn);
@@ -1075,17 +1142,25 @@ static void palBbBleSetChannelParam(PalBbBleChan_t *pChan)
   /* set the power parameter to the value that was actually set in hardware */
   pChan->txPower = txPower;
 
-#if (BB_ENABLE_INLINE_ENC_TX || BB_ENABLE_INLINE_DEC_RX)
+#if BB_ENABLE_INLINE_ENC_TX
   /* enable inline encryption */
   palBbBleInlineEncryptTxEnable(pChan->enc.enaEncrypt);
+#endif
 
+#if BB_ENABLE_INLINE_DEC_RX
+  /* enable inline decryption */
+  palBbBleInlineDecryptRxEnable(pChan->enc.enaDecrypt);
+#endif
+
+#if (BB_ENABLE_INLINE_ENC_TX || BB_ENABLE_INLINE_DEC_RX)
   /* set encryption parameters */
   if (pChan->enc.enaEncrypt || pChan->enc.enaDecrypt)
   {
     palBbBleInlineEncryptDecryptSuppressMic(FALSE); /* TODO add MIC suppression */
     palBbBleInlineEncryptDecryptSetKey(pChan->enc.sk);
     palBbBleDrvInlineEncryptDecryptSetIv(pChan->enc.iv);
-    PalBbBleInlineEncryptDecryptSetDirection(pChan->enc.dir);
+    palBbBleInlineEncryptSetType(pChan->enc.type);
+    palBbBleInlineEncryptDecryptSetDirection(pChan->enc.dir);
   }
 #endif
 }
@@ -1281,8 +1356,7 @@ void PalBbBleTxData(PalBbBleTxBufDesc_t descs[], uint8_t cnt)
   uint16_t hdr;
   BYTES_TO_UINT16(hdr, pBuf);
 
-  if (bbModifyTxHdrMask &&
-      ((hdr & bbModifyTxHdrMask) == bbModifyTxHdrValue))
+  if ((hdr & bbModifyTxHdrMask) == bbModifyTxHdrValue)
   {
     if (bbTxAccAddrInvalidChanMask & (UINT64_C(1) << bbChanIndex))
     {
@@ -1337,8 +1411,7 @@ void PalBbBleTxData(PalBbBleTxBufDesc_t descs[], uint8_t cnt)
 
   /* set Tx CRC init */
   NRF_RADIO->CRCINIT = bbTxCrcInit;
-  if (bbModifyTxHdrMask &&
-      ((hdr & bbModifyTxHdrMask) == bbModifyTxHdrValue))
+  if ((hdr & bbModifyTxHdrMask) == bbModifyTxHdrValue)
   {
     if (bbTxCrcInitInvalidChanMask & (UINT64_C(1) << bbChanIndex))
     {
@@ -1384,15 +1457,15 @@ void PalBbBleTxData(PalBbBleTxBufDesc_t descs[], uint8_t cnt)
     bbDueOffsetUsec = 1;                /* CC[0] can't trigger on 0 */
   }
 
-  NRF_TIMER0->CC[0] = bbDueOffsetUsec;
-  NRF_TIMER0->EVENTS_COMPARE[0] = 0;
-  WAIT_FOR_WR_BUF_EMPTY(NRF_TIMER0->EVENTS_COMPARE[0]);
+  PAL_BB_TIMER->CC[0] = bbDueOffsetUsec;
+  PAL_BB_TIMER->EVENTS_COMPARE[0] = 0;
+  WAIT_FOR_WR_BUF_EMPTY(PAL_BB_TIMER->EVENTS_COMPARE[0]);
   palBbStartTimer(txStart);
 #else
   BB_ASSERT(bbDueOffsetUsec == 0);     /* Always 0 with HFCLK. */
-  NRF_TIMER0->CC[0] = txStart;
-  NRF_TIMER0->EVENTS_COMPARE[0] = 0;
-  WAIT_FOR_WR_BUF_EMPTY(NRF_TIMER0->EVENTS_COMPARE[0]);
+  PAL_BB_TIMER->CC[0] = txStart;
+  PAL_BB_TIMER->EVENTS_COMPARE[0] = 0;
+  WAIT_FOR_WR_BUF_EMPTY(PAL_BB_TIMER->EVENTS_COMPARE[0]);
 #endif
 
   /* configure radio hardware registers for transmit */
@@ -1402,8 +1475,7 @@ void PalBbBleTxData(PalBbBleTxBufDesc_t descs[], uint8_t cnt)
   NRF_RADIO->SHORTS = RADIO_SHORTS_READY_START_Msk   |
                       RADIO_SHORTS_END_DISABLE_Msk;
 
-  uint32_t currentBbTick;
-  (void)PalBbGetTimestamp(&currentBbTick);
+  uint32_t currentBbTick = PalBbGetCurrentTime();
 
   /* see if the due time is in the past (or a very long way, away) */
 #if (USE_RTC_BB_CLK)
@@ -1429,7 +1501,7 @@ void PalBbBleTxData(PalBbBleTxBufDesc_t descs[], uint8_t cnt)
   NRF_PPI->CHENSET = PPI_CHENSET_CH14_Msk;                  /* enable channel */
 
   /* see if the compare point was already reached */
-  if (NRF_TIMER0->EVENTS_COMPARE[0])
+  if (PAL_BB_TIMER->EVENTS_COMPARE[0])
   {
     /* it's 99.99999% certain did not make it, but... maybe, just maybe... */
     if (NRF_RADIO->STATE == RADIO_STATE_STATE_Disabled)
@@ -1674,6 +1746,9 @@ static void palBbTxHwRadioConfig(uint8_t * pTxBuf)
   uint32_t plen = 0;
 #endif
 
+  /* set the mode */
+  palBbSetRadioMode(bbTxPhy, bbTxPhyOptions);
+
   if (!bbEncryptTxFlag)
   {
     /*------------------------------------------------------------------------------
@@ -1706,9 +1781,6 @@ static void palBbTxHwRadioConfig(uint8_t * pTxBuf)
 
     /* set packet pointer to supplied buffer */
     NRF_RADIO->PACKETPTR = (uint32_t)pTxBuf;
-
-    /* set the mode */
-    palBbSetRadioMode(bbTxPhy, bbTxPhyOptions);
   }
   else
   {
@@ -1730,7 +1802,8 @@ static void palBbTxHwRadioConfig(uint8_t * pTxBuf)
 
     BB_ASSERT( keySetFlag ); /* encryption key has not been set */
     BB_ASSERT( ivSetFlag ); /* iv was not set */
-    BB_ASSERT( packetCountSetFlag ); /* packet count was not set */
+    BB_ASSERT( txPacketCountSetFlag ); /* packet count was not set */
+    BB_ASSERT( directionSetFlag ); /* direction was not set */
 
     /* configure PCNF0 */
     NRF_RADIO->PCNF0 = (((uint32_t)(  1   /* S0 field in bytes      */ ))  << RADIO_PCNF0_S0LEN_Pos)                              |
@@ -1740,7 +1813,7 @@ static void palBbTxHwRadioConfig(uint8_t * pTxBuf)
                        (((uint32_t)((bbTxPhy == BB_PHY_BLE_CODED) ? 3 : 0 /* TERM field in bits*/ ))  << RADIO_PCNF0_TERMLEN_Pos) |
                        (((uint32_t)((bbTxPhy == BB_PHY_BLE_CODED) ? 2 : 0 /* CI field in bits  */ ))  << RADIO_PCNF0_CILEN_Pos)   |
                        (((uint32_t)(  0   /* CRCINC field           */ ))  << RADIO_PCNF0_CRCINC_Pos)                             |
-                       (((uint32_t)(  1   /* S1INCL filed           */ ))  << RADIO_PCNF0_S1INCL_Pos)                             |
+                       (((uint32_t)(  1   /* S1INCL field           */ ))  << RADIO_PCNF0_S1INCL_Pos)                             |
 #endif
                        ((uint32_t)( plen /* preamble field in bits */ ));
 
@@ -1752,21 +1825,31 @@ static void palBbTxHwRadioConfig(uint8_t * pTxBuf)
                        (((uint32_t)( bbRadioPcnf1WhiteEn               ))  << RADIO_PCNF1_WHITEEN_Pos );
 
     /* set packet pointer to the soon-to-be encrypted buffer */
-    NRF_RADIO->PACKETPTR = (uint32_t)&bbEncryptOutBuf[0];
+    NRF_RADIO->PACKETPTR = (uint32_t)&bbEncryptEncryptedBuf[0];
+
+    /* set encryption direction */
+    bbEncryptCcmData[24] = bbEncryptDirection;
+
+    /* set encrypt packet counter */
+    bbEncryptCcmData[16] = (bbEncryptPacketCounter >>  0) & 0xFF;
+    bbEncryptCcmData[17] = (bbEncryptPacketCounter >>  8) & 0xFF;
+    bbEncryptCcmData[18] = (bbEncryptPacketCounter >> 16) & 0xFF;
+    bbEncryptCcmData[19] = (bbEncryptPacketCounter >> 24) & 0xFF;
+    bbEncryptCcmData[20] = (bbEncryptPacketCounter >> 32) & 0x7F; /* only 7-bits of MSB are used (packet count is 39 bits) */
 
     /* get length from packet to transmit */
     bbTxLen = pTxBuf[1];
-    BB_ASSERT(bbTxLen <= ENC_MAX_PAYLOAD_LEN); /* payload exceeds Nordic's maximum possible for encryption */
+    BB_ASSERT(bbTxLen <= ENC_MAXPACKETSIZE); /* payload exceeds Nordic's maximum possible for encryption */
 
     /* construct header in Nordic format */
-    bbEncryptTxBuf[0] = pTxBuf[0];  /* field "H" */
-    bbEncryptTxBuf[1] = bbTxLen;    /* field "L" */
-    bbEncryptTxBuf[2] = 0;          /* field "RFU" */
+    bbEncryptPlainBuf[0] = pTxBuf[0];  /* field "H" */
+    bbEncryptPlainBuf[1] = bbTxLen;    /* field "L" */
+    bbEncryptPlainBuf[2] = 0;          /* field "RFU" */
 
     /* copy the payload into Nordic format transmit buffer */
-    memcpy(&bbEncryptTxBuf[3], &pTxBuf[2], bbTxLen);
-    BB_ASSERT(bbEncryptTxBuf[sizeof(bbEncryptTxBuf)-1] == 0xAA);  /* buffer overrun from memcpy */
-    BB_ASSERT(bbEncryptTxBuf[sizeof(bbEncryptTxBuf)-2] == 0xAA);  /* buffer overrun from memcpy */
+    memcpy(&bbEncryptPlainBuf[3], &pTxBuf[2], bbTxLen);
+    BB_ASSERT(bbEncryptPlainBuf[sizeof(bbEncryptPlainBuf)-1] == 0xAA);  /* buffer overrun from memcpy */
+    BB_ASSERT(bbEncryptPlainBuf[sizeof(bbEncryptPlainBuf)-2] == 0xAA);  /* buffer overrun from memcpy */
 
     NRF_CCM->ENABLE = (CCM_ENABLE_ENABLE_Disabled << CCM_ENABLE_ENABLE_Pos);
     NRF_CCM->ENABLE = (CCM_ENABLE_ENABLE_Enabled  << CCM_ENABLE_ENABLE_Pos);
@@ -1774,8 +1857,8 @@ static void palBbTxHwRadioConfig(uint8_t * pTxBuf)
     NRF_CCM->CNFPTR     = (uint32_t)bbEncryptCcmData;
     NRF_CCM->SCRATCHPTR = (uint32_t)bbEncryptScratchBuf;
 
-    NRF_CCM->INPTR  = (uint32_t)bbEncryptTxBuf;
-    NRF_CCM->OUTPTR = (uint32_t)bbEncryptOutBuf;
+    NRF_CCM->INPTR  = (uint32_t)bbEncryptPlainBuf;
+    NRF_CCM->OUTPTR = (uint32_t)bbEncryptEncryptedBuf;
 
     uint32_t ccmModeDatarate;
     switch (bbTxPhy)
@@ -1807,7 +1890,7 @@ static void palBbTxHwRadioConfig(uint8_t * pTxBuf)
     if (bbEncryptTxSuppressMic)
     {
       /* set the length field in output buffer to 0xFF, used to detect when it has been populated via DMA */
-      bbEncryptOutBuf[1] = 0xFF;
+      bbEncryptEncryptedBuf[1] = 0xFF;
 
       /* clear the ENDKSGEN event, aka "key-stream generation complete" event */
       WAIT_FOR_WR_BUF_EMPTY(NRF_CCM->EVENTS_ENDKSGEN);
@@ -1829,7 +1912,7 @@ static void palBbTxHwRadioConfig(uint8_t * pTxBuf)
 #endif
 
     /* set shortcut to start encryption immediately after key generation */
-    NRF_CCM->SHORTS = CCM_SHORTS_ENDKSGEN_CRYPT_Msk;  // TODO - probably just need to set once at initialization *****
+    NRF_CCM->SHORTS = CCM_SHORTS_ENDKSGEN_CRYPT_Msk;
 
     /* start encryption */
     NRF_CCM->TASKS_KSGEN = 1;
@@ -1869,10 +1952,10 @@ void CCM_AAR_IRQHandler(void)
      */
 
     /* wait for the length field to be populated by the Nordic hardware */
-    while (bbEncryptOutBuf[1] == 0xFF)
+    while (bbEncryptEncryptedBuf[1] == 0xFF)
     {
       ///////////////////////////////////////////////////////////////////////////////
-      #ifdef BB_ASSERT_ENABLED
+      #ifdef BB_ENABLE_ASSERT
       uint8_t busycount = 0;
       BB_ASSERT(busycount < 10); /* got stuck */
       busycount++;
@@ -1881,8 +1964,8 @@ void CCM_AAR_IRQHandler(void)
     }
 
     /* overwrite with the length field with the original length, that does not include the MIC */
-    BB_ASSERT(bbTxLen == (bbEncryptOutBuf[1] - 4));  /* the populated length should be exactly +4 */
-    bbEncryptOutBuf[1] = bbTxLen;
+    BB_ASSERT(bbTxLen == (bbEncryptEncryptedBuf[1] - 4));  /* the populated length should be exactly +4 */
+    bbEncryptEncryptedBuf[1] = bbTxLen;
   }
 
 #if (LL_ENABLE_TESTER)
@@ -1893,12 +1976,12 @@ void CCM_AAR_IRQHandler(void)
     /* disable this interrupt */
     NRF_CCM->INTENCLR = CCM_INTENCLR_ENDCRYPT_Msk;
 
-    bbEncryptOutBuf[0] ^= llTesterCb.pktLlId & 0x03;
+    bbEncryptEncryptedBuf[0] ^= llTesterCb.pktLlId & 0x03;
 
-    bbEncryptOutBuf[bbTxLen] ^= (llTesterCb.pktMic >>  0) & 0xFF;
-    bbEncryptOutBuf[bbTxLen+1] ^= (llTesterCb.pktMic >>  8) & 0xFF;
-    bbEncryptOutBuf[bbTxLen+2] ^= (llTesterCb.pktMic >> 16) & 0xFF;
-    bbEncryptOutBuf[bbTxLen+3] ^= (llTesterCb.pktMic >> 24) & 0xFF;
+    bbEncryptEncryptedBuf[bbTxLen] ^= (llTesterCb.pktMic >>  0) & 0xFF;
+    bbEncryptEncryptedBuf[bbTxLen+1] ^= (llTesterCb.pktMic >>  8) & 0xFF;
+    bbEncryptEncryptedBuf[bbTxLen+2] ^= (llTesterCb.pktMic >> 16) & 0xFF;
+    bbEncryptEncryptedBuf[bbTxLen+3] ^= (llTesterCb.pktMic >> 24) & 0xFF;
   }
 #endif
 }
@@ -2010,15 +2093,15 @@ void PalBbBleRxData(uint8_t *pBuf, uint16_t len)
     bbDueOffsetUsec = 1;                /* CC[0] can't trigger on 0 */
   }
 
-  NRF_TIMER0->CC[0] = bbDueOffsetUsec;
-  NRF_TIMER0->EVENTS_COMPARE[0] = 0;
-  WAIT_FOR_WR_BUF_EMPTY(NRF_TIMER0->EVENTS_COMPARE[0]);
+  PAL_BB_TIMER->CC[0] = bbDueOffsetUsec;
+  PAL_BB_TIMER->EVENTS_COMPARE[0] = 0;
+  WAIT_FOR_WR_BUF_EMPTY(PAL_BB_TIMER->EVENTS_COMPARE[0]);
   palBbStartTimer(rxStart - 1);        /* Subtract 1 for receive uncertainty due to rounding. */
 #else
   BB_ASSERT(bbDueOffsetUsec == 0);     /* Always 0 with HFCLK. */
-  NRF_TIMER0->CC[0] = rxStart;
-  NRF_TIMER0->EVENTS_COMPARE[0] = 0;
-  WAIT_FOR_WR_BUF_EMPTY(NRF_TIMER0->EVENTS_COMPARE[0]);
+  PAL_BB_TIMER->CC[0] = rxStart;
+  PAL_BB_TIMER->EVENTS_COMPARE[0] = 0;
+  WAIT_FOR_WR_BUF_EMPTY(PAL_BB_TIMER->EVENTS_COMPARE[0]);
 #endif
 
 #if (USE_RTC_BB_CLK)
@@ -2056,7 +2139,7 @@ void PalBbBleRxData(uint8_t *pBuf, uint16_t len)
       correction = 0;
     }
   /* set timer compare CC[1] for RX timeout (allow time to recognize address, and account for propagation delay) */
-  NRF_TIMER0->CC[1]  = NRF_TIMER0->CC[0]
+  PAL_BB_TIMER->CC[1]  = PAL_BB_TIMER->CC[0]
                        + TICKS_PER_USEC * (bbRxTimeoutUsec
                                            + preambleTime
                                            + accessAddrTime
@@ -2065,8 +2148,8 @@ void PalBbBleRxData(uint8_t *pBuf, uint16_t len)
                                            + correction);
 
   /* clear RX timeout compare event, but do not enable interrupt, that happens in radio isr */
-  NRF_TIMER0->EVENTS_COMPARE[1] = 0;
-  WAIT_FOR_WR_BUF_EMPTY(NRF_TIMER0->EVENTS_COMPARE[1]);
+  PAL_BB_TIMER->EVENTS_COMPARE[1] = 0;
+  WAIT_FOR_WR_BUF_EMPTY(PAL_BB_TIMER->EVENTS_COMPARE[1]);
 
   /* configure radio hardware registers for receive */
   palBbRxHwRadioConfig(pBuf, len);
@@ -2077,8 +2160,7 @@ void PalBbBleRxData(uint8_t *pBuf, uint16_t len)
                       RADIO_SHORTS_ADDRESS_RSSISTART_Msk  |
                       RADIO_SHORTS_DISABLED_RSSISTOP_Msk;
 
-  uint32_t currentBbTick;
-  (void)PalBbGetTimestamp(&currentBbTick);
+  uint32_t currentBbTick = PalBbGetCurrentTime();
 
   /* see if the due time is in the past (or a very long way, away) */
 #if (USE_RTC_BB_CLK)
@@ -2103,7 +2185,7 @@ void PalBbBleRxData(uint8_t *pBuf, uint16_t len)
   NRF_PPI->CHENSET = PPI_CHENSET_CH14_Msk;                  /* enable channel */
 
   /* see if the compare point was already reached */
-  if (NRF_TIMER0->EVENTS_COMPARE[0])
+  if (PAL_BB_TIMER->EVENTS_COMPARE[0])
   {
     /* it's 99.99999% certain did not make it, but... maybe, just maybe... */
     if (NRF_RADIO->STATE == RADIO_STATE_STATE_Disabled)
@@ -2303,8 +2385,15 @@ static void palBbRxHwRadioConfig(uint8_t * pRxBuf, uint16_t len)
 #else
     uint32_t plen = 0;
 #endif
-  /* configure PCNF0 */
-  NRF_RADIO->PCNF0 = (((uint32_t)(  1   /* S0 field in bytes      */ ))  << RADIO_PCNF0_S0LEN_Pos)                              |
+
+  /* set the mode */
+  palBbSetRadioMode(bbRxPhy, bbTxPhyOptions);
+
+  if (!bbDecryptRxFlag)
+  {
+    /* No decryption */
+    /* configure PCNF0 */
+    NRF_RADIO->PCNF0 = (((uint32_t)(  1   /* S0 field in bytes      */ ))  << RADIO_PCNF0_S0LEN_Pos)                              |
                      (((uint32_t)(  8   /* length field in bits   */ ))  << RADIO_PCNF0_LFLEN_Pos)                              |
                      (((uint32_t)(  0   /* S1 field in bits       */ ))  << RADIO_PCNF0_S1LEN_Pos)                              |
 #if defined(NRF52840_XXAA)
@@ -2315,18 +2404,109 @@ static void palBbRxHwRadioConfig(uint8_t * pRxBuf, uint16_t len)
 #endif
                      ((uint32_t)( plen /* preamble field in bits */ ));
 
-  /* configure PCNF1 */
-  NRF_RADIO->PCNF1  = (((uint32_t)( len - PDU_HEADER_LEN        /* max len    */ ))  << RADIO_PCNF1_MAXLEN_Pos  )  |
+    /* configure PCNF1 */
+    NRF_RADIO->PCNF1  = (((uint32_t)( len - PDU_HEADER_LEN        /* max len    */ ))  << RADIO_PCNF1_MAXLEN_Pos  )  |
                       (((uint32_t)( 0                           /* static len */ ))  << RADIO_PCNF1_STATLEN_Pos )  |
                       (((uint32_t)( NORDIC_BASE_ADDR_LEN                         ))  << RADIO_PCNF1_BALEN_Pos   )  |
                       (((uint32_t)( RADIO_PCNF1_ENDIAN_Little                    ))  << RADIO_PCNF1_ENDIAN_Pos  )  |
                       (((uint32_t)( bbRadioPcnf1WhiteEn                          ))  << RADIO_PCNF1_WHITEEN_Pos );
 
-  /* set up memory location where received packet gets stored */
-  NRF_RADIO->PACKETPTR = (uint32_t)pRxBuf;
+    /* set up memory location where received packet gets stored */
+    NRF_RADIO->PACKETPTR = (uint32_t)pRxBuf;
 
-  /* set the mode */
-  palBbSetRadioMode(bbRxPhy, bbTxPhyOptions);
+  }
+  else
+  {
+    /* Decryption */
+    BB_ASSERT( keySetFlag ); /* encryption key has not been set */
+    BB_ASSERT( ivSetFlag ); /* iv was not set */
+    BB_ASSERT( rxPacketCountSetFlag ); /* packet count was not set */
+    BB_ASSERT( directionSetFlag ); /* direction was not set */
+    BB_ASSERT( encryptTypeSetFlag ); /* decrypt type was not set */
+
+    /* configure PCNF0 */
+    NRF_RADIO->PCNF0 = (((uint32_t)(  1   /* S0 field in bytes      */ ))  << RADIO_PCNF0_S0LEN_Pos)                              |
+                       (((uint32_t)(  8   /* length field in bits   */ ))  << RADIO_PCNF0_LFLEN_Pos)                              |
+                       (((uint32_t)(  0   /* S1 field in bits       */ ))  << RADIO_PCNF0_S1LEN_Pos)                              |
+#if defined(NRF52840_XXAA)
+                       (((uint32_t)((bbRxPhy == BB_PHY_BLE_CODED) ? 3 : 0 /* TERM field in bits*/ ))  << RADIO_PCNF0_TERMLEN_Pos) |
+                       (((uint32_t)((bbRxPhy == BB_PHY_BLE_CODED) ? 2 : 0 /* CI field in bits  */ ))  << RADIO_PCNF0_CILEN_Pos)   |
+                       (((uint32_t)(  0   /* CRCINC field           */ ))  << RADIO_PCNF0_CRCINC_Pos)                             |
+                       (((uint32_t)(  1   /* S1INCL field           */ ))  << RADIO_PCNF0_S1INCL_Pos)                             |
+#endif
+                       ((uint32_t)( plen /* preamble field in bits */ ));
+
+    /* configure PCNF1 */
+    NRF_RADIO->PCNF1 = (((uint32_t)(  len - PDU_HEADER_LEN   /* maximum packet length  */ ))  << RADIO_PCNF1_MAXLEN_Pos  )  |
+                       (((uint32_t)(  0   /* static packet length   */ ))  << RADIO_PCNF1_STATLEN_Pos )  |
+                       (((uint32_t)( NORDIC_BASE_ADDR_LEN              ))  << RADIO_PCNF1_BALEN_Pos   )  |
+                       (((uint32_t)( RADIO_PCNF1_ENDIAN_Little         ))  << RADIO_PCNF1_ENDIAN_Pos  )  |
+                       (((uint32_t)( bbRadioPcnf1WhiteEn               ))  << RADIO_PCNF1_WHITEEN_Pos );
+
+    /* set packet pointer to the encrypted buffer */
+    NRF_RADIO->PACKETPTR = (uint32_t)&bbEncryptEncryptedBuf[0];
+
+    /* update decryption direction for ACL/CIS */
+    if ((bbEncryptType == PAL_BB_TYPE_ACL) || (bbEncryptType == PAL_BB_TYPE_CIS))
+    {
+      bbEncryptCcmData[24] = !bbEncryptDirection;
+    }
+    else
+    {
+      bbEncryptCcmData[24] = bbEncryptDirection;
+    }
+
+    /* set decrypt packet counter */
+    bbEncryptCcmData[16] = (bbDecryptPacketCounter >>  0) & 0xFF;
+    bbEncryptCcmData[17] = (bbDecryptPacketCounter >>  8) & 0xFF;
+    bbEncryptCcmData[18] = (bbDecryptPacketCounter >> 16) & 0xFF;
+    bbEncryptCcmData[19] = (bbDecryptPacketCounter >> 24) & 0xFF;
+    bbEncryptCcmData[20] = (bbDecryptPacketCounter >> 32) & 0x7F; /* only 7-bits of MSB are used (packet count is 39 bits) */
+
+    NRF_CCM->ENABLE = (CCM_ENABLE_ENABLE_Disabled << CCM_ENABLE_ENABLE_Pos);
+    NRF_CCM->ENABLE = (CCM_ENABLE_ENABLE_Enabled  << CCM_ENABLE_ENABLE_Pos);
+
+    NRF_CCM->CNFPTR     = (uint32_t)bbEncryptCcmData;
+    NRF_CCM->SCRATCHPTR = (uint32_t)bbEncryptScratchBuf;
+
+    NRF_CCM->INPTR  = (uint32_t)bbEncryptEncryptedBuf;
+    NRF_CCM->OUTPTR = (uint32_t)pRxBuf;
+
+    uint32_t ccmModeDatarate;
+    switch (bbRxPhy)
+    {
+      default:
+      case BB_PHY_BLE_1M:
+        ccmModeDatarate = CCM_MODE_DATARATE_1Mbit << CCM_MODE_DATARATE_Pos;
+        break;
+      case BB_PHY_BLE_2M:
+        ccmModeDatarate = CCM_MODE_DATARATE_2Mbit << CCM_MODE_DATARATE_Pos;
+        break;
+#if defined(NRF52840_XXAA)
+      case BB_PHY_BLE_CODED:
+        ccmModeDatarate = ((bbRxPhyOptions == BB_PHY_OPTIONS_BLE_S2) ? CCM_MODE_DATARATE_500Kbps : CCM_MODE_DATARATE_125Kbps)
+                          << CCM_MODE_DATARATE_Pos;
+        break;
+#endif
+    }
+
+    NRF_CCM->MODE = (CCM_MODE_MODE_Decryption << CCM_MODE_MODE_Pos) |
+                    (ccmModeDatarate) |
+                    (CCM_MODE_LENGTH_Extended << CCM_MODE_LENGTH_Pos);
+
+    NRF_CCM->EVENTS_ENDCRYPT = 0;
+    NRF_CCM->EVENTS_ENDKSGEN = 0;
+    NRF_CCM->EVENTS_ERROR    = 0;
+
+    /* disable shortcut between ENDKSGEN and CRYPT for on-the-fly decryption */
+    NRF_CCM->SHORTS = 0;
+
+    /* enable PPI between RADIO->EVENTS_ADDRESS and CCM->TASKS_CRYPT*/
+    NRF_PPI->CHENSET = PPI_CHENSET_CH25_Msk;
+
+    /* start key stream generation */
+    NRF_CCM->TASKS_KSGEN = 1;
+  }
 
   /* remember where the receive buffer is located, used later when processing the completed receive */
   bbpRxBuf = pRxBuf;
@@ -2345,28 +2525,46 @@ static void palBbRxHwRadioConfig(uint8_t * pRxBuf, uint16_t len)
 /*************************************************************************************************/
 void BbBleDrvTimerIRQHandler(void)
 {
-  BB_ASSERT(NRF_TIMER0->INTENSET == TIMER_INTENSET_COMPARE1_Msk); /* only RX timeout should be enabled */
-
   /* -----------------------------------------------------------------------------*
    *                         COMPARE1 - "RX Timeout"
    * -----------------------------------------------------------------------------*/
-  BB_ASSERT(NRF_TIMER0->EVENTS_COMPARE[1]);
-  BB_ASSERT(driverState == RX_STATE); /* an RX timeout should only occur for an RX */
-  BB_ASSERT(NRF_RADIO->STATE == RADIO_STATE_STATE_Rx); /* should only be timeout if receiver is actually on */
 
-  /* disable this interrupt */
-  NRF_TIMER0->INTENCLR = TIMER_INTENCLR_COMPARE1_Msk;
-
-  /*   Once the ADDRESS event has happened, the receive will not be timed out. This event happens
-   *   just after the incoming preamble/address has been recognized.
-   */
-  if (NRF_RADIO->EVENTS_ADDRESS == 0)
+  if (PAL_BB_TIMER->INTENSET & TIMER_INTENSET_COMPARE1_Msk)
   {
-    /* stop the radio */
-    palBbRadioHardStop();
+    BB_ASSERT(PAL_BB_TIMER->EVENTS_COMPARE[1]);
+    BB_ASSERT(driverState == RX_STATE); /* an RX timeout should only occur for an RX */
+    BB_ASSERT(NRF_RADIO->STATE == RADIO_STATE_STATE_Rx); /* should only be timeout if receiver is actually on */
 
-    /* send notification of timeout */
-    bbRxCallback(BB_STATUS_RX_TIMEOUT, 0, 0, 0, 0);
+    /* disable this interrupt */
+    PAL_BB_TIMER->INTENCLR = TIMER_INTENCLR_COMPARE1_Msk;
+
+    /*   Once the ADDRESS event has happened, the receive will not be timed out. This event happens
+     *   just after the incoming preamble/address has been recognized.
+     */
+    if (NRF_RADIO->EVENTS_ADDRESS == 0)
+    {
+      /* stop the radio */
+      palBbRadioHardStop();
+
+      /* send notification of timeout */
+      bbRxCallback(BB_STATUS_RX_TIMEOUT, 0, 0, 0, 0);
+    }
+  }
+
+  /* -----------------------------------------------------------------------------*
+   *                         COMPARE5 - "Scheduler"
+   * -----------------------------------------------------------------------------*/
+
+  if (PAL_BB_TIMER->INTENSET & PAL_BB_TIMER_EXPIRY_INTENSET_MASK)
+  {
+    PalTimerStop();
+
+    /* TODO move to private PAL header. */
+    extern void (*palTimerExpCback)(void);
+    if (palTimerExpCback)
+    {
+      palTimerExpCback();
+    }
   }
 }
 
@@ -2432,13 +2630,13 @@ void BbBleDrvRadioIRQHandler(void)
       WAIT_FOR_WR_BUF_EMPTY(NRF_RADIO->EVENTS_ADDRESS);
 
       /* enable the RX interrupt */
-      NRF_TIMER0->INTENSET = TIMER_INTENSET_COMPARE1_Msk;
+      PAL_BB_TIMER->INTENSET = TIMER_INTENSET_COMPARE1_Msk;
 
       /*  if the compare event is set, the RX timeout already occurred */
-      if (NRF_TIMER0->EVENTS_COMPARE[1])
+      if (PAL_BB_TIMER->EVENTS_COMPARE[1])
       {
         /* force a compare event, which will trigger the interrupt (it was disabled when the actual event happened) */
-        NRF_TIMER0->EVENTS_COMPARE[1] = 1;
+        PAL_BB_TIMER->EVENTS_COMPARE[1] = 1;
       }
     }
 
@@ -2456,8 +2654,8 @@ void BbBleDrvRadioIRQHandler(void)
     WAIT_FOR_WR_BUF_EMPTY(NRF_RADIO->EVENTS_PAYLOAD);
 
     /* disable the "RX Timeout" interrupt (timer COMPARE1 event) */
-    NRF_TIMER0->INTENCLR = TIMER_INTENCLR_COMPARE1_Msk;
-    NVIC_ClearPendingIRQ(TIMER0_IRQn); /* necessary, if interrupt already "fired" this is the only way to clear it */
+    PAL_BB_TIMER->INTENCLR = TIMER_INTENCLR_COMPARE1_Msk;
+    NVIC_ClearPendingIRQ(PAL_BB_IRQn); /* necessary, if interrupt already "fired" this is the only way to clear it */
 
     /*
      *  Setup for potential TIFS operation.
@@ -2541,13 +2739,13 @@ void BbBleDrvRadioIRQHandler(void)
        *   The transmit propagation delay from event to antenna is added to get the actual "antenna time" when the
        *   last transmitted bit finishes at the antenna.
        */
-      antennaTimeTxPktEnd =  NRF_TIMER0->CC[2]                                        /* start with timer value when payload just finished */
+      antennaTimeTxPktEnd =  PAL_BB_TIMER->CC[2]                                        /* start with timer value when payload just finished */
                               + TICKS_PER_USEC * crcTime                              /* add CRC time to arrive at end of packet */
                               + TICKS_PER_USEC * term2Time                            /* add TERM2 time to arrive at end of packet */
                               + TICKS_PER_USEC * NRF5x_PROP_DELAY_TX_USECS;           /* add propagation delay to get "antenna time" */
 
       /* set timer trigger for upcoming TIFS receive operation */
-      NRF_TIMER0->CC[0]   =  antennaTimeTxPktEnd                                      /* start with "antenna time" at end of packet just transmitted */
+      PAL_BB_TIMER->CC[0]   =  antennaTimeTxPktEnd                                      /* start with "antenna time" at end of packet just transmitted */
                               + TICKS_PER_USEC * LL_BLE_TIFS_US                       /* add the TIFS period */
                               - TICKS_PER_USEC * NRF5x_tRXEN_BLE_USECS                /* subtract time it takes to ramp-up for receive */
                               - TICKS_PER_USEC * MAX_TIFS_DEVIATION_USECS;            /* subtract allowed deviation */
@@ -2557,7 +2755,7 @@ void BbBleDrvRadioIRQHandler(void)
       NRF_PPI->CHENSET = PPI_CHENSET_CH14_Msk;                                        /* enable channel */
 
       /* calculate and set RX timeout */
-      NRF_TIMER0->CC[1] = antennaTimeTxPktEnd                                                             /* start with "antenna time" at end of packet just transmitted */
+      PAL_BB_TIMER->CC[1] = antennaTimeTxPktEnd                                                             /* start with "antenna time" at end of packet just transmitted */
                             + TICKS_PER_USEC * LL_BLE_TIFS_US                                             /* add the TIFS period */
                             + TICKS_PER_USEC * preambleTime                                               /* allow time preamble to be received */
                             + TICKS_PER_USEC * accessAddrTime                                             /* allow time access address to be received */
@@ -2575,8 +2773,8 @@ void BbBleDrvRadioIRQHandler(void)
        */
 
       /* clear RX timeout compare event, but do not enable interrupt, that happens in radio isr */
-      NRF_TIMER0->EVENTS_COMPARE[1] = 0;
-      WAIT_FOR_WR_BUF_EMPTY(NRF_TIMER0->EVENTS_COMPARE[1]);
+      PAL_BB_TIMER->EVENTS_COMPARE[1] = 0;
+      WAIT_FOR_WR_BUF_EMPTY(PAL_BB_TIMER->EVENTS_COMPARE[1]);
 
       /* a TX is completing, the radio will soon be ramping up for possible TIFS RX */
       tifsState = TIFS_RX_RAMPUP;
@@ -2651,13 +2849,13 @@ void BbBleDrvRadioIRQHandler(void)
       }
 
       /* calculate "antenna time" when the packet ended (see comments in above transmit code for more explanation) */
-      antennaTimeRxPktEnd =  NRF_TIMER0->CC[2]                                        /* start with timer value when payload just finished */
+      antennaTimeRxPktEnd =  PAL_BB_TIMER->CC[2]                                        /* start with timer value when payload just finished */
                               + TICKS_PER_USEC * crcTime                              /* add CRC time to arrive at end of packet */
                               + TICKS_PER_USEC * term2Time                            /* add TERM2 time to arrive at end of packet */
                               - TICKS_PER_USEC * NRF5x_PROP_DELAY_RX_USECS;           /* subtract propagation delay to get "antenna time" */
 
       /* set timer trigger for upcoming TIFS transmit operation */
-      NRF_TIMER0->CC[0] = antennaTimeRxPktEnd                                         /* start with antenna time */
+      PAL_BB_TIMER->CC[0] = antennaTimeRxPktEnd                                         /* start with antenna time */
                             + TICKS_PER_USEC * LL_BLE_TIFS_US                         /* add the TIFS period */
                             - TICKS_PER_USEC * NRF5x_tTXEN_BLE_USECS                  /* subtract ramp-up time */
                             - TICKS_PER_USEC * NRF5x_PROP_DELAY_TX_USECS              /* subtract internal propagation delay */
@@ -2709,14 +2907,14 @@ void BbBleDrvRadioIRQHandler(void)
           correction = 4;
       }
 
-      NRF_TIMER0->CC[0] = BB_US_TO_BB_TICKS(bbOpParam.ifsTime - (NRF5x_tRXEN_BLE_USECS + NRF5x_PROP_DELAY_RX_USECS));
+      PAL_BB_TIMER->CC[0] = BB_US_TO_BB_TICKS(bbOpParam.ifsTime - (NRF5x_tRXEN_BLE_USECS + NRF5x_PROP_DELAY_RX_USECS));
 
       /* configure and enable PPI trigger for RXEN, happens on next timer COMPARE[0] just configured above */
       NRF_PPI->CH[14].TEP = (uint32_t) &NRF_RADIO->TASKS_RXEN;                        /* configure task */
       NRF_PPI->CHENSET = PPI_CHENSET_CH14_Msk;                                        /* enable channel */
 
       /* set timer compare CC[1] for RX timeout (allow time to recognize address, and account for propagation delay) */
-      NRF_TIMER0->CC[1]  = NRF_TIMER0->CC[0]
+      PAL_BB_TIMER->CC[1]  = PAL_BB_TIMER->CC[0]
                            + TICKS_PER_USEC * (30       /* TODO Resolve total deviation allowed */
                                                + preambleTime
                                                + accessAddrTime
@@ -2736,8 +2934,8 @@ void BbBleDrvRadioIRQHandler(void)
        */
 
       /* clear RX timeout compare event, but do not enable interrupt, that happens in radio isr */
-      NRF_TIMER0->EVENTS_COMPARE[1] = 0;
-      WAIT_FOR_WR_BUF_EMPTY(NRF_TIMER0->EVENTS_COMPARE[1]);
+      PAL_BB_TIMER->EVENTS_COMPARE[1] = 0;
+      WAIT_FOR_WR_BUF_EMPTY(PAL_BB_TIMER->EVENTS_COMPARE[1]);
 
       /* update channel parameters */
       if (bbOpParam.pIfsChan)
@@ -2756,7 +2954,7 @@ void BbBleDrvRadioIRQHandler(void)
              (driverState == TX_STATE))
     {
       /* calculate start time */
-      NRF_TIMER0->CC[0] = BB_US_TO_BB_TICKS(bbOpParam.ifsTime - (NRF5x_tTXEN_BLE_USECS + NRF5x_PROP_DELAY_TX_USECS));
+      PAL_BB_TIMER->CC[0] = BB_US_TO_BB_TICKS(bbOpParam.ifsTime - (NRF5x_tTXEN_BLE_USECS + NRF5x_PROP_DELAY_TX_USECS));
 
       /* configure and enable PPI trigger for TXEN, happens on next timer COMPARE[0] */
       NRF_PPI->CH[14].TEP = (uint32_t) &NRF_RADIO->TASKS_TXEN;  /* configure task */
@@ -2785,10 +2983,10 @@ void BbBleDrvRadioIRQHandler(void)
      */
 
     /* capture current time */
-    NRF_TIMER0->TASKS_CAPTURE[3] = 1;
+    PAL_BB_TIMER->TASKS_CAPTURE[3] = 1;
 
     /* see if current time is already past the TX/RX trigger point */
-    if ((NRF_TIMER0->CC[0] - NRF_TIMER0->CC[3]) & 0x80000000)
+    if ((PAL_BB_TIMER->CC[0] - PAL_BB_TIMER->CC[3]) & 0x80000000)
     {
       /* disable the PPI channel... which was just enabled */
       NRF_PPI->CHENCLR = PPI_CHENCLR_CH14_Msk;  /* COMPARE[0] -> TXEN/RXEN */
@@ -2825,6 +3023,17 @@ void BbBleDrvRadioIRQHandler(void)
       driverState = IDLE_STATE;
       BB_LED_OFF();
 
+      /* Workaround for TX idle failure in Coded PHY */
+      /* TODO: add max attempts */
+      while (NRF_RADIO->STATE != RADIO_STATE_STATE_Disabled)
+      {
+        /* Workaround for TX idle failure in Coded PHY */
+        NRF_RADIO->TASKS_RXEN = 1;
+
+        /* disable the radio, start early at the top here */
+        NRF_RADIO->TASKS_DISABLE = 1;
+      }
+
       /* run callback function */
       palBbRestoreTrl();
       bbTxCallback(BB_STATUS_SUCCESS);
@@ -2838,32 +3047,40 @@ void BbBleDrvRadioIRQHandler(void)
       uint32_t timestamp;
       uint32_t timestampUsesc;
       int8_t   rssi;
-      uint8_t  pduLen;
 
 #if defined(NRF52840_XXAA)
-      uint8_t byteRate;
       int32_t correction;
 #endif
 
       /* get the PDU payload length from received packet, used later to compute start timestamp */
-      pduLen = bbpRxBuf[1];
+      uint8_t pduLen = bbpRxBuf[BB_DATA_PDU_LEN_OFFSET];
+
+      if (bbDecryptRxFlag)
+      {
+        /* disable PPI between RADIO->EVENTS_ADDRESS and CCM->TASKS_CRYPT */
+        NRF_PPI->CHENCLR = PPI_CHENSET_CH25_Msk;
+
+        if (pduLen)
+        {
+          /* shift Rx data to remove NRF CCM RFU byte */
+          memcpy(&bbpRxBuf[ENC_RFU_OFFSET], &bbpRxBuf[ENC_RFU_OFFSET+ENC_RFU_LEN], pduLen);
+        }
+      }
 
       /*
        *  Calculate the 'start' timestamp.  It is "antenna time" of the first packet bit.
        *
-       *  The timestamp is derived from the a previous timer capture (held in CC[2]) that occurred at PAYLOAD event.
-       *  It calculated by subtracting back from payload complete to the packet start.
+       *  The timestamp is derived from the a previous timer capture (held in CC[4]) that occurred at ADDRESS event.
+       *  It calculated by subtracting back from preamble and AA to the packet start.
        *
        *  The PDU payload length was retrieved from the incoming buffer of the last receive packet.
        */
-      timestamp = NRF_TIMER0->CC[2] - (TICKS_PER_USEC * NRF5x_PROP_DELAY_RX_USECS);
+      timestamp = PAL_BB_TIMER->CC[4] - (TICKS_PER_USEC * NRF5x_PROP_DELAY_RX_USECS);
       switch(bbRxPhy)
       {
         case BB_PHY_BLE_1M:
           timestamp -= (TICKS_PER_USEC * LL_BLE_US_PER_BYTE_1M * ( LL_PREAMBLE_LEN_1M +   /* preamble */
-                                                                   LL_AA_LEN          +   /* address */
-                                                                   PDU_HEADER_LEN     +   /* PDU header */
-                                                                   pduLen ));             /* PDU payload */
+                                                                   LL_AA_LEN));           /* address */
 
 #if defined(NRF52840_XXAA)
           timestamp -= (2 * TICKS_PER_USEC);   /* Adjustment based on the sniffer trace observation. */
@@ -2871,9 +3088,7 @@ void BbBleDrvRadioIRQHandler(void)
           break;
         case BB_PHY_BLE_2M:
           timestamp -= (TICKS_PER_USEC * LL_BLE_US_PER_BYTE_2M * ( LL_PREAMBLE_LEN_2M +   /* preamble */
-                                                                   LL_AA_LEN          +   /* address */
-                                                                   PDU_HEADER_LEN     +   /* PDU header */
-                                                                   pduLen ));             /* PDU payload */
+                                                                   LL_AA_LEN));           /* address */
 
 #if defined(NRF52840_XXAA)
           timestamp += (3 * TICKS_PER_USEC);   /* Adjustment based on the sniffer trace observation. */
@@ -2881,14 +3096,9 @@ void BbBleDrvRadioIRQHandler(void)
           break;
 #if defined(NRF52840_XXAA)
         case BB_PHY_BLE_CODED:
-          byteRate = (bbRxPhyOptions == BB_PHY_OPTIONS_BLE_S2) ? LL_BLE_US_PER_BYTE_CODED_S2 : LL_BLE_US_PER_BYTE_CODED_S8;
-          correction = (bbRxPhyOptions == BB_PHY_OPTIONS_BLE_S2) ? 20 : 160;
+          correction = (bbRxPhyOptions == BB_PHY_OPTIONS_BLE_S2) ? 5 : 40;
           timestamp -= (TICKS_PER_USEC * LL_BLE_US_PER_BIT_CODED_S8 * ( LL_PREAMBLE_LEN_CODED_BITS +   /* preamble */
-                                                                        LL_AA_LEN * 8              +   /* address */
-                                                                        LL_CI_LEN_BITS             +   /* CI */
-                                                                        LL_TERM1_LEN_BITS)         +   /* TERM1 */
-                                           TICKS_PER_USEC * byteRate * ( PDU_HEADER_LEN            +   /* PDU header */
-                                                                        pduLen ));                     /* PDU payload */
+                                                                        LL_AA_LEN * 8 ));              /* address */
           timestamp -= TICKS_PER_USEC * correction;                                                    /* Empirical value */
 
           /* Adjustment based on the sniffer trace observation. */
@@ -2897,11 +3107,8 @@ void BbBleDrvRadioIRQHandler(void)
 #endif
         default:
           timestamp -= (TICKS_PER_USEC * LL_BLE_US_PER_BYTE_1M * ( LL_PREAMBLE_LEN_1M +   /* preamble */
-                                                                     LL_AA_LEN        +   /* address */
-                                                                     PDU_HEADER_LEN   +   /* PDU header */
-                                                                     pduLen ));           /* PDU payload */
+                                                                     LL_AA_LEN));         /* address */
       }
-
 
 #if (USE_RTC_BB_CLK)
       /* RTC event start time plus timestamp from HFCLK timer.  */
@@ -2916,7 +3123,7 @@ void BbBleDrvRadioIRQHandler(void)
 #endif
 
       /* compute RSSI value at antenna end */
-      rssi = (int8_t)(-(NRF_RADIO->RSSISAMPLE & 0x7F)) - PalRadioGetRxRfPathComp();
+      rssi = (int8_t)(-(NRF_RADIO->RSSISAMPLE & 0x7F)) - palRadioGetTxRfPathComp();
       /* update driver state, *before* callback */
       driverState = IDLE_STATE;
       BB_LED_OFF();
@@ -2935,6 +3142,12 @@ void BbBleDrvRadioIRQHandler(void)
       {
         /* CRC error - run the callback function */
         bbRxCallback(BB_STATUS_CRC_FAILED, rssi, NRF_RADIO->RXCRC, timestampUsesc, bbRxPhyOptions);
+      }
+      else if ((bbDecryptRxFlag) && (pduLen) &&
+              ((NRF_CCM->MICSTATUS & CCM_MICSTATUS_MICSTATUS_Msk) == CCM_MICSTATUS_MICSTATUS_CheckFailed))
+      {
+        /* MIC error - run the callback function */
+        bbRxCallback(BB_STATUS_MIC_FAILED, rssi, NRF_RADIO->RXCRC, timestampUsesc, bbRxPhyOptions);
       }
       else
       {
@@ -2997,8 +3210,8 @@ void PalBbBleCancelData(void)
   BB_ASSERT(driverState != SLEEP_STATE); /* driver cannot be asleep */
 
   /* cancel RX timeout if active */
-  NRF_TIMER0->INTENCLR = TIMER_INTENCLR_COMPARE1_Msk;  /* disable interrupt */
-  NVIC_ClearPendingIRQ(TIMER0_IRQn); /* just in case we are running in interrupt context above TIMER0 */
+  PAL_BB_TIMER->INTENCLR = TIMER_INTENCLR_COMPARE1_Msk;  /* disable interrupt */
+  NVIC_ClearPendingIRQ(PAL_BB_IRQn); /* just in case we are running in interrupt context above TIMER0 */
 
   /* stop radio */
   palBbRadioHardStop();
@@ -3076,7 +3289,7 @@ static void palBbRadioHardStop(void)
 
   /* wait for radio to complete shutdown */
   ///////////////////////////////////////////////////////////////////////////////
-  #if BB_ASSERT_ENABLED == TRUE
+  #if BB_ENABLE_ASSERT == TRUE
   uint8_t busycount = 0;
   BB_ASSERT(busycount < 10); /* radio got stuck */
   busycount++;
@@ -3087,6 +3300,12 @@ static void palBbRadioHardStop(void)
   /* Restore normal operation for non-Coded PHY. */
   *(volatile uint32_t *)0x4000173C &= ~0x80000000;
 #endif
+
+  if (bbDecryptRxFlag)
+  {
+    /* disable PPI between RADIO->EVENTS_ADDRESS and CCM->TASKS_CRYPT */
+    NRF_PPI->CHENCLR = PPI_CHENSET_CH25_Msk;
+  }
 
   /* clear all events */
   NRF_RADIO->EVENTS_READY    = 0;

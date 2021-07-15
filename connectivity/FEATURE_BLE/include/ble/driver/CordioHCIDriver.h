@@ -24,6 +24,7 @@
 #include "ble/common/BLETypes.h"
 #include "ble/driver/CordioHCITransportDriver.h"
 #include "ble/common/blecommon.h"
+#include "hal/ticker_api.h"
 
 // FIXME: make this invisible!
 #include "wsf_buf.h"
@@ -145,7 +146,14 @@ public:
      *
      * Any call to write signals to the driver that the host stack is active.
      */
-     virtual void on_host_stack_inactivity();
+    virtual void on_host_stack_inactivity();
+
+    /** 
+     * React to host stack preparing to enter deep sleep.
+     * 
+     * \param[in] wakeTimeMs The amount of time in which to wake.
+     */
+    virtual void on_deep_sleep(timestamp_t wakeTimeMs) {}
 
      /* BLE Tester commands */
 

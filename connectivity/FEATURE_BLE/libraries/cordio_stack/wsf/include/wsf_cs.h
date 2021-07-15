@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2009-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,34 +42,34 @@ extern "C" {
 
 /*************************************************************************************************/
 /*!
- *  \def    WSF_CS_INIT
- *
- *  \brief  Initialize critical section.  This macro may define a variable.
- *
- *  \param  cs    Critical section variable to be defined.
- */
+  *  \def    WSF_CS_INIT
+  *
+  *  \brief  Initialize critical section.  This macro may define a variable.
+  *
+  *  \param  cs    Critical section variable to be defined.
+  */
 /*************************************************************************************************/
 #define WSF_CS_INIT(cs)
 
 /*************************************************************************************************/
 /*!
- *  \def    WSF_CS_ENTER
- *
- *  \brief  Enter a critical section.
- *
- *  \param  cs    Critical section variable.
- */
+  *  \def    WSF_CS_ENTER
+  *
+  *  \brief  Enter a critical section.
+  *
+  *  \param  cs    Critical section variable.
+  */
 /*************************************************************************************************/
-#define WSF_CS_ENTER(cs)        WsfCsEnter()
+#define WSF_CS_ENTER(cs)       WsfCsEnter()
 
 /*************************************************************************************************/
 /*!
- *  \def    WSF_CS_EXIT
- *
- *  \brief  Exit a critical section.
- *
- *  \param  cs    Critical section variable.
- */
+  *  \def    WSF_CS_EXIT
+  *
+  *  \brief  Exit a critical section.
+  *
+  *  \param  cs    Critical section variable.
+  */
 /*************************************************************************************************/
 #define WSF_CS_EXIT(cs)        WsfCsExit()
 
@@ -95,7 +95,7 @@ void WsfCsEnter(void);
 
 /*************************************************************************************************/
 /*!
- *  \brief  Enter a critical section.
+ *  \brief  Exit a critical section.
  */
 /*************************************************************************************************/
 void WsfCsExit(void);

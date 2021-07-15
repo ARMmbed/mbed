@@ -19,7 +19,7 @@
 #define NRF_CORDIO_HCI_DRIVER_H_
 
 #include "ble/driver/CordioHCIDriver.h"
-
+#include "hal/ticker_api.h"
 namespace ble {
 
 /**
@@ -62,6 +62,10 @@ public:
      */
     virtual bool get_random_static_address(ble::address_t& address);
 
+    /**
+     * @copydoc copydoc CordioHciDriver::on_deep_sleep
+     */
+    virtual void on_deep_sleep(timestamp_t wakeTimeMs);
 private:
     /**
      * Initialize the chip.

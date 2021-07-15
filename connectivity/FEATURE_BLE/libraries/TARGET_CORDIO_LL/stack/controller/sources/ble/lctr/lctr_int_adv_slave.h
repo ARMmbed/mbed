@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2017 ARM Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -50,7 +50,6 @@ enum
 };
 
 /*! \brief      Common extended advertising PDU types. */
-
 enum
 {
   LCTR_PDU_ADV_EXT_IND,

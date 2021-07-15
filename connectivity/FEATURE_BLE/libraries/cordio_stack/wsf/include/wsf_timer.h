@@ -115,7 +115,7 @@ void WsfTimerUpdate(wsfTimerTicks_t ticks);
 /*************************************************************************************************/
 /*!
  *  \brief  Return the number of ticks until the next timer expiration.  Note that this
- *          function can return zero even if a timer is running, indicating the timer
+ *          function can return zero even if a timer is running, indicating a timer
  *          has expired but has not yet been serviced.
  *
  *  \param  pTimerRunning   Returns TRUE if a timer is running, FALSE if no timers running.
@@ -136,21 +136,6 @@ wsfTimerTicks_t WsfTimerNextExpiration(bool_t *pTimerRunning);
  */
 /*************************************************************************************************/
 wsfTimer_t *WsfTimerServiceExpired(wsfTaskId_t taskId);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Check if there is an active timer and if there is enough time to
- *              go to sleep.
- */
-/*************************************************************************************************/
-void WsfTimerSleep(void);
-
-/*************************************************************************************************/
-/*!
- *  \brief      Update WSF timer based on elapsed RTC ticks.
- */
-/*************************************************************************************************/
-void WsfTimerSleepUpdate(void);
 
 /*! \} */    /* WSF_TIMER_API */
 

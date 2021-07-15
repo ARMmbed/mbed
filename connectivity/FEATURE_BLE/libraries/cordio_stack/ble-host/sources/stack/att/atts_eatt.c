@@ -69,36 +69,114 @@ extern const uint8_t attsMinPduLen[];
 
 /*************************************************************************************************/
 /*!
+ *  \brief  Check if application callback is pending for indication or a given notification, or
+ *          the maximum number of simultaneous notifications has been reached.
+ *
+ *  \param  pCcb      ATTS ind control block.
+ *  \param  opcode    Operation opcode.
+ *  \param  handle    Attribute handle.
+ *
+ *  \return TRUE if app callback's pending or max number of simultaneous notifications reached.
+ *          FALSE, otherwise.
+ */
+/*************************************************************************************************/
+static bool_t eattsPendIndNtfHandle(attsCcb_t *pCcb, uint8_t opcode, uint16_t handle)
+{
+  uint8_t pendNtfs;
+  uint8_t i;
+
+  /* if indication */
+  if (opcode == ATT_PDU_VALUE_IND)
+  {
+    /* see if callback pending for indication */
+    return (pCcb->pendIndHandle == ATT_HANDLE_NONE) ? FALSE : TRUE;
+  }
+
+  /* initialize number of notification callbacks pending */
+  pendNtfs = 0;
+
+  for (i = 0; i < ATT_NUM_SIMUL_NTF; i++)
+  {
+    /* if callback pending for notification */
+    if (pCcb->pendNtfHandle[i] != ATT_HANDLE_NONE)
+    {
+      if (opcode == ATT_PDU_MULT_VALUE_NTF)
+      {
+        /* Multiple value notification not used with pending notifications. */
+        return TRUE;
+      }
+
+      /* if callback pending for this handle */
+      if (pCcb->pendNtfHandle[i] == handle)
+      {
+        /* callback pending for this notification */
+        return TRUE;
+      }
+
+      pendNtfs++;
+    }
+  }
+
+  /* no callback is pending for this notification but see if the maximum number of simultaneous
+     notifications has been reached */
+  return (pendNtfs < ATT_NUM_SIMUL_NTF) ? FALSE : TRUE;
+}
+
+/*************************************************************************************************/
+/*!
  *  \brief  Get a channel for transmission of an EATT server message.
  *
- *  \param  connId      DM connection ID.
- *  \param  priority    Operation priority.
- *  \param  dataLen     Length of value data.
+ *  \param  connId    DM connection ID.
+ *  \param  priority  Operation priority.
+ *  \param  dataLen   Length of value data.
+ *  \param  opcode    Operation opcode.
+ *  \param  handle    Attribute handle.
  *
  *  \return Slot ID
  */
 /*************************************************************************************************/
-static uint8_t eattsGetFreeSlot(dmConnId_t connId, uint8_t priority, uint16_t dataLen)
+static uint8_t eattsGetFreeSlot(dmConnId_t connId, uint8_t priority, uint16_t dataLen,
+                                uint8_t opcode, uint16_t handle)
 {
-  eattConnCb_t *pCcb = eattGetConnCb(connId);
-  attCcb_t     *pAttCcb = attCcbByConnId(connId);
+  eattConnCb_t *pEattCcb = eattGetConnCb(connId);
 
-  if (pCcb && pAttCcb)
+  if (pEattCcb)
   {
-    uint8_t i;
-
-    for (i = 0; i < EATT_CONN_CHAN_MAX; i++)
+    if (pEattCfg->pPriorityTbl)
     {
-      eattChanCb_t *pChanCb = &pCcb->pChanCb[i];
+      uint8_t i;
 
-      if (pChanCb->inUse && (pChanCb->priority >= priority) && (pChanCb->localMtu >= dataLen))
+      for (i = 0; i < EATT_CONN_CHAN_MAX; i++)
       {
-        if (!(pAttCcb->sccb[i].control & ATT_CCB_STATUS_RSP_PENDING))
+        uint8_t      slot = i + 1;
+        eattChanCb_t *pChanCb = &pEattCcb->pChanCb[i];
+
+        if (pChanCb->inUse && (pChanCb->priority >= priority) && (pChanCb->localMtu >= dataLen))
         {
-          EATT_TRACE_INFO1("eattsGetFreeSlot: allocating slot: %#x", i + 1);
-          return i + 1;
+          attsCcb_t *pAttsCcb = attsCcbByConnId(connId, slot);
+          attCcb_t  *pAttCcb = attCcbByConnId(connId);
+
+          if (pAttCcb && !(pAttCcb->sccb[slot].control & ATT_CCB_STATUS_RSP_PENDING) &&
+                         !(pAttCcb->sccb[slot].control & ATT_CCB_STATUS_CONTEXT_LOCK))
+          {
+            if (pAttsCcb && !(eattsPendIndNtfHandle(pAttsCcb, opcode, handle)))
+            {
+              EATT_TRACE_INFO1("eattsGetFreeSlot: allocating slot: 0x%x", slot);
+            
+              /* Reserve the slot until the API function is processed in the ATT */
+              pAttCcb->sccb[slot].control |= ATT_CCB_STATUS_CONTEXT_LOCK;
+
+              return slot;
+            }
+          }
         }
       }
+    }
+    else
+    {
+      /* If pEattCfg->pPriorityTbl is NULL, the priority parameter is the L2CAP channel index for this connection. */
+      WSF_ASSERT(priority < EATT_CONN_CHAN_MAX);
+      return priority + 1;
     }
   }
 
@@ -179,10 +257,12 @@ static void eattsL2cCocDataInd(l2cCocEvt_t *pEvt)
 #if defined(ATTS_ERROR_TEST) && (ATTS_ERROR_TEST == TRUE)
     if (attCb.errTest != ATT_SUCCESS)
     {
-      attsErrRsp(pAttCcb, ATT_BEARER_SLOT_ID, opcode, attHandle, attCb.errTest);
+      attErrRsp(pAttCcb, ATT_BEARER_SLOT_ID, opcode, attHandle, attCb.errTest);
       return;
     }
 #endif
+
+    EATT_TRACE_INFO2("eattsL2cCocDataInd: slot: 0x%x, method: %d", slot, method);
 
     /* if no error process request */
     if (!err)
@@ -217,7 +297,7 @@ static void eattsL2cCocDataInd(l2cCocEvt_t *pEvt)
     if (err && (opcode != ATT_PDU_MTU_REQ) && (opcode != ATT_PDU_VALUE_CNF) &&
         ((opcode & ATT_PDU_MASK_COMMAND) == 0))
     {
-      attsErrRsp(pAttCcb, slot, opcode, attHandle, err);
+      attErrRsp(pAttCcb, slot, opcode, attHandle, err);
     }
   }
 }
@@ -311,7 +391,7 @@ void EattsMultiValueNtf(dmConnId_t connId, uint8_t priority, uint16_t numTuples,
 
   WsfTaskLock();
 
-  slot = eattsGetFreeSlot(connId, priority, valueLen + ATT_MULT_VALUE_NTF_BUF_LEN);
+  slot = eattsGetFreeSlot(connId, priority, valueLen + ATT_MULT_VALUE_NTF_BUF_LEN, ATT_PDU_MULT_VALUE_NTF, 0);
 
   WsfTaskUnlock();
 
@@ -364,6 +444,14 @@ void EattsMultiValueNtf(dmConnId_t connId, uint8_t priority, uint16_t numTuples,
 
     if (!msgSent)
     {
+      attCcb_t *pAttCcb = attCcbByConnId(connId);
+
+      /* Release the slot */
+      if (pAttCcb)
+      {
+        pAttCcb->sccb[slot].control &= ~ATT_CCB_STATUS_CONTEXT_LOCK;
+      }
+
       /* Failed to send the packet, release the slot. */
       attExecCallback(connId, ATTS_MULT_VALUE_CNF, 0, ATT_ERR_MEMORY, 0);
     }
@@ -391,7 +479,7 @@ void EattsMultiValueNtf(dmConnId_t connId, uint8_t priority, uint16_t numTuples,
 void EattsHandleValueInd(dmConnId_t connId, uint8_t priority, uint16_t handle, uint16_t valueLen,
                          uint8_t *pValue)
 {
-  uint8_t slot = eattsGetFreeSlot(connId, priority, valueLen);
+  uint8_t slot = eattsGetFreeSlot(connId, priority, valueLen, ATT_PDU_VALUE_IND, handle);
   attsHandleValueIndNtf(connId, handle, slot, valueLen, pValue, ATT_PDU_VALUE_IND, FALSE);
 }
 
@@ -411,7 +499,7 @@ void EattsHandleValueInd(dmConnId_t connId, uint8_t priority, uint16_t handle, u
 void EattsHandleValueNtf(dmConnId_t connId, uint8_t priority, uint16_t handle, uint16_t valueLen,
                          uint8_t *pValue)
 {
-  uint8_t slot = eattsGetFreeSlot(connId, priority, valueLen);
+  uint8_t slot = eattsGetFreeSlot(connId, priority, valueLen, ATT_PDU_VALUE_NTF, handle);
   attsHandleValueIndNtf(connId, handle, slot, valueLen, pValue, ATT_PDU_VALUE_NTF, FALSE);
 }
 
@@ -434,7 +522,7 @@ void EattsHandleValueNtf(dmConnId_t connId, uint8_t priority, uint16_t handle, u
 void EattsHandleValueIndZeroCpy(dmConnId_t connId, uint8_t priority, uint16_t handle,
                                 uint16_t valueLen, uint8_t *pValue)
 {
-  uint8_t slot = eattsGetFreeSlot(connId, priority, valueLen);
+  uint8_t slot = eattsGetFreeSlot(connId, priority, valueLen, ATT_PDU_VALUE_IND, handle);
   attsHandleValueIndNtf(connId, handle, slot, valueLen, pValue, ATT_PDU_VALUE_IND, TRUE);
 }
 
@@ -457,7 +545,7 @@ void EattsHandleValueIndZeroCpy(dmConnId_t connId, uint8_t priority, uint16_t ha
 void EattsHandleValueNtfZeroCpy(dmConnId_t connId, uint8_t priority, uint16_t handle,
                                 uint16_t valueLen, uint8_t *pValue)
 {
-  uint8_t slot = eattsGetFreeSlot(connId, priority, valueLen);
+  uint8_t slot = eattsGetFreeSlot(connId, priority, valueLen, ATT_PDU_VALUE_NTF, handle);
   attsHandleValueIndNtf(connId, handle, slot, valueLen, pValue, ATT_PDU_VALUE_NTF, TRUE);
 }
 
@@ -496,7 +584,7 @@ void EattsContinueWriteReq(dmConnId_t connId, uint8_t slot, uint16_t handle, uin
 
     if (status)
     {
-      attsErrRsp(pCcb, slot, ATT_PDU_WRITE_REQ, handle, status);
+      attErrRsp(pCcb, slot, ATT_PDU_WRITE_REQ, handle, status);
     }
     else
     {

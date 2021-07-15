@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,13 +23,24 @@
 /*************************************************************************************************/
 
 #include "pal_cfg.h"
+#include "pal_io_exp.h"
+#include "pal_sys.h"
+
 #include "nrf.h"
+
+/**************************************************************************************************
+  Macros
+**************************************************************************************************/
+
+/*! \brief convert uint32_t to little endian byte stream, incrementing four bytes. */
+#define PAL_UINT32_TO_BSTREAM(p, n)   {*(p)++ = (uint8_t)(n); *(p)++ = (uint8_t)((n) >> 8); \
+                                       *(p)++ = (uint8_t)((n) >> 16); *(p)++ = (uint8_t)((n) >> 24);}
 
 /**************************************************************************************************
   Type Definitions
 **************************************************************************************************/
 
-/*! \brief  LL configuration. */
+/*! \brief  LL configuration (format must match LlRtCfg_t). */
 typedef struct
 {
   /* Advertiser */
@@ -54,26 +65,28 @@ typedef struct
   uint8_t  numIsoRxBuf;             /*!< Default number of ISO receive buffers. */
   uint16_t maxIsoSduLen;            /*!< Maximum ISO buffer size between host and controller. */
   uint16_t maxIsoPduLen;            /*!< Maximum ISO PDU size between controllers. */
-
   /* CIS */
   uint8_t  maxCig;                  /*!< Maximum number of CIG. */
   uint8_t  maxCis;                  /*!< Maximum number of CIS, it is shared by the CIGs. */
   uint16_t cisSubEvtSpaceDelay;     /*!< Subevent spacing above T_MSS. */
-
   /* BIS*/
   uint8_t  maxBig;                  /*!< Maximum number of BIG. */
   uint8_t  maxBis;                  /*!< Maximum number of BIS. */
   /* DTM */
   uint16_t dtmRxSyncMs;             /*!< DTM Rx synchronization window in milliseconds. */
+  /* Power control */
+  int8_t   pcHighThreshold;         /*!< High RSSI threshold for power monitoring. */
+  int8_t   pcLowThreshold;          /*!< Low RSSI threshold for power monitoring. */
 } PalCfgLl_t;
 
 /**************************************************************************************************
-  Macros
+  Local Variables
 **************************************************************************************************/
 
-/*! \brief convert uint32_t to little endian byte stream, incrementing four bytes. */
-#define PAL_UINT32_TO_BSTREAM(p, n)   {*(p)++ = (uint8_t)(n); *(p)++ = (uint8_t)((n) >> 8); \
-                                       *(p)++ = (uint8_t)((n) >> 16); *(p)++ = (uint8_t)((n) >> 24);}
+#if (AUDIO_CAPE)
+/*! \brief  Bootstrap configuration. */
+static uint32_t palCfgBootStrapCfg;
+#endif
 
 /**************************************************************************************************
   Functions
@@ -110,7 +123,7 @@ void palCfgGetBlePhyFeatures(uint8_t *pPhy2mSup, uint8_t *pPhyCodedSup,
  *  \param      pConfig                Return configuration values.
  */
 /*************************************************************************************************/
-void palCfgLoadLlParams(uint8_t *pConfig)
+static void palCfgLoadLlParams(uint8_t *pConfig)
 {
   PalCfgLl_t *pCfg = (PalCfgLl_t *)pConfig;
 
@@ -120,25 +133,22 @@ void palCfgLoadLlParams(uint8_t *pConfig)
   const uint16_t aclDataLen   = 256;
   const uint16_t maxConn      = 1;
   const uint16_t maxGroup     = 1;
-  const uint16_t maxStream    = 2;
 #elif !defined(NRF52840_XXAA)
   const uint16_t maxAdvSets   = 1;
   const uint16_t advDataLen   = 512;
   const uint16_t aclDataLen   = 512;
   const uint16_t maxConn      = 1;
   const uint16_t maxGroup     = 1;
-  const uint16_t maxStream    = 2;
 #else  /* Default */
-  const uint16_t maxAdvSets   = 6;
-  const uint16_t advDataLen   = 1650;
+  const uint16_t maxAdvSets   = 4;
+  const uint16_t advDataLen   = 512;
   const uint16_t aclDataLen   = 512;
-  const uint16_t maxConn      = 4;
+  const uint16_t maxConn      = 2;
   const uint16_t maxGroup     = 2;
-  const uint16_t maxStream    = 6;
 #endif
 
   pCfg->maxAdvSets            = maxAdvSets;
-  pCfg->maxAdvReports         = 8;
+  pCfg->maxAdvReports         = 4;
   pCfg->maxExtAdvDataLen      = advDataLen;
   /* pCfg->defExtAdvDataFragLen */  /* Use default. */
   pCfg->auxDelayUsec          = 0;
@@ -146,17 +156,19 @@ void palCfgLoadLlParams(uint8_t *pConfig)
   pCfg->maxExtScanDataLen     = advDataLen;
   pCfg->maxConn               = maxConn;
   pCfg->maxAclLen             = aclDataLen;
-  pCfg->numTxBufs             = 16;
-  pCfg->numRxBufs             = 8;
-  pCfg->numIsoTxBuf           = 16;
-  pCfg->numIsoRxBuf           = 8;
+  pCfg->numTxBufs             = 4;
+  pCfg->numRxBufs             = 4;
+  pCfg->numIsoTxBuf           = 6;
+  pCfg->numIsoRxBuf           = 4;
   pCfg->maxIsoSduLen          = aclDataLen;
   pCfg->maxIsoPduLen          = 251;
   pCfg->maxCig                = maxGroup;
-  pCfg->maxCis                = maxStream;
+  pCfg->maxCis                = 2;
   pCfg->cisSubEvtSpaceDelay   = 0;
   pCfg->maxBig                = maxGroup;
-  pCfg->maxBis                = maxStream;
+  pCfg->maxBis                = 4;
+  /* pCfg->pcHighThreshold */     /* Use default. */
+  /* pCfg->pcLowThreshold */      /* Use default. */
 }
 
 /*************************************************************************************************/
@@ -166,7 +178,7 @@ void palCfgLoadLlParams(uint8_t *pConfig)
  *  \param      pDevAddr            device address.
  */
 /*************************************************************************************************/
-void palCfgLoadBdAddress(uint8_t *pDevAddr)
+static void palCfgLoadBdAddress(uint8_t *pDevAddr)
 {
   unsigned int devAddrLen = 6;
 
@@ -191,7 +203,7 @@ void palCfgLoadBdAddress(uint8_t *pDevAddr)
  *  \param      pDevAddr            device address.
  */
 /*************************************************************************************************/
-void palCfgLoadExtMac154Address(uint8_t *pDevAddr)
+static void palCfgLoadExtMac154Address(uint8_t *pDevAddr)
 {
   unsigned int devAddrLen = 8;
 
@@ -227,7 +239,7 @@ void PalCfgSetDeviceUuid(uint8_t *pBuf)
  *  \param      pDevUuid                Return device UUID.
  */
 /*************************************************************************************************/
-void palCfgLoadDeviceUuid(uint8_t *pDevUuid)
+static void palCfgLoadDeviceUuid(uint8_t *pDevUuid)
 {
   uint8_t *pPtr = pDevUuid;
 
@@ -244,6 +256,46 @@ void palCfgLoadDeviceUuid(uint8_t *pDevUuid)
   /* Set the algorithm bits as defined in RFC4122 */
   pDevUuid[8] = ((pDevUuid[8] & 0x3F) | 0x80);
 }
+
+#if (AUDIO_CAPE)
+/*************************************************************************************************/
+/*!
+ *  \brief  I/O expander read callback.
+ */
+/*************************************************************************************************/
+static void palCfgDipSwitchReadCback(uint32_t value)
+{
+  palCfgBootStrapCfg = value;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Load bootstrap settings.
+ */
+/*************************************************************************************************/
+void palCfgLoadBootStrap(uint32_t *pCfg)
+{
+  const uint8_t DIP_SW_IO_EXP_ADDR = 6;
+  const uint32_t DIP_SW_INPUT_MASK = 0x000000FF;
+
+  PalIoExpConfig_t palIoExpCfg =
+  {
+    .addr      = DIP_SW_IO_EXP_ADDR,
+    .inputMask = DIP_SW_INPUT_MASK,
+    .rdCback   = palCfgDipSwitchReadCback
+  };
+
+  uint8_t palIoExpId = PalIoExpInit(&palIoExpCfg);
+  PAL_SYS_ASSERT(palIoExpId != PAL_IO_EXP_INVALID_ID);
+
+  PalIoExpRead(palIoExpId);
+  while (PalIoExpGetState(palIoExpId) == PAL_IO_EXP_STATE_BUSY);
+
+  PalIoExpDeInit();
+
+  *pCfg = palCfgBootStrapCfg;
+}
+#endif
 
 /*************************************************************************************************/
 /*!
@@ -279,6 +331,12 @@ void PalCfgLoadData(uint8_t cfgId, void *pBuf, uint32_t len)
     case PAL_CFG_ID_UUID:
       palCfgLoadDeviceUuid(pBuf);
       break;
+
+#if (AUDIO_CAPE)
+    case PAL_CFG_ID_BOOTSTRAP:
+      palCfgLoadBootStrap((uint32_t *)pBuf);
+      break;
+#endif
 
     default:
       break;

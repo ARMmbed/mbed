@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -76,7 +76,8 @@ uint8_t LlSetExtScanParam(uint8_t ownAddrType, uint8_t scanFiltPolicy, uint8_t s
 {
   const uint8_t scanFiltPolicyMax = ((lmgrCb.features & LL_FEAT_EXT_SCAN_FILT_POLICY) != 0) ? LL_SCAN_FILTER_WL_OR_RES_INIT : LL_SCAN_FILTER_WL_BIT;
   const uint8_t ownAddrTypeMax = ((lmgrCb.features & LL_FEAT_PRIVACY) != 0) ? LL_ADDR_RANDOM_IDENTITY : LL_ADDR_RANDOM;
-  const uint8_t validScanPhys = LL_PHYS_LE_1M_BIT | LL_PHYS_LE_CODED_BIT;
+  uint8_t supportedPhys = LL_PHYS_LE_1M_BIT;
+  supportedPhys |= (lmgrCb.features & LL_FEAT_LE_CODED_PHY) ? LL_PHYS_LE_CODED_BIT : 0;
 
   LL_TRACE_INFO1("### LlApi ###  LlSetExtScanParam, scanPhys=0x%02x", scanPhys);
 
@@ -93,17 +94,17 @@ uint8_t LlSetExtScanParam(uint8_t ownAddrType, uint8_t scanFiltPolicy, uint8_t s
   }
 
   if ((LL_API_PARAM_CHECK == 1) &&
-     ((ownAddrType > ownAddrTypeMax) ||
-      (scanFiltPolicy > scanFiltPolicyMax) ||
-      (scanPhys & ~validScanPhys)))
+      (scanPhys & ~supportedPhys))
   {
-    return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
+    return LL_ERROR_CODE_UNSUPPORTED_FEATURE_PARAM_VALUE;
   }
 
   if ((LL_API_PARAM_CHECK == 1) &&
-      ((scanPhys & LL_PHYS_LE_CODED_BIT) && ((lmgrCb.features & LL_FEAT_LE_CODED_PHY) == 0)))
+     ((ownAddrType > ownAddrTypeMax) ||
+       (scanFiltPolicy > scanFiltPolicyMax) ||
+       (scanPhys == 0)))
   {
-    return LL_ERROR_CODE_UNSUPPORTED_FEATURE_PARAM_VALUE;
+    return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
   }
 
   if (LL_API_PARAM_CHECK == 1)
@@ -296,6 +297,7 @@ uint8_t LlPeriodicAdvCreateSync(const LlPerAdvCreateSyncCmd_t *pParam)
     pMsg->advSID = pParam->advSID;
     pMsg->filterPolicy = pParam->options & 0x01;
     pMsg->repDisabled = (pParam->options >> 1) & 0x01;
+    pMsg->dupFilterEnable = ((pMsg->repDisabled) ? 0 : ((pParam->options >> 2) & 0x01));
     pMsg->skip = pParam->skip;
     pMsg->syncTimeOut = pParam->syncTimeOut;
 

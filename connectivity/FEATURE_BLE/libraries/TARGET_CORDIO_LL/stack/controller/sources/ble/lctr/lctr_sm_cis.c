@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -60,6 +60,7 @@ static uint8_t lctrRemapEvent(lctrCisCtx_t *pCisCtx, uint8_t event)
 
     case LCTR_CONN_MSG_API_DISCONNECT:
     {
+      pCisCtx->hostInitTerm = TRUE;
       lctrCisStoreDisconnectReason(pCisCtx);
       return LCTR_CIS_MSG_CIS_DISC;
     }

@@ -35,22 +35,6 @@ extern "C" {
  *  \{ */
 
 /**************************************************************************************************
-  Macros
-**************************************************************************************************/
-
-/*! \brief  Max value of RTC. */
-#define PAL_MAX_RTC_COUNTER_VAL     (0x00FFFFFF)
-
-/*! \brief  Clock frequency of the RTC timer used. */
-#define PAL_RTC_TICKS_PER_SEC       (32768) /* RTC ticks per second (with prescaler) */
-
-/*! \brief  23 RTC ticks time(700us) for xtal start up befor scheduler load. */
-#define PAL_HFCLK_OSC_SETTLE_TICKS  (23)
-
-/*! \brief  Platform RTC callback. */
-typedef void (*palRtcIrqCback_t)(void);
-
-/**************************************************************************************************
   Type Definitions
 **************************************************************************************************/
 
@@ -61,6 +45,9 @@ typedef enum
   PAL_RTC_STATE_ERROR  = 0,     /*!< Error state. */
   PAL_RTC_STATE_READY  = 1      /*!< Ready state. */
 } PalRtcState_t;
+
+/*! \brief  Platform RTC callback. */
+typedef void (*palRtcIrqCback_t)(void);
 
 /**************************************************************************************************
   Function Declarations

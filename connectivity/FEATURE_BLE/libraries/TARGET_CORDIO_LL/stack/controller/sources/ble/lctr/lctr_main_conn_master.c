@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -194,59 +194,6 @@ static void lctrMstConnDisp(lctrConnMsg_t *pMsg)
 
 /*************************************************************************************************/
 /*!
- *  \brief  Host channel class update handler for connections.
- *
- *  \param  chanMap     Updated channel map.
- *
- *  \return Status code.
- */
-/*************************************************************************************************/
-static uint8_t lctrConnChClassUpdate(uint64_t chanMap)
-{
-  lctrChanMapUpdate_t *pMsg;
-  uint16_t handle;
-  uint8_t status = LL_SUCCESS;
-
-  /* Update for connections */
-  for (handle = 0; handle < pLctrRtCfg->maxConn; handle++)
-  {
-    if ((LctrIsConnHandleEnabled(handle)) &&
-        (LctrGetRole(handle) == LL_ROLE_MASTER))
-    {
-      /* Update the channel map for CIS master as well. */
-      if (LctrUpdateCisChanMapFn)
-      {
-        LctrUpdateCisChanMapFn(handle);
-      }
-
-      if (LctrIsProcActPended(handle, LCTR_CONN_MSG_API_CHAN_MAP_UPDATE) == TRUE)
-      {
-        status = LL_ERROR_CODE_CMD_DISALLOWED;
-      }
-
-      if ((pMsg = (lctrChanMapUpdate_t *)WsfMsgAlloc(sizeof(*pMsg))) != NULL)
-      {
-        pMsg->hdr.handle = handle;
-        pMsg->hdr.dispId = LCTR_DISP_CONN;
-        pMsg->hdr.event  = LCTR_CONN_MSG_API_CHAN_MAP_UPDATE;
-
-        pMsg->chanMap = chanMap;
-
-        WsfMsgSend(lmgrPersistCb.handlerId, pMsg);
-      }
-      else
-      {
-        LL_TRACE_ERR0("lctrConnChClassUpdate: out of message buffers");
-        return LL_ERROR_CODE_CMD_DISALLOWED;
-      }
-    }
-  }
-
-  return status;
-}
-
-/*************************************************************************************************/
-/*!
  *  \brief  Build a connection operation.
  *
  *  \param  pCtx        Connection context.
@@ -357,8 +304,10 @@ void lctrMstSetEstablishConn(lctrConnCtx_t *pCtx)
   const uint16_t txWinOffsetCnt = pConnInd->txWinOffset + LCTR_DATA_CHAN_DLY;
 
   /* Initially use fast termination. */
+  /* The first CE starts after transmitWindowDelay + transmitWindowOffset + transmitWindowSize. 
+     Then an additional 5 CI are required + the duration of the last connection event. */
   uint32_t fastTermCnt = txWinOffsetCnt + pConnInd->txWinSize +
-                         (LCTR_FAST_TERM_CNT * pConnInd->interval);
+                         ((LCTR_FAST_TERM_CNT - 1) * pConnInd->interval) + (pConnInd->interval >> 1);
   WsfTimerStartMs(&pCtx->tmrSupTimeout, LCTR_CONN_IND_MS(fastTermCnt));
 
   /* Set initial channel. */
@@ -371,6 +320,7 @@ void lctrMstSetEstablishConn(lctrConnCtx_t *pCtx)
   LL_TRACE_INFO1("    >>> Connection established, handle=%u <<<", LCTR_GET_CONN_HANDLE(pCtx));
   LL_TRACE_INFO1("                                connIntervalUsec=%u", LCTR_CONN_IND_US(pCtx->connInterval));
   LL_TRACE_INFO1("                                dueUsec=%u", pCtx->connBod.dueUsec);
+  LL_TRACE_INFO1("                                pBod=0x%08x", &pCtx->connBod);
 }
 
 /*************************************************************************************************/
@@ -401,6 +351,7 @@ void LctrMstConnInit(void)
   /* Add channel selection handler. */
   lctrChSelHdlr[LL_CH_SEL_1] = lctrSelectNextDataChannel;
 
+  /* Register channel class update handler. */
   lctrRegisterChClassHandler(lctrConnChClassUpdate);
 
   lctrConnDefaults();
@@ -426,7 +377,13 @@ void LctrMstConnInit(void)
   if (pLctrRtCfg->btVer >= LL_VER_BT_CORE_SPEC_5_1)
   {
     lmgrPersistCb.featuresDefault |=
-        (LL_FEAT_PAST_SENDER | LL_FEAT_SCA_UPDATE);
+      LL_FEAT_PAST_SENDER |
+      LL_FEAT_SCA_UPDATE;
+  }
+  if (pLctrRtCfg->btVer >= LL_VER_BT_CORE_SPEC_SYDNEY)
+  {
+    lmgrPersistCb.featuresDefault |=
+      LL_FEAT_CHANNEL_CLASSIFICATION;
   }
 }
 

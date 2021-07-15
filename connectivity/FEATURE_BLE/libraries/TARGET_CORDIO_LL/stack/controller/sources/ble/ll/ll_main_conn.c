@@ -314,7 +314,8 @@ uint8_t LlSetConnOpFlags(uint16_t handle, uint32_t flags, bool_t enable)
     LL_OP_MODE_FLAG_ENA_WW |
     LL_OP_MODE_FLAG_ENA_SLV_LATENCY |
     LL_OP_MODE_FLAG_ENA_LLCP_TIMER |
-    LL_OP_MODE_FLAG_IGNORE_CRC_ERR_TS;
+    LL_OP_MODE_FLAG_IGNORE_CRC_ERR_TS |
+    LL_OP_MODE_FLAG_ENA_SUBRATE_CE;
 
   LL_TRACE_INFO2("### LlApi ###  LlSetConnFlags flag=%x enable=%d", flags, enable);
 
@@ -379,6 +380,9 @@ uint8_t LlDisconnect(uint16_t handle, uint8_t reason)
       pMsg->hdr.dispId = LCTR_DISP_CONN;
       pMsg->hdr.event  = LCTR_CONN_MSG_API_DISCONNECT;
       pMsg->reason     = reason;
+
+      /* Explicitly define a non-cis handle to avoid disconnecting CIS. */
+      ((lctrCisDisc_t *) pMsg)->cisHandle = handle;
 
       WsfMsgSend(lmgrPersistCb.handlerId, pMsg);
     }

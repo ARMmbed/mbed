@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2010-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -608,15 +608,16 @@ void SmpScGetCancelMsgWithReattempt(dmConnId_t connId, wsfMsgHdr_t *pHdr, uint8_
  *  \brief  Process failure and check attempt count
  *
  *  \param  pCcb  Connection control block.
+ *  \param  status  Status to include.
  *
  *  \return none.
  */
 /*************************************************************************************************/
-void smpScFailWithReattempt(smpCcb_t *pCcb)
+void smpScFailWithReattempt(smpCcb_t *pCcb, uint8_t status)
 {
   wsfMsgHdr_t hdr;
 
-  SmpScGetCancelMsgWithReattempt(pCcb->connId, &hdr, SMP_ERR_CONFIRM_VALUE);
+  SmpScGetCancelMsgWithReattempt(pCcb->connId, &hdr, status);
 
   smpSmExecute(pCcb, (smpMsg_t *)&hdr);
 }

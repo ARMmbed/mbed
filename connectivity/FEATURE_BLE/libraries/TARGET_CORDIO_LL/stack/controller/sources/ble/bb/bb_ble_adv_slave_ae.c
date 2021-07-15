@@ -193,7 +193,6 @@ Cleanup:
     BbTerminateBod();
   }
 
-
 #if (BB_SNIFFER_ENABLED == TRUE)
   if (pPkt)
   {

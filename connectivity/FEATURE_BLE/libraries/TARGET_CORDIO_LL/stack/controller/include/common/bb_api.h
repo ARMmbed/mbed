@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2018 ARM Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -158,6 +158,8 @@ typedef struct BbOpDesc_tag
   BbReschPol_t  reschPolicy:8;      /*!< Rescheduling policy. */
 
   PalBbProt_t   protId:8;           /*!< Protocol type. */
+
+  bool_t        recoverable;        /*!< Indicates if the BOD can recover if the dueUsec time is in the past. */
 
   BbBodCback_t  endCback;           /*!< End of BOD callback (when BOD ends). */
   BbBodCback_t  abortCback;         /*!< Abort BOD callback (when BOD is removed before beginning). */
@@ -375,7 +377,7 @@ uint32_t BbAdjustTime(uint32_t dueUsec);
 
 /*************************************************************************************************/
 /*!
- *  \brief      Get Delta between target and reference time. Only valid if target time is in the future.
+ *  \brief      Get delta between target and reference time. Only valid if target time is in the future.
  *
  *  \param      targetUsec    Target time in microseconds.
  *  \param      refUsec       Reference time in microseconds.

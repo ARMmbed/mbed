@@ -51,6 +51,12 @@ typedef union
     uint32_t minDly;        /*!< Minimum controller delay. */
     uint32_t maxDly;        /*!< Maximum controller delay. */
   } ctrDly;                 /*!< Read local supported controller delay return parameters. */
+  struct
+  {
+    uint8_t numCap;         /*!< Number of codec capabilities returned. */
+    uint8_t capLen;         /*!< Capability length. */
+    uint8_t cap[32];        /*!< Capability data. */
+  } codecCap;               /*!< Read local supported controller capabilities return parameters. */
 } lhciIsoReturnParam_t;
 
 /**************************************************************************************************
@@ -224,8 +230,8 @@ static uint8_t lhciPackRemoveDataPathEvt(uint8_t *pBuf, uint8_t status, uint16_t
  */
 /*************************************************************************************************/
 static uint8_t lhciPackReadLocalSupportedCodecs(uint8_t *pBuf, uint8_t status,
-                                                uint8_t numStd, AudioStdCodecInfo_t stdCodecs[],
-                                                uint8_t numVs, AudioVsCodecInfo_t vsCodecs[])
+                                                uint8_t numStd, PalCodecStdInfo_t stdCodecs[],
+                                                uint8_t numVs, PalCodecVsInfo_t vsCodecs[])
 {
   uint8_t len = LHCI_LEN_READ_LOCAL_SUP_CODECS;
 
@@ -250,6 +256,276 @@ static uint8_t lhciPackReadLocalSupportedCodecs(uint8_t *pBuf, uint8_t status,
   }
 
   return len;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief   Read local supported codecs.
+ *
+ *  \param   pNumStd     Input is size of \a stdCodecs and output is actual number of standard codecs.
+ *  \param   stdCodecs   Standard codec info.
+ *  \param   pNumVs      Input is size of \a vsCodecs and output is actual number of vendor specific codecs.
+ *  \param   vsCodecs    Vendor specific codec info.
+ *
+ *  This function is called by HCI when the host invokes HCI_Read_Local_Supported_Codecs.
+ */
+/*************************************************************************************************/
+static void lhciCodecReadLocalSupportedCodecs(uint8_t *pNumStd, PalCodecStdInfo_t stdCodecs[],
+                                              uint8_t *pNumVs, PalCodecVsInfo_t vsCodecs[])
+{
+  uint8_t numStd = 0;
+  uint8_t numVs = 0;
+
+  // FIXME obtain list from pal_codec
+#if (CODEC_LC3)
+  if (*pNumStd > numStd)
+  {
+    stdCodecs[numStd].codecId = HCI_ID_LC3;
+    stdCodecs[numStd].supTrans = (1 << HCI_CODEC_TRANSPORT_CIS) | (1 << HCI_CODEC_TRANSPORT_BIS);
+    numStd++;
+  }
+#endif
+  *pNumStd = numStd;
+
+#if (CODEC_BLUEDROID)
+  if (*pNumVs > numVs)
+  {
+    vsCodecs[numVs].compId = HCI_ID_PACKETCRAFT;
+    vsCodecs[numVs].codecId = 1;
+    stdCodecs[numStd].supTrans = (1 << HCI_CODEC_TRANSPORT_CIS) | (1 << HCI_CODEC_TRANSPORT_BIS);
+    numVs++;
+  }
+#endif
+#if (CODEC_OPUS)
+  if (*pNumVs > numVs)
+  {
+    vsCodecs[numVs].compId = HCI_ID_PACKETCRAFT;
+    vsCodecs[numVs].codecId = 2;
+    stdCodecs[numStd].supTrans = (1 << HCI_CODEC_TRANSPORT_CIS) | (1 << HCI_CODEC_TRANSPORT_BIS);
+    numVs++;
+  }
+#endif
+#if (CODEC_BV32)
+  if (*pNumVs > numVs)
+  {
+    vsCodecs[numVs].compId = HCI_ID_PACKETCRAFT;
+    vsCodecs[numVs].codecId = 3;
+    vsCodecs[numVs].supTrans = (1 << HCI_CODEC_TRANSPORT_CIS) | (1 << HCI_CODEC_TRANSPORT_BIS);
+    numVs++;
+  }
+#endif
+  *pNumVs = numVs;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief   Read local supported codec capabilities.
+ *
+ *  \param   codingFmt   Coding format.
+ *  \param   compId      Company ID.
+ *  \param   vsCodecId   Vendor specific codec ID.
+ *  \param   dir         Direction.
+ *  \param   transType   Transport type.
+ *  \param   pCapLen     Input is size of \a pCap and output is actual size copied into \a pCap.
+ *  \param   pCap        Capability buffer return parameter.
+ *
+ *  \return  TRUE if valid, FALSE otherwise.
+ *
+ *  This function is called by HCI when the host invokes HCI_Read_Local_Supported_Codec_Capabilities.
+ */
+/*************************************************************************************************/
+static bool_t lhciCodecReadLocalSupportedCodecCapabilities(uint8_t codingFmt, uint16_t compId, uint16_t vsCodecId, PalCodecDir_t dir, uint8_t transType,
+                                                           uint8_t *pCapLen, uint8_t *pCap)
+{
+  bool_t valid = FALSE;
+  const char *pRetCap = NULL;
+
+  /* TODO check if enabled in LL. */
+  if ((transType & ((1 << HCI_CODEC_TRANSPORT_CIS) | (1 << HCI_CODEC_TRANSPORT_BIS))) == 0)
+  {
+    /* Invalid transport. */
+    return FALSE;
+  }
+
+  // FIXME obtain list from pal_codec
+  switch (codingFmt)
+  {
+  case HCI_ID_LC3:
+    (void)compId;       /* ignored */
+    (void)vsCodecId;    /* ignored */
+    (void)dir;          /* either direction is valid */
+#if (CODEC_LC3)
+    {
+      static const char cap[] = "LC3:L+R,16kHz";
+      pRetCap = cap;
+      valid = TRUE;
+    }
+#endif
+    break;
+  case HCI_ID_VS:
+    (void)dir;          /* either direction is valid */
+    if (compId == HCI_ID_PACKETCRAFT)
+    {
+#if (CODEC_BLUEDROID)
+      if (vsCodecId == 1)
+      {
+        static const char cap[] = "SBC:L+R,16kHz";
+        pRetCap = cap;
+        valid = TRUE;
+      }
+#endif
+#if (CODEC_OPUS)
+      if (vsCodecId == 2)
+      {
+        static const char cap[] = "Opus:L+R,16kHz";
+        pRetCap = cap;
+        valid = TRUE;
+      }
+#endif
+#if (CODEC_BV32)
+      if (vsCodecId == 3)
+      {
+        static const char cap[] = "BV32:mono,16kHz";
+        pRetCap = cap;
+        valid = TRUE;
+      }
+#endif
+    }
+    break;
+
+  default:
+    break;
+  }
+
+  if (pRetCap && (*pCapLen >= strlen(pRetCap)))
+  {
+    strncpy((char *)pCap, pRetCap, *pCapLen);
+    *pCapLen = sizeof(strlen(pRetCap));
+  }
+
+  return valid;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief   Read local supported codecs.
+ *
+ *  \param   codingFmt   Coding format.
+ *  \param   compId      Company ID.
+ *  \param   vsCodecId   Vendor specific codec ID.
+ *  \param   dir         Direction.
+ *  \param   transType   Transport type.
+ *  \param   pMinDly     Min_Controller_Delay return value.
+ *  \param   pMaxDly     Max_Controller_Delay return value.
+ *
+ *  \return  TRUE if valid, FALSE otherwise.
+ *
+ *  This function is called by HCI when the host invokes HCI_Read_Local_Supported_Controller_Delay.
+ */
+/*************************************************************************************************/
+static bool_t lhciCodecReadLocalSupportedControllerDelay(uint8_t codingFmt, uint16_t compId, uint16_t vsCodecId, PalCodecDir_t dir, uint8_t transType,
+                                                         uint32_t *pMinDly, uint32_t *pMaxDly)
+{
+  bool_t valid = FALSE;
+
+  if ((transType & ((1 << HCI_CODEC_TRANSPORT_CIS) | (1 << HCI_CODEC_TRANSPORT_BIS))) == 0)
+  {
+    /* Invalid transport. */
+    return FALSE;
+  }
+
+  switch (codingFmt)
+  {
+  case HCI_ID_LC3:
+#if (CODEC_LC3)
+    (void)compId;       /* ignored */
+    (void)vsCodecId;    /* ignored */
+
+    switch (dir)
+    {
+    case PAL_CODEC_DIR_INPUT:
+      *pMinDly = 5000;  /* TODO */
+      *pMaxDly = 5000;  /* TODO */
+      valid = TRUE;
+      break;
+    case PAL_CODEC_DIR_OUTPUT:
+      *pMinDly = 2500;  /* TODO */
+      *pMaxDly = 2500;  /* TODO */
+      valid = TRUE;
+      break;
+    default:
+      break;
+    }
+#endif
+    break;
+
+  case HCI_ID_VS:
+#if (CODEC_BLUEDROID)
+    if (vsCodecId == 1)
+    {
+      switch (dir)
+      {
+      case PAL_CODEC_DIR_INPUT:
+        *pMinDly = 1300;
+        *pMaxDly = 1300;
+        valid = TRUE;
+        break;
+      case PAL_CODEC_DIR_OUTPUT:
+        *pMinDly = 1140;
+        *pMaxDly = 1140;
+        valid = TRUE;
+        break;
+      default:
+        break;
+      }
+    }
+#endif
+#if (CODEC_OPUS)
+    if (vsCodecId == 2)
+    {
+      switch (dir)
+      {
+      case PAL_CODEC_DIR_INPUT:
+        *pMinDly = 5000;  /* TODO */
+        *pMaxDly = 5000;  /* TODO */
+        valid = TRUE;
+        break;
+      case PAL_CODEC_DIR_OUTPUT:
+        *pMinDly = 2500;  /* TODO */
+        *pMaxDly = 2500;  /* TODO */
+        valid = TRUE;
+        break;
+      default:
+        break;
+      }
+    }
+#endif
+#if (CODEC_BV32)
+    if (vsCodecId == 3)
+    {
+      switch (dir)
+      {
+      case PAL_CODEC_DIR_INPUT:
+        *pMinDly = 5690;
+        *pMaxDly = 5690;
+        valid = TRUE;
+        break;
+      case PAL_CODEC_DIR_OUTPUT:
+        *pMinDly = 950;
+        *pMaxDly = 950;
+        valid = TRUE;
+        break;
+      default:
+        break;
+      }
+    }
+#endif
+    break;
+  default:
+    break;
+  }
+
+  return valid;
 }
 
 /*************************************************************************************************/
@@ -335,11 +611,19 @@ static void lhciIsoSendCmdCmplEvt(LhciHdr_t *pCmdHdr, uint8_t status, uint8_t pa
     case HCI_OPCODE_READ_LOCAL_SUP_CODECS:
     {
       uint8_t numStdCodecs = LHCI_MAX_CODEC;
-      AudioStdCodecInfo_t stdCodecs[LHCI_MAX_CODEC];
+      PalCodecStdInfo_t stdCodecs[LHCI_MAX_CODEC];
       uint8_t numVsCodecs = LHCI_MAX_CODEC;
-      AudioVsCodecInfo_t vsCodecs[LHCI_MAX_CODEC];
+      PalCodecVsInfo_t vsCodecs[LHCI_MAX_CODEC];
 
-      PalCodecReadLocalSupportedCodecs(&numStdCodecs, stdCodecs,
+
+
+
+
+
+
+
+
+      lhciCodecReadLocalSupportedCodecs(&numStdCodecs, stdCodecs,
                                        &numVsCodecs, vsCodecs);
 
       paramLen = lhciPackReadLocalSupportedCodecs(pBuf, status,
@@ -353,7 +637,9 @@ static void lhciIsoSendCmdCmplEvt(LhciHdr_t *pCmdHdr, uint8_t status, uint8_t pa
     case HCI_OPCODE_READ_LOCAL_SUP_CODEC_CAP:
     {
       UINT8_TO_BSTREAM(pBuf, status);
-      UINT8_TO_BSTREAM(pBuf, 0);      /* Num_Codec_Capabilities */
+      UINT8_TO_BSTREAM(pBuf, 1);                        /* Num_Codec_Capabilities always 1 */
+      UINT8_TO_BSTREAM(pBuf, pRet->codecCap.capLen);    /* Codec_Capability_Length[0] */
+      memcpy(pBuf, pRet->codecCap.cap, pRet->codecCap.capLen);  /* Codec_Capability[0] */
       break;
     }
     case HCI_OPCODE_READ_LOCAL_SUP_CONTROLLER_DLY:
@@ -499,14 +785,13 @@ bool_t lhciIsoDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
     }
     case HCI_OPCODE_CONFIG_DATA_PATH:
     {
-      uint8_t dir;
-      uint8_t dataPathId;
-      BSTREAM_TO_UINT8 (dir, pBuf);
-      BSTREAM_TO_UINT8 (dataPathId, pBuf);
-      if (!PalCodecConfigureDataPath(dir, dataPathId))
-      {
-        status = HCI_ERR_INVALID_PARAM;
-      }
+      LlIsoConfigDataPath_t param;
+
+      BSTREAM_TO_UINT8 (param.dpDir, pBuf);
+      BSTREAM_TO_UINT8 (param.dpId, pBuf);
+      BSTREAM_TO_UINT8 (param.vsCfgLen, pBuf);
+      param.pVsCfg = pBuf;
+      status = LlConfigureDataPath(&param);
       paramLen = LHCI_LEN_CONFIG_DATA_PATH;
       break;
     }
@@ -530,20 +815,19 @@ bool_t lhciIsoDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
       BSTREAM_TO_UINT16(vsCodecId, pBuf);
       BSTREAM_TO_UINT8 (transType, pBuf);
       BSTREAM_TO_UINT8 (dir, pBuf);
-
-      if (PalCodecReadLocalSupportedCodecCapabilities(codingFmt, compId, vsCodecId, dir))
+      ret.codecCap.capLen = sizeof(ret.codecCap.cap);
+      if (lhciCodecReadLocalSupportedCodecCapabilities(codingFmt, compId, vsCodecId, dir, transType,
+                                                      &ret.codecCap.capLen, ret.codecCap.cap))
       {
-        if ((transType & (LL_CODEC_TRANS_CIS_BIT | LL_CODEC_TRANS_BIS_BIT)) == 0)
-        {
-          status = HCI_ERR_INVALID_PARAM;
-        }
+        ret.codecCap.numCap = 1;
       }
       else
       {
+        ret.codecCap.numCap = 0;
+        ret.codecCap.capLen = 0;
         status = HCI_ERR_INVALID_PARAM;
       }
-
-      paramLen = LHCI_LEN_READ_LOCAL_SUP_CODEC_CAP;
+      paramLen = LHCI_LEN_READ_LOCAL_SUP_CODEC_CAP + ret.codecCap.numCap + ret.codecCap.capLen;
       break;
     }
     case HCI_OPCODE_READ_LOCAL_SUP_CONTROLLER_DLY:
@@ -559,15 +843,8 @@ bool_t lhciIsoDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
       BSTREAM_TO_UINT8 (transType, pBuf);
       BSTREAM_TO_UINT8 (dir, pBuf);
       ret.ctrDly.minDly = ret.ctrDly.maxDly = 0;
-      if (PalCodecReadLocalSupportedControllerDelay(codingFmt, compId, vsCodecId, dir,
+      if (lhciCodecReadLocalSupportedControllerDelay(codingFmt, compId, vsCodecId, dir, transType,
                                                     &ret.ctrDly.minDly, &ret.ctrDly.maxDly))
-      {
-        if ((transType & (LL_CODEC_TRANS_CIS_BIT | LL_CODEC_TRANS_BIS_BIT)) == 0)
-        {
-          status = HCI_ERR_INVALID_PARAM;
-        }
-      }
-      else
       {
         status = HCI_ERR_INVALID_PARAM;
       }

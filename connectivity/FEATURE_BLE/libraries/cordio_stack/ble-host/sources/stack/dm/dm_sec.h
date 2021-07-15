@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2009-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -81,10 +81,10 @@ typedef union
 /* Security control block type */
 typedef struct
 {
-  uint8_t               *pIrk;
-  uint8_t               *pCsrk;
-  bdAddr_t              bdAddr;
-  uint8_t               addrType;
+  uint8_t               *pIrk;        /* Pointer to local Identity Resolving Key (IRK) */
+  uint8_t               *pCsrk;       /* Pointer to local Connection Signature Resolving Key (CSRK) */
+  bdAddr_t              identityAddr; /* Local identity address */
+  uint8_t               addrType;     /* Local identity address type */
 } dmSecCb_t;
 
 /**************************************************************************************************

@@ -398,6 +398,9 @@ void lctrMstExtInitiateOpCommit(lctrExtScanCtx_t *pExtInitCtx)
 
   SchInsertNextAvailable(pOp);
   pExtInitCtx->data.init.scanWinStartUsec = pOp->dueUsec;
+
+  LL_TRACE_INFO1("    >>> ExtInitiate started, dueUsec=%u <<<", pOp->dueUsec);
+  LL_TRACE_INFO1("                             pBod=0x%08x", pOp);
 }
 
 /*************************************************************************************************/
@@ -460,6 +463,7 @@ uint8_t lctrMstAuxInitiateBuildOp(lctrExtScanCtx_t *pExtInitCtx, LlConnSpec_t *p
   /*** BLE Scan Setup: Rx packets ***/
   pAuxScan->isInit = TRUE;
   pAuxScan->rxAuxAdvCback = lctrMstInitiateRxAuxAdvPktHandler;
+  pAuxScan->rxAuxAdvPostCback = NULL;
 
   /*** BLE Scan Setup: Tx connect request packet ***/
 

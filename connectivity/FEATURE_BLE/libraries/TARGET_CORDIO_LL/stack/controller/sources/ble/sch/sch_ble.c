@@ -311,11 +311,6 @@ void SchBleCalcAdvOpDuration(BbOpDesc_t *pBod, uint8_t fragLen)
             minDurUsec = LL_EXT_ADVB_MAX_TIME_2M;
             break;
           case BB_PHY_BLE_CODED:
-            /* Setting min & max duration differently to avoid conflict with other BOD's. */
-            /* Min = 3.8ms for normal size(up to 50 bytes)      */
-            /* Max = 17.4ms for maximum size(up to 255 bytes)   */
-            /* When RX data size is larger than 50 bytes, it may stomp on the next high priority BOD's. */
-            /* TODO: We need HW support(Radio interrupt when packet header is received)  to properly fix the problem. */
             minDurUsec = LL_EXT_ADVB_NORMAL_TIME_S8;
             pBod->maxDurUsec = LL_EXT_ADVB_MAX_TIME_S8;
             break;

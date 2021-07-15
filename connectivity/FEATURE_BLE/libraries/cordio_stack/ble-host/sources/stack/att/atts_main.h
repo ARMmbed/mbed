@@ -135,7 +135,7 @@ extern attsCb_t attsCb;
 attsCcb_t *attsCcbByConnId(dmConnId_t connId, uint8_t slot);
 attsCcb_t *attsCcbByHandle(uint16_t handle, uint8_t slot);
 
-void attsErrRsp(attCcb_t *pCcb, uint8_t slot, uint8_t opcode, uint16_t attHandle, uint8_t reason);
+void attErrRsp(attCcb_t *pCcb, uint8_t slot, uint8_t opcode, uint16_t attHandle, uint8_t reason);
 void attsClearPrepWrites(attsCcb_t *pCcb);
 bool_t attsUuidCmp(attsAttr_t *pAttr, uint8_t uuidLen, uint8_t *pUuid);
 bool_t attsUuid16Cmp(uint8_t *pUuid16, uint8_t uuidLen, uint8_t *pUuid);

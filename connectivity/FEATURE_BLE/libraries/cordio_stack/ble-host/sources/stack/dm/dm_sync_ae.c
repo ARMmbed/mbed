@@ -7,7 +7,7 @@
  *
  *  Copyright (c) 2016-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -361,7 +361,7 @@ void dmSyncSmActStart(dmSyncCb_t *pScb, dmSyncMsg_t *pMsg)
   HciLePerAdvCreateSyncCmd(dmCb.syncOptions, pMsg->apiSyncStart.advSid,
                            pMsg->apiSyncStart.advAddrType, pMsg->apiSyncStart.advAddr,
                            pMsg->apiSyncStart.skip, pMsg->apiSyncStart.syncTimeout,
-                           pMsg->apiSyncStart.unused);
+                           pMsg->apiSyncStart.syncCteType);
 }
 
 /*************************************************************************************************/
@@ -449,6 +449,9 @@ void dmSyncSmActSyncEstFailed(dmSyncCb_t *pScb, dmSyncMsg_t *pMsg)
 /*************************************************************************************************/
 void dmSyncSmActSyncLost(dmSyncCb_t *pScb, dmSyncMsg_t *pMsg)
 {
+  /* set sync handle */
+  pMsg->perAdvSyncLost.syncHandle = pScb->handle;
+
   /* deallocate scb */
   dmSyncCbDealloc(pScb);
 
@@ -561,7 +564,8 @@ void dmSyncReset(void)
     if (pScb->inUse)
     {
       /* set sync handle */
-      syncLost.hdr.param = syncLost.syncHandle = pScb->handle;
+      syncLost.hdr.param = pScb->syncId;
+      syncLost.syncHandle = pScb->handle;
 
       /* handle the event */
       dmSyncHciHandler((hciEvt_t *) &syncLost);
@@ -585,8 +589,33 @@ void dmSyncHciHandler(hciEvt_t *pEvent)
   /* handle special case for periodic advertising report event */
   if (pEvent->hdr.event == HCI_LE_PER_ADV_REPORT_CBACK_EVT)
   {
-    pEvent->hdr.event = DM_PER_ADV_REPORT_IND;
-    (*dmCb.cback)((dmEvt_t *) pEvent);
+    if ((pScb = dmSyncCbByHandle(pEvent->hdr.param)) != NULL)
+    {
+      /* set sync id */
+      pEvent->hdr.param = pScb->syncId;
+
+      pEvent->hdr.event = DM_PER_ADV_REPORT_IND;
+      (*dmCb.cback)((dmEvt_t *) pEvent);
+    }
+
+    return;
+  }
+  
+  /* handle special case for BIGInfo advertising report event */
+  if (pEvent->hdr.event == HCI_LE_BIG_INFO_ADV_REPORT_CBACK_EVT)
+  {
+    if ((pScb = dmSyncCbByHandle(pEvent->hdr.param)) != NULL)
+    {
+      /* store sync info */
+      pScb->encrypt = pEvent->leBigInfoAdvRpt.encrypt;
+
+      /* set sync id */
+      pEvent->hdr.param = pScb->syncId;
+
+      pEvent->hdr.event = DM_BIG_INFO_ADV_REPORT_IND;
+      (*dmCb.cback)((dmEvt_t *) pEvent);
+    }
+
     return;
   }
 
@@ -692,13 +721,16 @@ void dmSyncMsgHandler(wsfMsgHdr_t *pMsg)
  *  \param  pAdvAddr      Advertiser address.
  *  \param  skip          Number of periodic advertising packets that can be skipped after
  *                        successful receive.
- *  \param  syncTimeout   Synchronization timeout.
+ *  \param  syncTimeout   Synchronization timeout, in the units of 10ms.
+ *  \param  syncCteType   Whether to only synchronize to periodic advertising with certain types
+ *                        of Constant Tone Extension (0 indicates that the presence or absence of
+ *                        a Constant Tone Extension is irrelevant).
  *
  *  \return Sync identifier.
  */
 /*************************************************************************************************/
 dmSyncId_t DmSyncStart(uint8_t advSid, uint8_t advAddrType, const uint8_t *pAdvAddr, uint16_t skip,
-                       uint16_t syncTimeout)
+                       uint16_t syncTimeout, uint8_t syncCteType)
 {
   dmSyncCb_t       *pScb = NULL;
   dmSyncApiStart_t *pMsg;
@@ -723,7 +755,7 @@ dmSyncId_t DmSyncStart(uint8_t advSid, uint8_t advAddrType, const uint8_t *pAdvA
       BdaCpy(pMsg->advAddr, pAdvAddr);
       pMsg->skip = skip;
       pMsg->syncTimeout = syncTimeout;
-      pMsg->unused = 0;
+      pMsg->syncCteType = syncCteType;
       WsfMsgSend(dmCb.handlerId, pMsg);
 
       /* return sync id */

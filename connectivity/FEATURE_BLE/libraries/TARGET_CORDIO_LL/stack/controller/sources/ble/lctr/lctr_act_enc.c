@@ -179,13 +179,16 @@ void lctrCalcSessionKey(lctrConnCtx_t *pCtx)
   /* Use AES to transform LTK to session key using session key diversifier as seed. */
   PalCryptoAesEcb(pCtx->ltk, pEnc->sk, pCtx->skd);
 
-  WSF_ASSERT(lctrInitCipherBlkHdlr);
   memcpy(pEnc->iv, pCtx->iv, sizeof(pEnc->iv));
   pEnc->dir = (pCtx->role == LL_ROLE_MASTER) ? 1 : 0;     /* master = 1; slave = 0 */
   pEnc->type = PAL_BB_TYPE_ACL;
   pCtx->txPktCounter = 0;
   pCtx->rxPktCounter = 0;
-  lctrInitCipherBlkHdlr(pEnc, LCTR_GET_CONN_HANDLE(pCtx), pEnc->dir);
+  
+  if (lctrInitCipherBlkHdlr)
+  {
+    lctrInitCipherBlkHdlr(pEnc, LCTR_GET_CONN_HANDLE(pCtx), pEnc->dir);
+  }
 }
 
 /*************************************************************************************************/

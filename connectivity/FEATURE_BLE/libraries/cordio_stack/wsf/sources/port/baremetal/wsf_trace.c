@@ -221,7 +221,9 @@ void WsfTrace(const char *pStr, ...)
 
     /* Format message. */
     len = PrintVsn(buf, WSF_PRINTF_MAX_LEN - WSF_TRACE_SUFFIX_LEN, pStr, args);
+#if !defined(WSF_TRACE_LF_DISABLE) || (WSF_TRACE_LF_DISABLE == FALSE)
     buf[len++] = '\r';
+#endif
     buf[len++] = '\n';
 
     /* Deliver message. */

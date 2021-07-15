@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014 - 2019, Nordic Semiconductor ASA
+ * Copyright (c) 2014 - 2020, Nordic Semiconductor ASA
  *
  * All rights reserved.
  *
@@ -67,6 +67,8 @@
   #include "pca10056.h"
 #elif defined(BOARD_PCA10100)
   #include "pca10100.h"
+#elif defined(BOARD_PCA10112)
+  #include "pca10112.h"  
 #elif defined(BOARD_PCA20020)
   #include "pca20020.h"
 #elif defined(BOARD_PCA10059)
@@ -86,6 +88,10 @@
 #else
 #error "Board is not defined"
 
+#endif
+
+#if defined (SHIELD_BSP_INC)
+  #include STRINGIFY(SHIELD_BSP_INC.h)
 #endif
 
 #ifdef __cplusplus
@@ -329,21 +335,26 @@ uint32_t bsp_board_button_idx_to_pin(uint32_t button_idx);
                         BSP_BUTTON_6_MASK | BSP_BUTTON_7_MASK)
 
 
+/* This macro is supporting only P0 and should not be used if LEDs are on other ports. */
 #define LEDS_OFF(leds_mask) do {  ASSERT(sizeof(leds_mask) == 4);                     \
                         NRF_GPIO->OUTSET = (leds_mask) & (LEDS_MASK & LEDS_INV_MASK); \
                         NRF_GPIO->OUTCLR = (leds_mask) & (LEDS_MASK & ~LEDS_INV_MASK); } while (0)
 
+/* This macro is supporting only P0 and should not be used if LEDs are on other ports. */
 #define LEDS_ON(leds_mask) do {  ASSERT(sizeof(leds_mask) == 4);                     \
                        NRF_GPIO->OUTCLR = (leds_mask) & (LEDS_MASK & LEDS_INV_MASK); \
                        NRF_GPIO->OUTSET = (leds_mask) & (LEDS_MASK & ~LEDS_INV_MASK); } while (0)
 
+/* This macro is supporting only P0 and should not be used if LEDs are on other ports. */
 #define LED_IS_ON(leds_mask) ((leds_mask) & (NRF_GPIO->OUT ^ LEDS_INV_MASK) )
 
+/* This macro is supporting only P0 and should not be used if LEDs are on other ports. */
 #define LEDS_INVERT(leds_mask) do { uint32_t gpio_state = NRF_GPIO->OUT;      \
                               ASSERT(sizeof(leds_mask) == 4);                 \
                               NRF_GPIO->OUTSET = ((leds_mask) & ~gpio_state); \
                               NRF_GPIO->OUTCLR = ((leds_mask) & gpio_state); } while (0)
 
+/* This macro is supporting only P0 and should not be used if LEDs are on other ports. */
 #define LEDS_CONFIGURE(leds_mask) do { uint32_t pin;                  \
                                   ASSERT(sizeof(leds_mask) == 4);     \
                                   for (pin = 0; pin < 32; pin++)      \

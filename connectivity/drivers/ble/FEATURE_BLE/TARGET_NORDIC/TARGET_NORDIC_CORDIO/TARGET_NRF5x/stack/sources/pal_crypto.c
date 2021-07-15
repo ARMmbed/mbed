@@ -24,6 +24,7 @@
 
 #include "pal_crypto.h"
 #include "pal_bb_ble.h"
+#include "pal_sys.h"
 #include <string.h>
 
 /* Nordic specific definitions. */
@@ -640,9 +641,10 @@ void PalCryptoAesEnable(PalCryptoEnc_t *pEnc, uint8_t id, uint8_t localDir)
 {
   unsigned int mode;
 
+  PAL_SYS_ASSERT(id > PAL_CRYPTO_MAX_ID);
   if (id > PAL_CRYPTO_MAX_ID)
   {
-    /* TODO handle error condition */
+    /* Ensure out of bounds memory access does not occur. */
     return;
   }
 
@@ -945,34 +947,4 @@ void PalCryptoDeInit(void)
   NRF_CRYPTOCELL->ENABLE = 0;
 }
 
-#endif
-
-/*************************************************************************************************/
-/*!
- *  \brief  Set the encrypt nonce packet counter field.
- *
- *  \param  pEnc        Encryption parameters.
- *  \param  pktCnt      Counter value.
- */
-/*************************************************************************************************/
-#if (BB_ENABLE_INLINE_ENC_TX)
-void PalCryptoSetEncryptPacketCount(PalCryptoEnc_t *pEnc, uint64_t pktCnt)
-{
-  PalBbBleInlineEncryptSetPacketCount(pktCnt);
-}
-#endif
-
-/*************************************************************************************************/
-/*!
- *  \brief  Set the decrypt nonce packet counter field.
- *
- *  \param  pEnc        Encryption parameters.
- *  \param  pktCnt      Counter value.
- */
-/*************************************************************************************************/
-#if (BB_ENABLE_INLINE_DEC_RX)
-void PalCryptoSetDecryptPacketCount(PalCryptoEnc_t *pEnc, uint64_t pktCnt)
-{
-  /* TODO */
-}
 #endif

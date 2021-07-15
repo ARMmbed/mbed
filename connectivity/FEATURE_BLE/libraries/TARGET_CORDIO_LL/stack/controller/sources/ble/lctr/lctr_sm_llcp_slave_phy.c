@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2016-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -96,10 +96,8 @@ static void lctrUpdateDataTime(lctrConnCtx_t *pCtx)
   switch (pCtx->bleData.chan.txPhy)
   {
     case BB_PHY_BLE_1M:
-      maxTxTime = WSF_MIN(LL_DATA_LEN_TO_TIME_1M(pCtx->effDataPdu.maxTxLen, TRUE), pCtx->effDataPdu.maxTxTime);
-      break;
     case BB_PHY_BLE_2M:
-      maxTxTime = WSF_MIN(LL_DATA_LEN_TO_TIME_2M(pCtx->effDataPdu.maxTxLen, TRUE), pCtx->effDataPdu.maxTxTime);
+      maxTxTime = WSF_MIN(LL_DATA_LEN_TO_TIME_1M(pCtx->effDataPdu.maxTxLen, TRUE), pCtx->effDataPdu.maxTxTime);
       break;
     case BB_PHY_BLE_CODED:
       maxTxTime = WSF_MIN(LL_DATA_LEN_TO_TIME_CODED_S8(pCtx->effDataPdu.maxTxLen, TRUE), pCtx->effDataPdu.maxTxTime);
@@ -109,10 +107,8 @@ static void lctrUpdateDataTime(lctrConnCtx_t *pCtx)
   switch (pCtx->bleData.chan.rxPhy)
   {
     case BB_PHY_BLE_1M:
-      maxRxTime = WSF_MIN(LL_DATA_LEN_TO_TIME_1M(pCtx->effDataPdu.maxRxLen, TRUE), pCtx->effDataPdu.maxRxTime);
-      break;
     case BB_PHY_BLE_2M:
-      maxRxTime = WSF_MIN(LL_DATA_LEN_TO_TIME_2M(pCtx->effDataPdu.maxRxLen, TRUE), pCtx->effDataPdu.maxRxTime);
+      maxRxTime = WSF_MIN(LL_DATA_LEN_TO_TIME_1M(pCtx->effDataPdu.maxRxLen, TRUE), pCtx->effDataPdu.maxRxTime);
       break;
     case BB_PHY_BLE_CODED:
       maxRxTime = WSF_MIN(LL_DATA_LEN_TO_TIME_CODED_S8(pCtx->effDataPdu.maxRxLen, TRUE), pCtx->effDataPdu.maxRxTime);
@@ -521,7 +517,7 @@ static const lctrActFn_t lctrSlvPhyUpdateActionTbl[LCTR_PU_STATE_TOTAL][LCTR_PU_
     lctrActPeerPhyReqWithCollision,         /* LCTR_PU_EVENT_PEER_PHY_REQ */
     NULL,                                   /* LCTR_PU_EVENT_PEER_REJECT */             /* should never occur; ignore */
     NULL,                                   /* LCTR_PU_EVENT_INT_PROC_COMP */           /* should never occur */
-    NULL,                                   /* LCTR_PU_EVENT_INT_START_PHY_UPD */       /* should never occur */
+    lctrActFlushArq,                        /* LCTR_PU_EVENT_INT_START_PHY_UPD */       /* occurs on override by other ll procedure */
     lctrActStartPhyUpdate                   /* LCTR_PU_EVENT_ARQ_FLUSHED */
   },
   { /* LCTR_PU_STATE_HOST_PHY_UPDATE_REQ */
@@ -530,7 +526,7 @@ static const lctrActFn_t lctrSlvPhyUpdateActionTbl[LCTR_PU_STATE_TOTAL][LCTR_PU_
     lctrActPeerPhyReqWithCollision,         /* LCTR_PU_EVENT_PEER_PHY_REQ */
     lctrActPeerRejectPhyReq,                /* LCTR_PU_EVENT_PEER_REJECT */
     lctrActNotifyHostPhyUpdateNoChange,     /* LCTR_PU_EVENT_INT_PROC_COMP */           /* if no change */
-    NULL,                                   /* LCTR_PU_EVENT_INT_START_PHY_UPD */       /* should never occur */
+    lctrActFlushArq,                        /* LCTR_PU_EVENT_INT_START_PHY_UPD */       /* occurs on override by other ll procedure */
     NULL                                    /* LCTR_PU_EVENT_ARQ_FLUSHED */             /* should never occur (not for this SM) */
   },
   { /* LCTR_PU_STATE_FLUSH_BEFORE_PHY_RSP */
@@ -577,10 +573,10 @@ static const uint8_t lctrSlvPhyUpdateNextStateTbl[LCTR_PU_STATE_TOTAL][LCTR_PU_E
   { /* LCTR_PU_STATE_FLUSH_BEFORE_PHY_REQ */
     LCTR_PU_STATE_FLUSH_BEFORE_PHY_REQ,     /* LCTR_PU_EVENT_HOST_PHY_UPD */
     LCTR_PU_STATE_FLUSH_BEFORE_PHY_REQ,     /* LCTR_PU_EVENT_PEER_PHY_UPDATE_IND */     /* out of sequence; ignore */
-    LCTR_PU_STATE_FLUSH_BEFORE_PHY_RSP,      /* LCTR_PU_EVENT_PEER_PHY_REQ */
+    LCTR_PU_STATE_FLUSH_BEFORE_PHY_RSP,     /* LCTR_PU_EVENT_PEER_PHY_REQ */
     LCTR_PU_STATE_FLUSH_BEFORE_PHY_REQ,     /* LCTR_PU_EVENT_PEER_REJECT */             /* should never occur; ignore */
     LCTR_PU_STATE_FLUSH_BEFORE_PHY_REQ,     /* LCTR_PU_EVENT_INT_PROC_COMP */           /* should never occur */
-    LCTR_PU_STATE_FLUSH_BEFORE_PHY_REQ,     /* LCTR_PU_EVENT_INT_START_PHY_UPD */       /* should never occur */
+    LCTR_PU_STATE_FLUSH_BEFORE_PHY_REQ,     /* LCTR_PU_EVENT_INT_START_PHY_UPD */       /* occurs on override by other ll procedure */
     LCTR_PU_STATE_HOST_PHY_UPDATE_REQ       /* LCTR_PU_EVENT_ARQ_FLUSHED */
   },
   { /* LCTR_PU_STATE_HOST_PHY_UPDATE_REQ */
@@ -589,7 +585,7 @@ static const uint8_t lctrSlvPhyUpdateNextStateTbl[LCTR_PU_STATE_TOTAL][LCTR_PU_E
     LCTR_PU_STATE_FLUSH_BEFORE_PHY_RSP,     /* LCTR_PU_EVENT_PEER_PHY_REQ */
     LCTR_PU_STATE_IDLE,                     /* LCTR_PU_EVENT_PEER_REJECT */
     LCTR_PU_STATE_IDLE,                     /* LCTR_PU_EVENT_INT_PROC_COMP */           /* if no change */
-    LCTR_PU_STATE_HOST_PHY_UPDATE_REQ,      /* LCTR_PU_EVENT_INT_START_PHY_UPD */       /* should never occur */
+    LCTR_PU_STATE_HOST_PHY_UPDATE_REQ,      /* LCTR_PU_EVENT_INT_START_PHY_UPD */       /* occurs on override by other ll procedure */
     LCTR_PU_STATE_HOST_PHY_UPDATE_REQ       /* LCTR_PU_EVENT_ARQ_FLUSHED */             /* should never occur (not for this SM) */
   },
   { /* LCTR_PU_STATE_FLUSH_BEFORE_PHY_RSP */
@@ -868,4 +864,26 @@ bool_t lctrSlvLlcpExecutePhyUpdateSm(lctrConnCtx_t *pCtx, uint8_t event)
   }
 
   return TRUE;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Check if encryption can override phy update procedure.
+ *
+ *  \param      pCtx    Connection context.
+ *
+ *  \return     TRUE if override possible, FALSE otherwise.
+ */
+/*************************************************************************************************/
+bool_t lctrSlvCheckEncOverridePhyUpdate(lctrConnCtx_t *pCtx)
+{
+  if (pCtx->llcpActiveProc == LCTR_PROC_PHY_UPD)
+  {
+    if ((pCtx->phyUpdState == LCTR_PU_STATE_FLUSH_BEFORE_PHY_REQ) ||
+        (pCtx->phyUpdState == LCTR_PU_STATE_HOST_PHY_UPDATE_REQ))
+    {
+      return TRUE;
+    }
+  }
+  return FALSE;
 }

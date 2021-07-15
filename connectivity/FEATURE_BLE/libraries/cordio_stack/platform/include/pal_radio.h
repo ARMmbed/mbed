@@ -119,15 +119,6 @@ void PalRadioGetSupTxPower(int8_t *pMinTxPwr, int8_t *pMaxTxPwr);
 /*************************************************************************************************/
 void PalRadioReadRfPathComp(int16_t *pTxPathComp, int16_t *pRxPathComp);
 
-/*************************************************************************************************/
-/*!
- *  \brief      Get receive RF path compensation.
- *
- *  \return     Transmit RF path compensation (in 1-dBm units).
- */
-/*************************************************************************************************/
-int8_t PalRadioGetRxRfPathComp(void);
-
 /*! \} */    /* PAL_RADIO */
 
 #ifdef __cplusplus

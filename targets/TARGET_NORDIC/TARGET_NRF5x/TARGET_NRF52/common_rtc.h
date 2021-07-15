@@ -23,11 +23,12 @@
 #define RTC_COUNTER_BITS        24u
 #define RTC_FREQ                32768u
 
-// Instance 0 is reserved for SoftDevice.
-// Instance 1 is used as a common one for lp_ticker and (in case
+// Instances 1 and 2 are reserved for Cordio
+// Instance 0 is used as a common one for lp_ticker and (in case
 // of NRF51) as an alternative tick source for RTOS.
-#define COMMON_RTC_INSTANCE     NRF_RTC1
-#define COMMON_RTC_IRQ_HANDLER  RTC1_IRQHandler
+#define COMMON_RTC_INSTANCE     NRF_RTC0
+#define COMMON_RTC_IRQn         RTC0_IRQn
+#define COMMON_RTC_IRQ_HANDLER  RTC0_IRQHandler
 #define OS_TICK_CC_CHANNEL      0
 #define LP_TICKER_CC_CHANNEL    1
 

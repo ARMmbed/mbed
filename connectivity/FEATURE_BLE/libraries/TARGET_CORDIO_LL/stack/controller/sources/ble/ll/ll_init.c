@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 #include "ll_api.h"
 #include "lctr_api.h"
 #include "lmgr_api.h"
-#include "pal_bb.h"
+#include "pal_frc.h"
 #include "wsf_assert.h"
 #include "wsf_math.h"
 #include "wsf_msg.h"
@@ -57,7 +57,7 @@ void LlGetDefaultRunTimeCfg(LlRtCfg_t *pCfg)
   {
     /* Device */
     .compId             = HCI_ID_PACKETCRAFT,
-    .implRev            = LL_VER_NUM >> 16,
+    .implRev            = LL_VER_NUM,
     .btVer              = LL_VER_BT_CORE_SPEC_4_2,
     /* Advertiser */
     .maxAdvSets         = 0,   /* Disable extended advertising. */
@@ -92,7 +92,12 @@ void LlGetDefaultRunTimeCfg(LlRtCfg_t *pCfg)
     .phy2mSup           = FALSE,
     .phyCodedSup        = FALSE,
     .stableModIdxTxSup  = FALSE,
-    .stableModIdxRxSup  = FALSE
+    .stableModIdxRxSup  = FALSE,
+    /* Power control */
+    .pcHighThreshold    = -50,
+    .pcLowThreshold     = -70,
+    /* Channel class reporting */
+    .chClassIntSpacing  = 50
   };
 
   *pCfg = defCfg;
@@ -118,9 +123,9 @@ void LlInitRunTimeCfg(const LlRtCfg_t *pCfg)
   WSF_ASSERT(pCfg->maxAdvReports > 0);
   WSF_ASSERT(pCfg->maxAdvSets <= LL_MAX_ADV_SETS);
   WSF_ASSERT((pCfg->maxAdvSets == 0) || (pCfg->maxExtAdvDataLen >= LL_ADVBU_MAX_LEN));
-  WSF_ASSERT(pCfg->numTxBufs > 0);
-  WSF_ASSERT(pCfg->numRxBufs > 0);
-  WSF_ASSERT(pCfg->maxAclLen >= LL_MAX_DATA_LEN_MIN);
+  WSF_ASSERT((pCfg->maxConn == 0) || pCfg->numTxBufs > 0);
+  WSF_ASSERT((pCfg->maxConn == 0) || pCfg->numRxBufs > 0);
+  WSF_ASSERT((pCfg->maxConn == 0) || pCfg->maxAclLen >= LL_MAX_DATA_LEN_MIN);
   WSF_ASSERT(pCfg->maxConn <= LL_MAX_CONN);
   WSF_ASSERT(pCfg->dtmRxSyncMs > 0);
 
@@ -180,15 +185,10 @@ void LlHandlerInit(wsfHandlerId_t handlerId)
 /*************************************************************************************************/
 void LlHandler(wsfEventMask_t event, wsfMsgHdr_t *pMsg)
 {
-  bool_t startTimeValid;
   uint32_t startTime;
   uint32_t endTime;
 
-  startTimeValid = PalBbGetTimestamp(NULL);
-  if (startTimeValid)
-  {
-    startTime = PalBbGetCurrentTime();
-  }
+  startTime = PalFrcGetCurrentTime();
 
   if (event != 0)
   {
@@ -207,16 +207,12 @@ void LlHandler(wsfEventMask_t event, wsfMsgHdr_t *pMsg)
     LctrMsgDispatcher((lctrMsgHdr_t *)pMsg);
   }
 
-  if (startTimeValid &&
-      PalBbGetTimestamp(NULL))
+  endTime = PalFrcGetCurrentTime();
+  uint32_t durUsec = PalFrcDeltaUs(endTime, startTime);
+  if (llHandlerWatermarkUsec < durUsec)
   {
-    endTime = PalBbGetCurrentTime();
-    uint32_t durUsec = BbGetTargetTimeDelta(endTime, startTime);
-    if (llHandlerWatermarkUsec < durUsec)
-    {
-      llHandlerWatermarkUsec = durUsec;
-      LL_TRACE_INFO1("Raised watermark for LlHandler processing, time watermarkUsec=%u", durUsec);
-    }
+    llHandlerWatermarkUsec = durUsec;
+    LL_TRACE_INFO1("Raised watermark for LlHandler processing, time watermarkUsec=%u", durUsec);
   }
 }
 
@@ -360,50 +356,60 @@ void LlGetPerScanContextSize(uint8_t *pMaxPerScan, uint16_t *pPerScanCtxSize)
 
 /*************************************************************************************************/
 /*!
- *  \brief      Get CIG context size.
+ *  \brief      Get CIS context size.
  *
  *  \param      pMaxCig         Buffer to return the maximum number of CIG.
  *  \param      pCigCtxSize     Buffer to return the size in bytes of the CIG context.
- *
- *  Return the connection context sizes.
- */
-/*************************************************************************************************/
-void LlGetCigContextSize(uint8_t *pMaxCig, uint16_t *pCigCtxSize)
-{
-  if (pLctrRtCfg)
-  {
-    *pMaxCig = pLctrRtCfg->maxCig;
-  }
-  else
-  {
-    *pMaxCig = 0;
-  }
-
-  *pCigCtxSize = lmgrPersistCb.cigCtxSize;
-}
-
-/*************************************************************************************************/
-/*!
- *  \brief      Get CIS context size.
- *
  *  \param      pMaxCis         Buffer to return the maximum number of CIS.
  *  \param      pCisCtxSize     Buffer to return the size in bytes of the CIS context.
  *
  *  Return the connection context sizes.
  */
 /*************************************************************************************************/
-void LlGetCisContextSize(uint8_t *pMaxCis, uint16_t *pCisCtxSize)
+void LlGetCisContextSize(uint8_t *pMaxCig, uint16_t *pCigCtxSize, uint8_t *pMaxCis, uint16_t *pCisCtxSize)
 {
   if (pLctrRtCfg)
   {
+    *pMaxCig = pLctrRtCfg->maxCig;
     *pMaxCis = pLctrRtCfg->maxCis;
   }
   else
   {
+    *pMaxCig = 0;
     *pMaxCis = 0;
   }
 
+  *pCigCtxSize = lmgrPersistCb.cigCtxSize;
   *pCisCtxSize = lmgrPersistCb.cisCtxSize;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Get BIS context size.
+ *
+ *  \param      pMaxBig         Buffer to return the maximum number of BIG.
+ *  \param      pBigCtxSize     Buffer to return the size in bytes of the BIG context.
+ *  \param      pMaxBis         Buffer to return the maximum number of BIS.
+ *  \param      pBisCtxSize     Buffer to return the size in bytes of the BIS context.
+ *
+ *  Return the connection context sizes.
+ */
+/*************************************************************************************************/
+void LlGetBisContextSize(uint8_t *pMaxBig, uint16_t *pBigCtxSize, uint8_t *pMaxBis, uint16_t *pBisCtxSize)
+{
+  if (pLctrRtCfg)
+  {
+    *pMaxBig = pLctrRtCfg->maxBig;
+    *pMaxBis = pLctrRtCfg->maxBis;
+  }
+  else
+  {
+    *pMaxBig = 0;
+    *pMaxBis = 0;
+  }
+
+  *pBigCtxSize = lmgrPersistCb.bigCtxSize;
+  *pBisCtxSize = lmgrPersistCb.bisCtxSize;
 }
 
 /*************************************************************************************************/

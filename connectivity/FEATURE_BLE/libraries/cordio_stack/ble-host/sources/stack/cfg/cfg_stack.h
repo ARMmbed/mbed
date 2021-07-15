@@ -39,7 +39,7 @@ extern "C" {
 /*! \brief Stack release version label */
 #define STACK_VERSION         ((const char *)"Packetcraft Host v5.2\n")
 /*! \brief Stack release version number */
-#define STACK_VER_NUM         1366
+#define STACK_VER_NUM         21015
 
 /**************************************************************************************************
   HCI
@@ -159,9 +159,9 @@ extern "C" {
 #define ATT_NUM_SIMUL_NTF        1
 #endif
 
-/* Maximum number of EATT channels per DM connection */
+/* Maximum number of EATT channels per DM connection.  Set to zero if EATT is not required. */
 #ifndef EATT_CONN_CHAN_MAX
-#define EATT_CONN_CHAN_MAX       2
+#define EATT_CONN_CHAN_MAX       0
 #endif
 
 /**@}*/

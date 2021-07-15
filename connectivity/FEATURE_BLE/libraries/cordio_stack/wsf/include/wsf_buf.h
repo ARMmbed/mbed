@@ -222,6 +222,15 @@ void WsfBufGetPoolStats(WsfBufPoolStat_t *pStat, uint8_t numPool);
 /*************************************************************************************************/
 void WsfBufDiagRegister(WsfBufDiagCback_t callback);
 
+/*************************************************************************************************/
+/*!
+ *  \brief  Get the number of outstanding memory pool buffers
+ *
+ *  \return The number of outstanding buffers
+ */
+/*************************************************************************************************/
+uint32_t WsfBufNumOutstanding(void);
+
 /*! \} */    /* WSF_BUF_API */
 
 #ifdef __cplusplus

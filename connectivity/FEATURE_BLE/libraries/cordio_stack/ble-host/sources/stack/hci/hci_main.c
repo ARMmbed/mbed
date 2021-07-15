@@ -85,13 +85,13 @@ void HciAclRegister(hciAclCback_t aclCback, hciFlowCback_t flowCback)
 /*!
  *  \brief  Register callbacks for the HCI ISO data path.
  *
- *  \param  aclCback  ISO data callback function.
+ *  \param  isoCback  ISO data callback function.
  *  \param  flowCback Flow control callback function.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-void HciIsoRegister(hciAclCback_t isoCback, hciFlowCback_t flowCback)
+void HciIsoRegister(hciIsoCback_t isoCback, hciFlowCback_t flowCback)
 {
   hciCb.isoCback = isoCback;
   hciCb.isoFlowCback = flowCback;
@@ -110,6 +110,9 @@ void HciHandlerInit(wsfHandlerId_t handlerId)
 {
   /* store handler ID */
   hciCb.handlerId = handlerId;
+
+  /* Set ISO call back to free payloads in the case that uninitialized ISO gets an unexpected ISO packet. */
+  hciCb.isoCback = (hciIsoCback_t) WsfMsgFree;
 
   /* init rx queue */
   WSF_QUEUE_INIT(&hciCb.rxQueue);

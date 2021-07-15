@@ -65,7 +65,7 @@ extern "C" {
 typedef struct
 {
   uint8_t handle;           /*!< Reservation handle. */
-  bool_t commIntUsed;       /*!< Reservation is controlled by common interval. */
+  bool_t cmdInterUsed;      /*!< Reservation is controlled by common interval. */
   uint8_t offsetBit;        /*!< Offset bit location. */
   uint32_t interUsec;       /*!< Interval in microseconds. */
   uint32_t durUsec;         /*!< Duration in microseconds. */
@@ -80,7 +80,7 @@ typedef struct
   uint8_t offsetDepth;                          /*!< Offset depth from common interval. */
   uint8_t indexUncommon;                        /*!< Index of uncommon reservations. */
   uint32_t rmStatus;                            /*!< Reservation status. */
-  uint32_t commonInt;                           /*!< Common interval. */
+  uint32_t cmnInter;                            /*!< Common interval. */
   uint32_t rsvnInterUsec[SCH_RM_MAX_RSVN];      /*!< Reserved intervals indexed by handle. */
   schRmRsvn_t rsvn[SCH_RM_MAX_RSVN];            /*!< Reservation info for each handle. */
 } SchRmCb_t;

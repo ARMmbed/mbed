@@ -26,9 +26,9 @@
 #include "hci_defs.h"
 #include "ll_api.h"
 #include "ll_defs.h"
+#include "lmgr_api.h"
 #include "wsf_msg.h"
 #include "wsf_math.h"
-#include "wsf_trace.h"
 #include "util/bstream.h"
 #include <string.h>
 
@@ -37,7 +37,7 @@
 **************************************************************************************************/
 
 uint8_t numCis;                               /*!< Number of CIS. */
-uint8_t cigID;                                /*!< Number of CIS. */
+uint8_t cigID;                                /*!< CIG ID. */
 uint16_t cisHandles[LL_MAX_CIS] = {0};        /*!< CIS Handle list. */
 
 /**************************************************************************************************
@@ -83,6 +83,7 @@ static uint8_t lhciPackRemoveCigEvt(uint8_t *pBuf, uint8_t status)
   const uint8_t len = LHCI_LEN_LE_REMOVE_CIG;
 
   UINT8_TO_BSTREAM (pBuf, status);
+  UINT8_TO_BSTREAM (pBuf, cigID);
 
   return len;
 }
@@ -155,7 +156,6 @@ bool_t lhciMstCisDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
   {
     case HCI_OPCODE_LE_SET_CIG_PARAMS:
     {
-      uint8_t cigId;
       uint32_t sduIntervalMToS = 0;
       uint32_t sduIntervalSToM = 0;
       uint8_t sca;
@@ -164,7 +164,7 @@ bool_t lhciMstCisDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
       uint16_t transLatMToS;
       uint16_t transLatSToM;
 
-      BSTREAM_TO_UINT8(cigId, pBuf);
+      BSTREAM_TO_UINT8(cigID, pBuf);
       BSTREAM_TO_UINT24(sduIntervalMToS, pBuf);
       BSTREAM_TO_UINT24(sduIntervalSToM, pBuf);
       BSTREAM_TO_UINT8(sca, pBuf);
@@ -189,7 +189,7 @@ bool_t lhciMstCisDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
         BSTREAM_TO_UINT8(cisParam[i].rteSToM, pBuf);
       }
 
-      cigParam.cigId = cigId;
+      cigParam.cigId = cigID;
       cigParam.sduIntervalMToS = sduIntervalMToS;
       cigParam.sduIntervalSToM = sduIntervalSToM;
       cigParam.sca = sca;
@@ -206,7 +206,6 @@ bool_t lhciMstCisDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
     }
     case HCI_OPCODE_LE_SET_CIG_PARAMS_TEST:
     {
-      uint8_t cigId;
       uint32_t sduIntervalMToS = 0;
       uint32_t sduIntervalSToM = 0;
       uint8_t ftMToS;
@@ -216,7 +215,7 @@ bool_t lhciMstCisDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
       uint8_t packing;
       uint8_t framing;
 
-      BSTREAM_TO_UINT8(cigId, pBuf);
+      BSTREAM_TO_UINT8(cigID, pBuf);
       BSTREAM_TO_UINT24(sduIntervalMToS, pBuf);
       BSTREAM_TO_UINT24(sduIntervalSToM, pBuf);
       BSTREAM_TO_UINT8(ftMToS, pBuf);
@@ -245,7 +244,7 @@ bool_t lhciMstCisDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
         BSTREAM_TO_UINT8(cisParam[i].bnSToM, pBuf);
       }
 
-      cigParam.cigId = cigId;
+      cigParam.cigId = cigID;
       cigParam.sduIntervalMToS = sduIntervalMToS;
       cigParam.sduIntervalSToM = sduIntervalSToM;
       cigParam.ftMToS = ftMToS;
@@ -281,10 +280,8 @@ bool_t lhciMstCisDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
     }
     case HCI_OPCODE_LE_REMOVE_CIG:
     {
-      uint8_t cigId;
-
-      BSTREAM_TO_UINT8(cigId, pBuf);
-      status = LlRemoveCig(cigId);
+      BSTREAM_TO_UINT8(cigID, pBuf);
+      status = LlRemoveCig(cigID);
 
       paramLen = LHCI_LEN_LE_REMOVE_CIG;
 

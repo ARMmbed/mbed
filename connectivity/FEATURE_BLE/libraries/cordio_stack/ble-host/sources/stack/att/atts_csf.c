@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -355,7 +355,8 @@ uint8_t AttsCsfWriteFeatures(dmConnId_t connId, uint16_t offset, uint16_t valueL
    */
   (void)offset;
 
-  if (valueLen > ATT_CSF_LEN)
+  /* sanity check on length */
+  if (valueLen < ATT_CSF_LEN)
   {
     return ATT_ERR_LENGTH;
   }

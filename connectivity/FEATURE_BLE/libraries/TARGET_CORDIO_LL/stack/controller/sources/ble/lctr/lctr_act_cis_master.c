@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -50,8 +50,9 @@ static void lctrCalCeRefFirstCis(lctrConnCtx_t *pCtx, lctrCisCtx_t *pCisCtx)
   uint32_t refTime;
 
   pCisCtx->ceRef = pCtx->eventCounter +
-                   LL_MIN_INSTANT + 1 +     /* +1 for next CE */
-                   pCtx->maxLatency;        /* ensure slave will listen to this packet */
+                   ((LL_MIN_INSTANT + 1 +     /* +1 for next CE */
+                     pCtx->maxLatency) *      /* ensure slave will listen to this packet */
+                    pCtx->ecu.srFactor);      /* include subrating factor */
   pCisCtx->cisCeRef = 0;
 
   refTime = pConnBod->dueUsec + (pCisCtx->ceRef - pCtx->eventCounter) * LCTR_CONN_IND_US(pCtx->connInterval);
@@ -94,8 +95,9 @@ static void lctrCalCeRefNotFirstCis(lctrConnCtx_t *pCtx, lctrCisCtx_t *pCisCtx)
   uint32_t offsetUsec = 0;
 
   pCisCtx->ceRef = pCtx->eventCounter +
-                   LL_MIN_INSTANT + 1 +     /* +1 for next CE */
-                   pCtx->maxLatency;        /* ensure slave will listen to this packet */
+                   ((LL_MIN_INSTANT + 1 +     /* +1 for next CE */
+                     pCtx->maxLatency) *      /* ensure slave will listen to this packet */
+                    pCtx->ecu.srFactor);      /* include subrating factor */
 
   aclRefTime = pConnBod->dueUsec + (pCisCtx->ceRef - pCtx->eventCounter) * LCTR_CONN_IND_US(pCtx->connInterval);
 
@@ -301,7 +303,7 @@ void lctrMstCisLlcpActHostCisReq(lctrConnCtx_t *pCtx, lctrCisCtx_t *pCisCtx)
     /* Check whether the parameter for the BOD is valid or not. */
     if (pCigCtx->isValid == FALSE)
     {
-      LL_TRACE_WARN0("Fail to create CIS due to invalid parameters");
+      LL_TRACE_WARN0("lctrMstCisLlcpActHostCisReq: Fail to create CIS due to invalid parameters");
       lctrCisStoreLocalLowResourceTerminateReason(pCisCtx);
       result = FALSE;
     }
@@ -313,9 +315,11 @@ void lctrMstCisLlcpActHostCisReq(lctrConnCtx_t *pCtx, lctrCisCtx_t *pCisCtx)
                     SCH_RM_PREF_PERFORMANCE,
                     LCTR_ISO_INT_TO_US(pCigCtx->isoInterval),
                     LCTR_ISO_INT_TO_US(pCigCtx->isoInterval),
-          pCigCtx->cigSyncDelayUsec, NULL, lctrGetCigRefTime))
+                    pCigCtx->cigSyncDelayUsec,
+                    NULL,
+                    lctrGetCigRefTime))
       {
-        LL_TRACE_WARN0("Fail to create CIS due to scheduling limitation");
+        LL_TRACE_WARN0("lctrMstCisLlcpActHostCisReq: Fail to create CIS due to scheduling limitation");
         lctrCisStoreLocalLowResourceTerminateReason(pCisCtx);
         result = FALSE;
       }
@@ -418,7 +422,7 @@ void lctrMstCisLlcpActPeerCisRsp(lctrConnCtx_t *pCtx, lctrCisCtx_t *pCisCtx)
 
   if (pCigCtx->isBodBuilt == FALSE)
   {
-    WSF_ASSERT(pCisCtx->cisCeRef == 0)
+    WSF_ASSERT(pCisCtx->cisCeRef == 0);
 
     lctrMstCisBuildCigOp(pCigCtx);
   }

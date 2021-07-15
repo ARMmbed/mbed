@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2010-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -368,17 +368,17 @@ void DmSecSetLocalIrk(uint8_t *pIrk)
 /*!
  *  \brief  This function sets the local identity address used by the device.
  *
- *  \param  pAddr     Pointer to the address.
- *  \param  type      Type of the address.
+ *  \param  identityAddr  Local identity address.
+ *  \param  addrType      Local identity address type.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-void DmSecSetLocalIdentityAddr(const uint8_t *pAddr, uint8_t type)
+void DmSecSetLocalIdentityAddr(const bdAddr_t identityAddr, uint8_t addrType)
 {
   WsfTaskLock();
-  dmSecCb.addrType = type;
-  BdaCpy(dmSecCb.bdAddr, pAddr);
+  dmSecCb.addrType = addrType;
+  BdaCpy(dmSecCb.identityAddr, identityAddr);
   WsfTaskUnlock();
 }
 
@@ -415,28 +415,32 @@ uint8_t *DmSecGetLocalIrk(void)
 /*************************************************************************************************/
 uint8_t *DmSecGetLocalIdentityAddr(void)
 {
-  if (dmSecCb.addrType != DM_ADDR_NONE) {
-    return dmSecCb.bdAddr;
-  } else {
-    return HciGetBdAddr();
+  /* if the local identity address has been set */
+  if (dmSecCb.addrType != DM_ADDR_NONE)
+  {
+    return dmSecCb.identityAddr;
   }
+
+  return HciGetBdAddr();
 }
 
 /*************************************************************************************************/
 /*!
  *  \brief  For internal use only.  This function gets the local identity address type used by the
- *  device.
+ *          device.
  *
  *  \return The identity address type.
  */
 /*************************************************************************************************/
 uint8_t DmSecGetLocalIdentityAddrType(void)
 {
-  if (dmSecCb.addrType != DM_ADDR_NONE) {
+  /* if the local identity address has been set */
+  if (dmSecCb.addrType != DM_ADDR_NONE)
+  {
     return dmSecCb.addrType;
-  } else {
-    return DM_ADDR_PUBLIC;
   }
+
+  return DM_ADDR_PUBLIC;
 }
 
 /*************************************************************************************************/

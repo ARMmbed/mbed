@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -99,6 +99,13 @@ enum
   LCTR_SCAN_PHY_ALL     = 0xFF          /*!< All PHY scanners. */
 };
 
+/*! \brief      Periodic scan receive enable bits. */
+enum
+{
+  LCTR_PER_RECV_ENABLE_REPORT_BIT_POS      = 0,  /*!< Enable periodic scan reports. */
+  LCTR_PER_RECV_ENABLE_FILTERING_BIT_POS   = 1   /*!< Enable filtering by ADI of periodic advertising trains. */
+};
+
 /**************************************************************************************************
   Data Types
 **************************************************************************************************/
@@ -142,6 +149,7 @@ typedef struct
   uint64_t          advAddr;            /*!< Advertiser Address. */
   uint16_t          skip;               /*!< Skip. */
   uint16_t          syncTimeOut;        /*!< Synchronization Timeout. */
+  uint8_t           dupFilterEnable;    /*!< Duplicate filtering enable. */
 } lctrPerCreateSyncMsg_t;
 
 /*! \brief      Periodic transfer sync message. */
@@ -204,7 +212,7 @@ uint64_t LctrGetPerScanChanMap(uint16_t handle);
 bool_t lctrMstPerIsSyncHandleValid(uint16_t syncHandle);
 void LctrPastInit(void);
 uint8_t LctrPeriodicAdvSyncTransfer(uint16_t connHandle, uint16_t serviceData, uint16_t syncHandle);
-void LctrMstPerSetRcvEnable(uint16_t syncHandle, bool_t enable);
+void LctrMstPerSetRcvEnable(uint16_t syncHandle, uint8_t enable);
 
 #ifdef __cplusplus
 };

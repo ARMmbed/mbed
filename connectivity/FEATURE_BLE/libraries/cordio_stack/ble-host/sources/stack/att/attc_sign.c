@@ -178,7 +178,7 @@ static void attcSignMsgCback(attcCcb_t *pCcb, attcSignMsg_t *pMsg)
     /* verify no API request already waiting on deck or in progress,
      * and no signed write already in progress
      */
-    if ((attcCb.onDeck[pCcb->connId - 1].hdr.event != ATTC_MSG_API_NONE) ||
+    if ((attcCb.onDeck[pCcb->connId-1].hdr.event != ATTC_MSG_API_NONE) ||
         (pCcb->outReq.hdr.event > ATTC_MSG_API_MTU) ||
         (attcSignCbByConnId((dmConnId_t) pMsg->hdr.param) != NULL))
     {
@@ -238,7 +238,7 @@ static void attcSignMsgCback(attcCcb_t *pCcb, attcSignMsg_t *pMsg)
           pCcb->pMainCcb->sccb[ATT_BEARER_SLOT_ID].control & ATT_CCB_STATUS_FLOW_DISABLED)
       {
         /* put request "on deck" for processing later */
-        attcCb.onDeck[pCcb->connId - 1] = pCb->msg;
+        attcCb.onDeck[pCcb->connId-1] = pCb->msg;
       }
       /* otherwise ready to send */
       else

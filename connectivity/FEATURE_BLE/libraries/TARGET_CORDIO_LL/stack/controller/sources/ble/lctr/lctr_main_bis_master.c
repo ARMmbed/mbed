@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -122,7 +122,7 @@ void LctrMstBisInit(void)
   /* Set supported features. */
   if (pLctrRtCfg->btVer >= LL_VER_BT_CORE_SPEC_5_1)
   {
-    lmgrPersistCb.featuresDefault |= LL_FEAT_ISO_BROADCASTER;
+    lmgrPersistCb.featuresDefault |= LL_FEAT_ISO_SYNC;
   }
 }
 
@@ -150,7 +150,7 @@ uint8_t LctrMstBigCreateSync(LlBigCreateSync_t *pParam)
   if (lctrFindBigByHandle(pParam->bigHandle) != NULL)
   {
     LL_TRACE_WARN1("LctrMstBigCreateSync: bigHandle=%u already in use", pParam->bigHandle);
-    return LL_ERROR_CODE_UNSUPPORTED_FEATURE_PARAM_VALUE;
+    return LL_ERROR_CODE_CMD_DISALLOWED;
   }
 
   pPerScanCtx = LCTR_GET_PER_SCAN_CTX(pParam->syncHandle);
@@ -175,17 +175,22 @@ uint8_t LctrMstBigCreateSync(LlBigCreateSync_t *pParam)
   }
 
   pBigInfo = &pPerScanCtx->acadParams[LCTR_ACAD_ID_BIG_INFO].bigInfo;
+  if (pParam->numBis > pBigInfo->numBis)
+  {
+    LL_TRACE_WARN2("LctrMstBigCreateSync: invalid value for numBis=%u for this sync handle, validRange=1..%u", pParam->numBis, pBigInfo->numBis);
+    return LL_ERROR_CODE_UNSUPPORTED_FEATURE_PARAM_VALUE;
+  }
+
+  if (pParam->numBis > LL_MAX_BIS)
+  {
+    LL_TRACE_WARN2("LctrMstBigCreateSync: invalid value for numBis=%u, validRange=1..%u", pParam->numBis, LL_MAX_BIS);
+    return LL_ERROR_CODE_CONN_REJ_LIMITED_RESOURCES;
+  }
 
   if (pParam->numBis > lctrGetNumAvailBisCtx())
   {
     LL_TRACE_WARN0("LctrMstBigCreateSync: insufficient BIS context");
     return LL_ERROR_CODE_CONN_REJ_LIMITED_RESOURCES;
-  }
-
-  if (pParam->numBis > WSF_MIN(pBigInfo->numBis, LL_MAX_BIS))
-  {
-    LL_TRACE_WARN2("LctrMstBigCreateSync: invalid value for numBis=%u, validRange=1..%u", pParam->numBis, WSF_MIN(pBigInfo->numBis, LL_MAX_BIS));
-    return LL_ERROR_CODE_UNSUPPORTED_FEATURE_PARAM_VALUE;
   }
 
   for (unsigned int i = 0; i < pParam->numBis; i++)
@@ -286,7 +291,7 @@ void LctrMstBigTerminateSync(uint8_t bigHandle)
 /*************************************************************************************************/
 void lctrMstBigBuildOp(lctrBigCtx_t *pBigCtx, LctrAcadBigInfo_t *pBigInfo)
 {
-  lctrBisCtx_t * const pBisCtx = pBigCtx->pBisCtx[0];
+  lctrBisCtx_t * const pBisCtx = pBigCtx->roleData.mst.pFirstBisCtx;
 
   BbOpDesc_t * const pOp = &pBigCtx->bod;
   BbBleData_t * const pBle = &pBigCtx->bleData;
@@ -302,7 +307,7 @@ void lctrMstBigBuildOp(lctrBigCtx_t *pBigCtx, LctrAcadBigInfo_t *pBigInfo)
   pOp->protId = BB_PROT_BLE;
   pOp->prot.pBle = pBle;
   pOp->endCback = lctrMstBigEndOp;
-  pOp->abortCback = lctrMstBigEndOp;
+  pOp->abortCback = lctrMstBigAbortOp;
   pOp->pCtx = pBigCtx;
 
   /*** BLE General Setup ***/
@@ -337,17 +342,18 @@ void lctrMstBigBuildOp(lctrBigCtx_t *pBigCtx, LctrAcadBigInfo_t *pBigInfo)
   pBigCtx->roleData.mst.anchorPoint = pBigInfo->bigAnchorPoint;
   pBigCtx->roleData.mst.rxSyncTime = pBigCtx->roleData.mst.anchorPoint - pBigCtx->isoInterUsec;
   /* Expand receive window for initial synchronization due to resolution uncertainty. */
-  pBigCtx->roleData.mst.extraWwUsec = (pBigInfo->bigOffsUnits == 0) ? 30 : 300;
+  pBigCtx->roleData.mst.initWwUsec = (pBigInfo->bigOffsUnits == 0) ? 30 : 300;
   uint32_t unsyncTimeUsec = 0;
 
   while (TRUE)
   {
-    uint32_t wwTotalUsec = lctrCalcWindowWideningUsec(unsyncTimeUsec, pBigCtx->roleData.mst.totalAcc);
+    uint32_t wwTotalUsec = lctrCalcWindowWideningUsec(unsyncTimeUsec, pBigCtx->roleData.mst.totalAcc)
+                           + pBigCtx->roleData.mst.initWwUsec;
     /* TODO Limit to half the ISO Interval size */
 
-    pOp->dueUsec = pBigCtx->roleData.mst.anchorPoint - wwTotalUsec;
+    pOp->dueUsec = pBigCtx->roleData.mst.anchorPoint + pBigCtx->roleData.mst.firstBisOffsUsec - wwTotalUsec;
     /* Multiply 2 for before and after BIG Anchor Point. */
-    pBis->rxSyncDelayUsec = (wwTotalUsec << 1) + pBigCtx->roleData.mst.extraWwUsec;
+    pBis->rxSyncDelayUsec = (wwTotalUsec << 1);
 
     lctrSelectBigChannels(pBigCtx);
 
@@ -356,7 +362,7 @@ void lctrMstBigBuildOp(lctrBigCtx_t *pBigCtx, LctrAcadBigInfo_t *pBigInfo)
       break;
     }
 
-    LL_TRACE_WARN1("!!! BIG schedule conflict handle=%u", pBigCtx->handle);
+    LL_TRACE_WARN2("!!! BIG schedule conflict handle=%u, ec[15:0]=%u", pBigCtx->handle, pBigCtx->eventCounter);
 
     /* Advance to next interval. */
     pBigCtx->eventCounter += 1;
@@ -443,14 +449,15 @@ void lctrMstSetupBigContext(lctrBigCtx_t *pBigCtx, LctrAcadBigInfo_t *pBigInfo)
 /*************************************************************************************************/
 void lctrMstSetupBigChannel(lctrBigCtx_t *pBigCtx, LctrAcadBigInfo_t *pBigInfo)
 {
-  pBigCtx->ctrChSelInfo.chanMask = pBigInfo->chanMap;
-  pBigCtx->ctrChSelInfo.usedChSel = LL_CH_SEL_2;
-  pBigCtx->ctrChSelInfo.chIdentifier = (uint16_t)(LL_BIG_CONTROL_ACCESS_ADDR >> 16) ^
-                                       (uint16_t)(LL_BIG_CONTROL_ACCESS_ADDR >> 0);
-  LmgrBuildRemapTable(&pBigCtx->ctrChSelInfo);
-
   pBigCtx->ctrChan.opType = BB_BLE_OP_MST_BIS_EVENT;
   pBigCtx->ctrChan.accAddr = lctrComputeBisAccessAddr(pBigInfo->seedAccAddr, 0);
+
+  pBigCtx->ctrChSelInfo.chanMask = pBigInfo->chanMap;
+  pBigCtx->ctrChSelInfo.usedChSel = LL_CH_SEL_2;
+  pBigCtx->ctrChSelInfo.chIdentifier = (uint16_t)(pBigCtx->ctrChan.accAddr >> 16) ^
+                                       (uint16_t)(pBigCtx->ctrChan.accAddr >> 0);
+  LmgrBuildRemapTable(&pBigCtx->ctrChSelInfo);
+
   pBigCtx->ctrChan.crcInit = (pBigCtx->baseCrcInit << 8) | 0;
   pBigCtx->ctrChan.rxPhy = pBigCtx->phy;
 
@@ -468,10 +475,10 @@ void lctrMstSetupBigChannel(lctrBigCtx_t *pBigCtx, LctrAcadBigInfo_t *pBigInfo)
     pBigCtx->ctrChan.enc.nonceMode = PAL_BB_NONCE_MODE_EXT64_CNTR;
 
     memcpy(pBigCtx->ctrChan.enc.iv, pBigCtx->giv, LL_IV_LEN);
-    pBigCtx->ctrChan.enc.iv[0] ^= LL_BIG_CONTROL_ACCESS_ADDR >>  0;
-    pBigCtx->ctrChan.enc.iv[1] ^= LL_BIG_CONTROL_ACCESS_ADDR >>  8;
-    pBigCtx->ctrChan.enc.iv[2] ^= LL_BIG_CONTROL_ACCESS_ADDR >> 16;
-    pBigCtx->ctrChan.enc.iv[3] ^= LL_BIG_CONTROL_ACCESS_ADDR >> 24;
+    pBigCtx->ctrChan.enc.iv[0] ^= pBigCtx->ctrChan.accAddr >>  0;
+    pBigCtx->ctrChan.enc.iv[1] ^= pBigCtx->ctrChan.accAddr >>  8;
+    pBigCtx->ctrChan.enc.iv[2] ^= pBigCtx->ctrChan.accAddr >> 16;
+    pBigCtx->ctrChan.enc.iv[3] ^= pBigCtx->ctrChan.accAddr >> 24;
 
     memcpy(pBigCtx->ctrChan.enc.sk, pBigCtx->bleData.chan.enc.sk, PAL_CRYPTO_LL_KEY_LEN);
 
@@ -479,7 +486,10 @@ void lctrMstSetupBigChannel(lctrBigCtx_t *pBigCtx, LctrAcadBigInfo_t *pBigInfo)
     pBigCtx->ctrChan.enc.dir = 1;
     pBigCtx->ctrChan.enc.type = PAL_BB_TYPE_BIS;
 
-    lctrInitCipherBlkHdlr(&pBigCtx->ctrChan.enc, LCTR_BIG_CTRL_ENC_ID(pBigCtx), 1);
+    if (lctrInitCipherBlkHdlr)
+    {
+      lctrInitCipherBlkHdlr(&pBigCtx->ctrChan.enc, LCTR_BIG_CTRL_ENC_ID(pBigCtx), 1);
+    }
   }
 }
 

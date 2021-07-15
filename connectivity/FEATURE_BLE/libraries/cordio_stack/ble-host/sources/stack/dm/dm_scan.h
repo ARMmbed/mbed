@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2016-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -81,7 +81,7 @@ typedef struct
   bdAddr_t                advAddr;
   uint16_t                skip;
   uint16_t                syncTimeout;
-  uint8_t                 unused;
+  uint8_t                 syncCteType;
 } dmSyncApiStart_t;
 
 /* Data structure for DM_SYNC_MSG_API_ADD_DEV_TO_PER_ADV_LIST */

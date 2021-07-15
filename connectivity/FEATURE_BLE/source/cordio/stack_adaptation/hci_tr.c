@@ -2,11 +2,9 @@
 /*!
  *  \file   hci_tr.c
  *
- *  \brief  HCI transport module.
+ *  \brief  HCI transport implementation for Nordic.
  *
- *  Copyright (c) 2011-2018 Arm Ltd. All Rights Reserved.
- *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,18 +20,23 @@
  */
 /*************************************************************************************************/
 
-#include <string.h>
 #include "wsf_types.h"
 #include "wsf_msg.h"
+#include "wsf_trace.h"
 #include "wsf_assert.h"
 #include "util/bstream.h"
 #include "hci_api.h"
 #include "hci_core.h"
-#include "hci_tr.h"
+#include "hci_defs.h"
 #include "hci_drv.h"
+#include <stdio.h>
+#include <string.h>
+
+/**************************************************************************************************
+  Macros
+**************************************************************************************************/
 
 /* PORTING: EXACTLE removed as replaced by zero copy hci driver in mbedos */
-
 uint16_t hci_mbed_os_drv_write(uint8_t type, uint16_t len, uint8_t *pData);
 
 /**************************************************************************************************
@@ -47,6 +50,10 @@ typedef enum
   HCI_RX_STATE_DATA,
   HCI_RX_STATE_COMPLETE
 } hciRxState_t;
+
+/**************************************************************************************************
+  Global Variables
+**************************************************************************************************/
 
 /*************************************************************************************************/
 /*!
@@ -65,47 +72,48 @@ void hciTrSendAclData(void *pContext, uint8_t *pData)
   /* PORTING: sending and fragmenting done by mbed-os */
   uint16_t len;
 
-  /* get 16-bit length */
+  /* transmit ACL header and data */
   BYTES_TO_UINT16(len, (pData + 2))
   len += HCI_ACL_HDR_LEN;
 
-  /* transmit ACL header and data */
   if (hci_mbed_os_drv_write(HCI_ACL_TYPE, len, pData) == len)
   {
 #if CORDIO_ZERO_COPY_HCI
     /* pData is not freed as the hci_mbed_os_drv_write took ownership of the WSF buffer */
 #else
     /* free buffer */
-    hciCoreTxAclComplete((hciCoreConn_t *)pContext, pData);
+    hciCoreTxAclComplete(pContext, pData);
 #endif // CORDIO_ZERO_COPY_HCI
   }
 }
 
 /*************************************************************************************************/
 /*!
+ *  \fn     hciTrSendCmd
+ *
  *  \brief  Send a complete HCI command to the transport.
  *
- *  \param  pCmdData    WSF msg buffer containing an HCI command.
+ *  \param  pData    WSF msg buffer containing an HCI command.
  *
  *  \return None.
  */
 /*************************************************************************************************/
-void hciTrSendCmd(uint8_t *pCmdData)
+void hciTrSendCmd(uint8_t *pData)
 {
   /* PORTING: sending done by mbed-os */
   uint16_t   len;
 
   /* get length */
-  len = pCmdData[2] + HCI_CMD_HDR_LEN;
+  len = pData[2] + HCI_CMD_HDR_LEN;
 
   /* transmit ACL header and data */
-  if (hci_mbed_os_drv_write(HCI_CMD_TYPE, len, pCmdData) == len)
+  if (hci_mbed_os_drv_write(HCI_CMD_TYPE, len, pData) == len)
   {
 #if CORDIO_ZERO_COPY_HCI
     /* pData is not freed as the hci_mbed_os_drv_write took ownership of the WSF buffer */
 #else
-    /* free buffer */
-    WsfMsgFree(pCmdData);
+    /* free command buffer */
+    WsfMsgFree(pData);
 #endif // CORDIO_ZERO_COPY_HCI
   }
 }
@@ -264,4 +272,41 @@ void hciTrSerialRxIncoming(uint8_t *pBuf, uint8_t len)
       stateRx = HCI_RX_STATE_IDLE;
     }
   }
+}
+
+/*************************************************************************************************/
+/*!
+ *  \fn     hciTrInit
+ *
+ *  \brief  Initialize HCI transport resources.
+ *
+ *  \param  port        COM port.
+ *  \param  baudRate    Baud rate.
+ *  \param  flowControl TRUE if flow control is enabled
+ *
+ *  \return TRUE if initialization succeeds, FALSE otherwise.
+ */
+/*************************************************************************************************/
+bool_t hciTrInit( uint8_t port, uint32_t baudRate, bool_t flowControl )
+{
+  /* Parameters are not used */
+  (void) port;
+  (void) baudRate;
+  (void) flowControl;
+
+  return (FALSE);
+}
+
+/*************************************************************************************************/
+/*!
+ *  \fn     hcrTrShutdown
+ *
+ *  \brief  Close HCI transport resources.
+ *
+ *  \return None.
+ */
+/*************************************************************************************************/
+void hciTrShutdown(void)
+{
+
 }

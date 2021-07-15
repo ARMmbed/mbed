@@ -414,6 +414,16 @@ void lctrRegisterChClassHandler(lctrChClassHdlr_t cback)
 {
   /* Ensure registration does not exceed limits. */
   WSF_ASSERT(lctrChClassHandlerCnt < LCTR_NUM_CH_CLASS_HANDLERS);
+
+  /* If callback is already registered, do nothing. */
+  for (unsigned int i = 0; i < lctrChClassHandlerCnt; i++)
+  {
+    if (lctrChClassHandlerTbl[0] == cback)
+    {
+      return;
+    }
+  }
+
   lctrChClassHandlerTbl[lctrChClassHandlerCnt++] = cback;
 }
 
@@ -450,4 +460,43 @@ uint8_t LctrSetChannelClass(uint64_t chanMap)
   }
 
   return result;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Get average RSSI of an averaging unit.
+ *
+ *  \param  pAvg   Average block
+ *
+ *  \return Average block average.
+ */
+/*************************************************************************************************/
+int8_t lctrRssiGetAverage(lctrRssiRunAvg_t *pAvg)
+{
+   WSF_ASSERT(pAvg->avgCount >= LL_PC_TBL_LEN);
+
+   int32_t total = 0;
+   for (int i = 0; i < LL_PC_TBL_LEN; i++)
+   {
+     total += (int32_t) pAvg->averageRssi[i];
+   }
+
+   return (int8_t) (total >> LL_PC_TBL_POW);
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Add a value to the average block.
+ *
+ *  \param  pAvg   Average block
+ *  \param  value  Value to add
+ *
+ *  \note   oldest value will be overwritten.
+ */
+/*************************************************************************************************/
+void lctrRssiAddAveragePoint(lctrRssiRunAvg_t *pAvg, int8_t value)
+{
+  pAvg->averageRssi[pAvg->rssiIdx] = value;
+  pAvg->rssiIdx = ((pAvg->rssiIdx + 1) == LL_PC_TBL_LEN) ? 0 : (pAvg->rssiIdx + 1);
+  pAvg->avgCount++;
 }

@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -98,7 +98,6 @@ typedef struct
   uint16_t                    wrBufOffs;            /*!< Write data buffer offset. */
   uint16_t                    wrBufLen;             /*!< Write data buffer length. */
   uint8_t                     *pWrBuf;              /*!< Write data buffer. */
-  bool_t                      wrBufComp;            /*!< Write buffer completed. */
 } chciTrCtrlBlk_t;
 
 /*! \brief      Send handler. */
@@ -376,8 +375,7 @@ static void chciTxComplete(void)
   }
   else
   {
-    /* Completion handled in task context, i.e. ChciTrService(). */
-    chciTrCb.wrBufComp = TRUE;
+    chciTrSendComplete();
   }
 }
 
@@ -426,7 +424,6 @@ static void chciTrWrite(uint8_t prot, uint8_t type, uint16_t len, uint8_t *pData
 
   /* Initiate Tx operation. */
   PalUartWriteData(PAL_UART_ID_CHCI, chciTrCb.pWrBuf, chciTrCb.wrBufOffs);
-  PalSysSetBusy();
 #endif
 
 #if (CHCI_TR_CUSTOM == 1)
@@ -627,26 +624,4 @@ void chciTrRecv(uint8_t prot, uint8_t type, uint8_t *pBuf)
 
   /* Free buffer that cannot be handled. */
   WsfMsgFree(pBuf);
-}
-
-/*************************************************************************************************/
-/*!
- *  \brief  Service the transport device.
- *
- *  \return TRUE if work pending, FALSE if no work is pending.
- */
-/*************************************************************************************************/
-bool_t ChciTrService(void)
-{
-#if (CHCI_TR_UART == 1)
-  if (chciTrCb.wrBufComp)
-  {
-    chciTrCb.wrBufComp = FALSE;
-    chciTrSendComplete();
-    PalSysSetIdle();
-    return TRUE;
-  }
-#endif
-
-  return FALSE;
 }

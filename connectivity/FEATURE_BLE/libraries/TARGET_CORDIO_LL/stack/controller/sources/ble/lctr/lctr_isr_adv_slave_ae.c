@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -476,7 +476,6 @@ bool_t lctrSlvRxAuxConnReqHandler(BbOpDesc_t *pOp, const uint8_t *pReqBuf)
 
       pAdvSet->rspPduHdr.txAddrRnd   = (hdr >> LCTR_ADV_HDR_TX_ADD_SHIFT)   & 0x0001;
       pAdvSet->rspPduHdr.rxAddrRnd   = (hdr >> LCTR_ADV_HDR_RX_ADD_SHIFT)   & 0x0001;
-
     }
 #endif
 
@@ -696,19 +695,16 @@ void lctrSlvExtAdvEndOp(BbOpDesc_t *pOp)
     /* Disable (do not reschedule) advertising PDU. */
     pAdvSet->shutdown = TRUE;
 
-    if (pAdvSet->auxBodUsed &&
-        (pAdvSet->bodTermCnt++ == 0))
+    if (pAdvSet->auxBodUsed)
     {
+      pAdvSet->auxBodUsed = FALSE;
       /* Ensure all BODs are de-scheduled. */
-      bool_t result = SchRemove(&pAdvSet->auxAdvBod);
+      SchRemove(&pAdvSet->auxAdvBod);
+    }
 
-      (void)result;
-    }
-    else
-    {
-      /* Last BOD to terminate; send terminate event. */
-      lctrSendAdvSetMsg(pAdvSet, LCTR_EXT_ADV_MSG_TERMINATE);
-    }
+    /* Last BOD to terminate; send terminate event. */
+    lctrSendAdvSetMsg(pAdvSet, LCTR_EXT_ADV_MSG_TERMINATE);
+
     return;
 
   } while (FALSE);
@@ -728,18 +724,23 @@ void lctrSlvExtAdvEndOp(BbOpDesc_t *pOp)
 
   if ((pAdvSet->param.advEventProp & LL_ADV_EVT_PROP_LEGACY_ADV_BIT) == 0)
   {
-    /* Update superior PDU including AdvA and TgtA. */
-    pAdv->txAdvLen = lctrPackAdvExtIndPdu(pAdvSet, pAdvSet->advHdrBuf, FALSE);
+    bool_t modified = pAdvSet->advData.alt.ext.modified;
 
-    if (pAdvSet->advData.alt.ext.modified &&
-        !pAdvSet->auxBodUsed)
+    /* Update ADV set before building the PDU. */
+    if (pAdvSet->advData.alt.ext.modified)
     {
       pAdvSet->advData.alt.ext.modified = FALSE;
       memcpy(pAdvSet->advData.pBuf, pAdvSet->advData.alt.ext.buf, pAdvSet->advData.alt.ext.len);
       pAdvSet->advData.len = pAdvSet->advData.alt.ext.len;
       pAdvSet->param.advDID = pAdvSet->advData.alt.ext.did;
       pAdvSet->advData.fragPref = pAdvSet->advData.alt.ext.fragPref;
+    }
 
+    /* Update superior PDU including AdvA and TgtA. */
+    pAdv->txAdvLen = lctrPackAdvExtIndPdu(pAdvSet, pAdvSet->advHdrBuf, FALSE);
+
+    if (modified && !pAdvSet->auxBodUsed)
+    {
       /* Advertising offloading to auxiliary channel. */
       if (pAdvSet->pExtAdvAuxPtr)
       {
@@ -912,11 +913,6 @@ void lctrSlvExtAdvEndOp(BbOpDesc_t *pOp)
     uint32_t totalDuration = pOp->minDurUsec;
     uint32_t prefIntervalUsec;
 
-    if (lmgrGetOpFlag(LL_OP_MODE_FLAG_ENA_ADV_DLY))
-    {
-      pOp->dueUsec += BB_BLE_TO_US(lctrCalcAdvDelay());
-    }
-
     if (pAdvSet->auxBodUsed)
     {
       totalDuration += pAdvSet->auxAdvBod.minDurUsec;
@@ -928,10 +924,16 @@ void lctrSlvExtAdvEndOp(BbOpDesc_t *pOp)
     if (pAdvSet->advBodAbort)
     {
       pAdvSet->advBodAbort = FALSE;
-      (void)SchInsertEarlyAsPossible(pOp, 0, LCTR_SCH_MAX_SPAN);
+      SchInsertNextAvailable(pOp);
     }
     else
     {
+      if (lmgrGetOpFlag(LL_OP_MODE_FLAG_ENA_ADV_DLY))
+      {
+        pOp->dueUsec += BB_BLE_TO_US(lctrCalcAdvDelay());
+      }
+
+      /* Scheduling must succeed with LCTR_SCH_MAX_SPAN. */
       (void)SchInsertEarlyAsPossible(pOp, prefIntervalUsec, LCTR_SCH_MAX_SPAN);
     }
   }
@@ -986,18 +988,12 @@ void lctrSlvAuxAdvEndOp(BbOpDesc_t *pOp)
     pAdvSet->shutdown = TRUE;
     pAdvSet->auxBodUsed = FALSE;
 
-    if (pAdvSet->bodTermCnt++ == 0)
-    {
-      /* Ensure all BODs are de-scheduled. */
-      bool_t result = SchRemove(&pAdvSet->advBod);
+    /* Ensure all BODs are de-scheduled. */
+    SchRemove(&pAdvSet->advBod);
 
-      (void)result; /* It is possible to fail to remove BOD when BOD is not in the list(scheduling conflict) or there is not enough time to remove the BOD. */
-    }
-    else
-    {
-      /* Last BOD to terminate; send terminate event. */
-      lctrSendAdvSetMsg(pAdvSet, LCTR_EXT_ADV_MSG_TERMINATE);
-    }
+    /* Last BOD to terminate; send terminate event. */
+    lctrSendAdvSetMsg(pAdvSet, LCTR_EXT_ADV_MSG_TERMINATE);
+
     return;
 
   } while (FALSE);
@@ -1107,6 +1103,7 @@ void lctrSlvPeriodicAdvEndOp(BbOpDesc_t *pOp)
     pAdvSet->perAdvData.alt.ext.modified = FALSE;
     memcpy(pAdvSet->perAdvData.pBuf, pAdvSet->perAdvData.alt.ext.buf, pAdvSet->perAdvData.alt.ext.len);
     pAdvSet->perAdvData.len = pAdvSet->perAdvData.alt.ext.len;
+    pAdvSet->perParam.advDID = pAdvSet->perAdvData.alt.ext.did;
   }
 
   /*** Update operation ***/

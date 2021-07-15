@@ -131,6 +131,57 @@ static inline bool_t lctrIsSetMinUsedChanParamValid(lctrMinUsedChanInd_t *pParam
 
 /*************************************************************************************************/
 /*!
+ *  \brief  Check whether the subrate request parameters are valid.
+ *
+ *  \param  pParam    Subrate request parameter.
+ *
+ *  \return TRUE if parameters are valid, FALSE otherwise.
+ */
+/*************************************************************************************************/
+static inline bool_t lctrIsSubrateReqParamValid(lctrSubrateReq_t *pParam)
+{
+  if ((pParam->srMin < LCTR_MIN_SUBRATE) ||
+      (pParam->srMin > LCTR_MAX_SUBRATE) ||
+      (pParam->srMax < LCTR_MIN_SUBRATE) ||
+      (pParam->srMax > LCTR_MAX_SUBRATE) ||
+      (pParam->srMin > pParam->srMax) ||
+      (pParam->maxLatency > (LCTR_MAX_SUBRATE - 1)) ||
+      (pParam->contNum > (LCTR_MAX_SUBRATE - 1)) ||
+      (pParam->svt < LL_MIN_SUP_TIMEOUT) ||
+      (pParam->svt > LL_MAX_SUP_TIMEOUT))
+  {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Check whether the subrate indication parameters are valid.
+ *
+ *  \param  pParam    Subrate indication parameter.
+ *
+ *  \return TRUE if parameters are valid, FALSE otherwise.
+ */
+/*************************************************************************************************/
+static inline bool_t lctrIsSubrateIndParamValid(lctrSubrateInd_t *pParam)
+{
+  if ((pParam->srFactor < LCTR_MIN_SUBRATE) ||
+      (pParam->srFactor > LCTR_MAX_SUBRATE) ||
+      (pParam->latency > (LCTR_MAX_SUBRATE - 1)) ||
+      (pParam->contNum > (LCTR_MAX_SUBRATE - 1)) ||
+      (pParam->svt < LL_MIN_SUP_TIMEOUT) ||
+      (pParam->svt > LL_MAX_SUP_TIMEOUT))
+  {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/*************************************************************************************************/
+/*!
  *  \brief  Pack an ACL header.
  *
  *  \param  pBuf        Packed packet buffer.
@@ -745,7 +796,7 @@ uint8_t lctrUnpackCisTermPdu(lctrCisTermInd_t *pPdu, const uint8_t *pBuf)
 /*************************************************************************************************/
 static uint8_t lctrUnpackPwrChngIndPdu(lctrPwrChngInd_t *pPdu, const uint8_t *pBuf)
 {
-  const uint8_t len = LL_PWR_CHNG_IND_LEN;
+  const uint8_t len = LL_PWR_CHANGE_IND_LEN;
 
   pBuf += 1;        /* skip opcode */
   BSTREAM_TO_UINT8 (pPdu->phy, pBuf);
@@ -800,6 +851,103 @@ static uint8_t lctrUnpackPwrCtrlRspPdu(lctrPwrCtrlRsp_t *pPdu, const uint8_t *pB
 
   return len;
 }
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Unpack a subrate request PDU.
+ *
+ *  \param  pPdu        Subrate request PDU.
+ *  \param  pBuf        Packed packet buffer.
+ *
+ *  \return PDU length.
+ */
+/*************************************************************************************************/
+static uint8_t lctrUnpackSubrateReqPdu(lctrSubrateReq_t *pPdu, const uint8_t *pBuf)
+{
+  const uint8_t len = LL_SUBRATE_REQ_LEN;
+
+  pBuf += 1;        /* skip opcode */
+  BSTREAM_TO_UINT16(pPdu->srMin, pBuf);
+  BSTREAM_TO_UINT16(pPdu->srMax, pBuf);
+  BSTREAM_TO_UINT16(pPdu->maxLatency, pBuf);
+  BSTREAM_TO_UINT16(pPdu->contNum, pBuf);
+  BSTREAM_TO_UINT16(pPdu->svt, pBuf);
+
+  return len;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Unpack a subrate indication PDU.
+ *
+ *  \param  pPdu        Subrate indication PDU.
+ *  \param  pBuf        Packed packet buffer.
+ *
+ *  \return PDU length.
+ */
+/*************************************************************************************************/
+static uint8_t lctrUnpackSubrateIndPdu(lctrSubrateInd_t *pPdu, const uint8_t *pBuf)
+{
+  const uint8_t len = LL_SUBRATE_IND_LEN;
+
+  pBuf += 1;        /* skip opcode */
+  BSTREAM_TO_UINT16(pPdu->srFactor, pBuf);
+  BSTREAM_TO_UINT16(pPdu->srBaseEvent, pBuf);
+  BSTREAM_TO_UINT16(pPdu->latency, pBuf);
+  BSTREAM_TO_UINT16(pPdu->contNum, pBuf);
+  BSTREAM_TO_UINT16(pPdu->svt, pBuf);
+
+  return len;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Unpack a channel reporting indication pdu
+ *
+ *  \param  pPdu        Channel reporting indication PDU.
+ *  \param  pBuf        Packed packet buffer.
+ *
+ *  \return PDU length.
+ */
+/*************************************************************************************************/
+static uint8_t lctrUnpackChanRptIndPdu(lctrChanRptInd_t *pPdu, const uint8_t *pBuf)
+{
+  const uint8_t len = LL_CH_REPORTING_LEN;
+
+  pBuf += 1;        /* skip opcode */
+  BSTREAM_TO_UINT8 (pPdu->enable, pBuf);
+  BSTREAM_TO_UINT8 (pPdu->minSpacing, pBuf);
+  BSTREAM_TO_UINT8 (pPdu->maxDelay, pBuf);
+
+  return len;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief  Unpack a channel status indication pdu
+ *
+ *  \param  pPdu        Channel status indication PDU.
+ *  \param  pBuf        Packed packet buffer.
+ *
+ *  \return PDU length.
+ */
+/*************************************************************************************************/
+static uint8_t lctrUnpackChanStatusIndPdu(lctrChanStatusInd_t *pPdu, const uint8_t *pBuf)
+{
+  const uint8_t len = LL_CH_STATUS_LEN;
+
+  uint8_t i = 0;
+
+  pBuf += 1;        /* skip opcode */
+  for (i = 0; i < (LL_CH_STATUS_LEN - 1); i++)
+  {
+    /* Leave channel status map packed, unpack as needed. */
+    BSTREAM_TO_UINT8 (pPdu->chanStatusMap[i], pBuf);
+  }
+
+  return len;
+}
+
 /*************************************************************************************************/
 /*!
  *  \brief  Decode an LE-C channel buffer.
@@ -1051,7 +1199,7 @@ uint8_t lctrDecodeCtrlPdu(lctrDataPdu_t *pPdu, const uint8_t *pBuf, uint8_t role
         return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
       }
       break;
-    case LL_PDU_PWR_CHNG_IND:
+    case LL_PDU_PWR_CHANGE_IND:
       if ((lmgrCb.features & LL_FEAT_POWER_CHANGE_IND) == 0)
       {
         return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
@@ -1077,6 +1225,54 @@ uint8_t lctrDecodeCtrlPdu(lctrDataPdu_t *pPdu, const uint8_t *pBuf, uint8_t role
         return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
       }
       if (lctrUnpackPwrCtrlRspPdu(&pPdu->pld.pwrCtrlRsp, pBuf) != pPdu->hdr.len)
+      {
+        return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
+      }
+      break;
+    case LL_PDU_SUBRATE_REQ:
+      if ((lmgrCb.features & LL_FEAT_CONN_SUBRATE) == 0)
+      {
+        return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
+      }
+      if (lctrUnpackSubrateReqPdu(&pPdu->pld.subrateReq, pBuf) != pPdu->hdr.len)
+      {
+        return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
+      }
+      if (lctrIsSubrateReqParamValid(&pPdu->pld.subrateReq) == FALSE)
+      {
+        return LL_ERROR_CODE_INVALID_LMP_PARAMS;
+      }
+      break;
+    case LL_PDU_SUBRATE_IND:
+      if ((lmgrCb.features & LL_FEAT_CONN_SUBRATE) == 0)
+      {
+        return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
+      }
+      if (lctrUnpackSubrateIndPdu(&pPdu->pld.subrateInd, pBuf) != pPdu->hdr.len)
+      {
+        return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
+      }
+      if (lctrIsSubrateIndParamValid(&pPdu->pld.subrateInd) == FALSE)
+      {
+        return LL_ERROR_CODE_INVALID_LMP_PARAMS;
+      }
+      break;
+    case LL_PDU_CH_REPORTING_IND:
+      if ((lmgrCb.features & LL_FEAT_CHANNEL_CLASSIFICATION) == 0)
+      {
+        return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
+      }
+      if (lctrUnpackChanRptIndPdu(&pPdu->pld.chanRptInd, pBuf) != pPdu->hdr.len)
+      {
+        return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
+      }
+      break;
+    case LL_PDU_CH_STATUS_IND:
+      if ((lmgrCb.features & LL_FEAT_CHANNEL_CLASSIFICATION) == 0)
+      {
+        return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
+      }
+      if (lctrUnpackChanStatusIndPdu(&pPdu->pld.chanStatusInd, pBuf) != pPdu->hdr.len)
       {
         return LL_ERROR_CODE_UNKNOWN_LMP_PDU;
       }

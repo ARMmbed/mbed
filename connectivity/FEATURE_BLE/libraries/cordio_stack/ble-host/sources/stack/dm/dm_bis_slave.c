@@ -4,7 +4,7 @@
  *
  *  \brief  DM Broadcast Isochronous Stream (BIS) management for slave.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -103,7 +103,7 @@ typedef struct
   uint32_t                    sduInterval;            /*!< \brief Interval, in microseconds, of BIG SDUs. */
   uint16_t                    maxSdu;                 /*!< \brief Maximum size of SDU. */
   uint16_t                    mtlMs;                  /*!< \brief Maximum time, in milliseconds, for transmitting SDU. */
-  uint8_t                     rtn;                    /*!< \brief Retransmitted number. */
+  uint8_t                     rtn;                    /*!< \brief Retransmission number. */
 } dmBisApiBigStart_t;
 
 /* Data structure for DM_BIS_MSG_API_BIG_STOP */
@@ -651,6 +651,7 @@ static void dmBisMsgHandler(wsfMsgHdr_t *pMsg)
  *  \param  sduInterval   Interval, in microseconds, of BIG SDUs.
  *  \param  maxSdu        Maximum size of SDU.
  *  \param  mtlMs         Maximum time, in milliseconds, for transmitting SDU.
+ *  \param  rtn           Retransmission number.
  *
  *  \return None.
  */

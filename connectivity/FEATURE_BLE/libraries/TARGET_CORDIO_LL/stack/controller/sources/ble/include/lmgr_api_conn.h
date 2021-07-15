@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -53,14 +53,22 @@ typedef struct
 
   uint32_t      dataPendMsk;            /*!< Bitmask of connection handles with new pending data. */
 
+  /* PHY */
   uint8_t       allPhys;                /*!< Default all PHYs. */
   uint8_t       txPhys;                 /*!< Default transmitter PHYs. */
   uint8_t       rxPhys;                 /*!< Default receiver PHYs. */
 
+  /* PAST */
   uint8_t       syncMode;               /*!< Default sync transfer mode. */
   uint16_t      syncSkip;               /*!< Default sync skip for periodic adv sync transfer. */
   uint16_t      syncTimeout;            /*!< Default sync timeout for periodic adv sync transfer. */
 
+  /* Enhanced Connection Update */
+  uint16_t      defSrMin;               /*!< Default subrate minimum value. */
+  uint16_t      defSrMax;               /*!< Default subrate maximum value. */
+  uint16_t      defMaxLatency;          /*!< Default maximum latency. */
+  uint16_t      defContNum;             /*!< Default continuation number. */
+  uint16_t      defSvt;                 /*!< Default supervision timeout. */
 } lmgrConnCtrlBlk_t;
 
 /**************************************************************************************************

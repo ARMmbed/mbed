@@ -79,6 +79,7 @@ bool_t lhciIsoVsStdDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
       break;
     }
     case LHCI_OPCODE_VS_GET_CIS_STATS:
+    case LHCI_OPCODE_VS_GET_BIS_STATS:
       evtParamLen += sizeof(BbBleDataPktStats_t);
       break;
 
@@ -104,11 +105,17 @@ bool_t lhciIsoVsStdDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
         UINT32_TO_BSTREAM(pBuf, lhciIsoCb.genPktCnt);
         UINT32_TO_BSTREAM(pBuf, lhciIsoCb.genOctetCnt);
         break;
-
       case LHCI_OPCODE_VS_GET_CIS_STATS:
       {
         BbBleDataPktStats_t stats;
         BbBleGetCisStats(&stats);
+        memcpy(pBuf, (uint8_t *)&stats, sizeof(stats));
+        break;
+      }
+      case LHCI_OPCODE_VS_GET_BIS_STATS:
+      {
+        BbBleDataPktStats_t stats;
+        BbBleGetBisStats(&stats);
         memcpy(pBuf, (uint8_t *)&stats, sizeof(stats));
         break;
       }

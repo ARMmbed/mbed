@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -191,6 +191,7 @@ typedef struct
   BbBleData_t       scanBleData;        /*!< BLE BB operation data. */
   BbOpDesc_t        auxScanBod;         /*!< Auxiliary scan BOD. */
   BbBleData_t       auxBleData;         /*!< Auxiliary BLE BB operation data. */
+  bool_t            scheduleAuxAsap;    /*!< Signal BB to program Aux Scan. */
 } lctrExtScanCtx_t;
 
 /*! \brief      Extended scanning control block. */
@@ -234,6 +235,7 @@ typedef struct
   bool_t            cancelByHost;       /*!< Cancel command was issued from host. */
   bool_t            firstPerAdvRcv;     /*!< True if first periodic advertising packet is received. */
   bool_t            repDisabled;        /*!< Reporting disabled. */
+  bool_t            dupFilterEnable;    /*!< Filtering by ADI field enabled. */
   bool_t            bodAborted;         /*!< Tue if periodic scan BOD was aborted. */
   uint8_t           createDispId;       /*!< Dispatcher id to tell if periodic sync was created or transferred. */
   lctrTermHdlr_t    termCback;          /*!< Termination callback. */
@@ -257,13 +259,14 @@ typedef struct
   uint32_t          lastAnchorPointUsec;/*!< Last anchor point in microseconds. */
   uint16_t          lastActiveEvent;    /*!< Last active event counter. */
   uint16_t          initEventCounter;   /*!< Initial event counter received from sync_info. */
+  uint16_t          lastDid;            /*!< Last ADI received, if applicable. */
 
   /* ACAD */
   lctrAcadParam_t   acadParams[LCTR_ACAD_NUM_ID]; /*!< ACAD control block array. */
 
   /* Local periodic scanning parameters */
   uint16_t          skip;               /*!< Skip. */
-  uint16_t          syncTimeOutMs;      /*!< Synchronization Timeout in Milliseconds. */
+  uint32_t          syncTimeOutMs;      /*!< Synchronization Timeout in Milliseconds. */
 
   /* Filtering parameters */
   bbBlePerPduFiltParams_t   filtParam;  /*!< Periodic scan filter parameters. */
@@ -356,12 +359,14 @@ void lctrMstPerScanTransferOpCommit(uint16_t connHandle);
 bool_t lctrMstDiscoverRxExtAdvPktHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBuf);
 void lctrMstDiscoverRxExtAdvPktPostProcessHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBuf);
 bool_t lctrMstDiscoverRxAuxAdvPktHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBuf);
+void lctrMstDiscoverRxAuxAdvPktPostProcessHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBuf);
 bool_t lctrMstDiscoverRxAuxScanRspHandler(BbOpDesc_t *pOp, const uint8_t *pRspBuf);
 uint32_t lctrMstDiscoverRxAuxChainHandler(BbOpDesc_t *pOp, const uint8_t *pChainBuf);
 bool_t lctrMstDiscoverRxAuxChainPostProcessHandler(BbOpDesc_t *pOp, const uint8_t *pChainBuf);
 bool_t lctrMstDiscoverRxLegacyAdvPktHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBuf);
 bool_t lctrMstDiscoverTxLegacyScanReqHandler(BbOpDesc_t *pOp, const uint8_t *pReqBuf);
 bool_t lctrMstDiscoverRxLegacyScanRspHandler(BbOpDesc_t *pOp, const uint8_t *pRspBuf);
+bool_t lctrMstLinkAuxOffsetScanSetup(BbOpDesc_t *pBod, uint32_t refTime, uint32_t remScanDur);
 /* ISR: Discovery BOD handlers */
 void lctrMstExtDiscoverEndOp(BbOpDesc_t *pOp);
 void lctrMstExtDiscoverAbortOp(BbOpDesc_t *pOp);

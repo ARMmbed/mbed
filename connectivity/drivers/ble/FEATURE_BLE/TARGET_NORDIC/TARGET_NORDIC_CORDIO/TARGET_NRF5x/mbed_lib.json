@@ -8,7 +8,7 @@
         },
         "hci-driver-buffer-size": {
             "help": "Defines the memory to be allocated by the NRFCordiHciDriver.",
-            "value": 12500
+            "value": 16368
         },
         "wsf-pool-buffer-size": {
             "help": "Defines the memory allocated for the wsf memory pool.",
@@ -17,7 +17,7 @@
     },
     "target_overrides": {
         "MCU_NRF52840": {
-            "hci-driver-buffer-size": 16056
+            "hci-driver-buffer-size": 16368
         }
     },
     "macros": [
@@ -28,6 +28,9 @@
         "INIT_ENCRYPTED",
         "LHCI_ENABLE_VS=0",
         "BB_CLK_RATE_HZ=1000000",
-        "LL_MAX_PER_SCAN=3"
+        "LL_MAX_PER_SCAN=3",
+        "NRFX_RTC_ENABLED=1",
+        "NRFX_RTC2_ENABLED=1",
+        "NRFX_CLOCK_ENABLED=1"
     ]
 }

@@ -51,11 +51,13 @@ static void lctrNotifyHostBigCreateSyncComplete(lctrBigCtx_t *pBigCtx, LlStatus_
     evt.irc = pBigCtx->irc;
     evt.maxPdu = pBigCtx->maxPdu;
     evt.isoInterval = LL_MATH_DIV_1250(pBigCtx->isoInterUsec);
-    evt.numBis = pBigCtx->numBis;
 
-    for (unsigned int i = 0; i < evt.numBis; i++)
+    for (unsigned int i = 0; i < LL_MAX_BIS; i++)
     {
-      evt.bisHandle[i] = pBigCtx->pBisCtx[i]->handle;
+      if (pBigCtx->pBisCtx[i])
+      {
+        evt.bisHandle[evt.numBis++] = pBigCtx->pBisCtx[i]->handle;
+      }
     }
   }
 
@@ -152,12 +154,42 @@ void lctrMstBigActBigSync(lctrBigCtx_t *pBigCtx)
   for (unsigned int i = 0; i < pBigInfo->numBis; i++)
   {
     lctrBisCtx_t *pBisCtx;
+    unsigned int j;
 
-    /* Availability is verified on BIG Create Sync command. */
-    pBisCtx = lctrAllocBisCtx(pBigCtx);
-    WSF_ASSERT(pBisCtx);
+    for (j = 0; j < pBigCtx->roleData.mst.numBisIdx; j++)
+    {
+      /* Check host BIS filter. */
+      if (pBigCtx->roleData.mst.bisIdx[j] == (i + 1))
+      {
+        /* Availability is verified on BIG Create Sync command. */
+        pBisCtx = lctrAllocBisCtx(pBigCtx);
+        WSF_ASSERT(pBisCtx);
 
-    lctrSetupBisContext(pBisCtx, pBigInfo->seedAccAddr, pBigInfo->baseCrcInit, pBigInfo->chanMap, pBigInfo->phy);
+        lctrSetupBisContext(pBisCtx, pBigInfo->seedAccAddr, pBigInfo->baseCrcInit, pBigInfo->chanMap, pBigInfo->phy);
+
+        if (pBigCtx->roleData.mst.pFirstBisCtx == NULL)
+        {
+          /* Optimize ISR by reducing lookup on every event; store first BIS. */
+          pBigCtx->roleData.mst.pFirstBisCtx = pBisCtx;
+          pBigCtx->roleData.mst.firstBisOffsUsec = pBigCtx->bisSpaceUsec * i;
+          pBigCtx->roleData.mst.firstBisEvtIdx = i;
+        }
+        else if (pBigCtx->roleData.mst.pSecondBisCtx == NULL)
+        {
+          /* Optimize ISR by reducing lookup on every event; store second BIS; NULL if none. */
+          pBigCtx->roleData.mst.pSecondBisCtx = pBisCtx;
+        }
+
+        break;
+      }
+
+    }
+
+    if (j == pBigCtx->roleData.mst.numBisIdx)
+    {
+      /* Disable BIS subevent. */
+      pBigCtx->pBisCtx[pBigCtx->numBis++] = NULL;
+    }
   }
 
   lctrMstBigBuildOp(pBigCtx, &pLctrMstBigMsg->bigInfo.data);
@@ -176,13 +208,9 @@ void lctrMstBigActBigSync(lctrBigCtx_t *pBigCtx)
 /*************************************************************************************************/
 void lctrMstBigActTerm(lctrBigCtx_t *pBigCtx)
 {
-  BbStop(BB_PROT_BLE);
+  /* Shutdown completes with events generated in BOD end callback. */
 
-  lctrFreeBigCtx(pBigCtx);
-
-  LmgrDecResetRefCount();
-
-  lctrNotifyHostSyncLost(pBigCtx->handle, pBigCtx->bcp.term.reason);
+  pBigCtx->roleData.mst.syncLostReason = pBigCtx->bcp.term.reason;
 }
 
 /*************************************************************************************************/
@@ -194,12 +222,7 @@ void lctrMstBigActTerm(lctrBigCtx_t *pBigCtx)
 /*************************************************************************************************/
 void lctrMstBigActShutdown(lctrBigCtx_t *pBigCtx)
 {
-  /* By removing BOD from scheduler, BOD end callback will be called. */
-  /* Shutdown completes with events generated in BOD end callback.    */
-  if (!SchRemove(&pBigCtx->bod))
-  {
-    lctrMstBigSendMsg(pBigCtx, LCTR_MST_BIG_INT_TERMINATED_SYNC);
-  }
+  /* Shutdown completes with events generated in BOD end callback. */
 
   if (pBigCtx->state == LCTR_MST_BIG_STATE_SYNCING)
   {
@@ -216,12 +239,7 @@ void lctrMstBigActShutdown(lctrBigCtx_t *pBigCtx)
 /*************************************************************************************************/
 void lctrMstBigActSyncLost(lctrBigCtx_t *pBigCtx)
 {
-  /* By removing BOD from scheduler, BOD end callback will be called. */
-  /* Shutdown completes with events generated in BOD end callback.    */
-  if (!SchRemove(&pBigCtx->bod))
-  {
-    lctrMstBigSendMsg(pBigCtx, LCTR_MST_BIG_INT_TERMINATED_SYNC);
-  }
+  /* Shutdown completes with events generated in BOD end callback. */
 
   pBigCtx->roleData.mst.syncLostReason = LL_ERROR_CODE_CONN_TIMEOUT;
 }
@@ -235,12 +253,7 @@ void lctrMstBigActSyncLost(lctrBigCtx_t *pBigCtx)
 /*************************************************************************************************/
 void lctrMstBigActMicFailed(lctrBigCtx_t *pBigCtx)
 {
-  /* By removing BOD from scheduler, BOD end callback will be called. */
-  /* Shutdown completes with events generated in BOD end callback.    */
-  if (!SchRemove(&pBigCtx->bod))
-  {
-    lctrMstBigSendMsg(pBigCtx, LCTR_MST_BIG_INT_TERMINATED_SYNC);
-  }
+  /* Shutdown completes with events generated in BOD end callback. */
 
   pBigCtx->roleData.mst.syncLostReason = LL_ERROR_CODE_CONN_TERM_MIC_FAILURE;
 }

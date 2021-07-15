@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -117,6 +117,15 @@ extern "C" {
 /*! \brief      Change supervision timeout value to us. */
 #define LCTR_SUP_TIMEOUT_VAL_TO_US(x)                (x * 10000)
 
+/*! \brief      Array size of running average arrays, derived from LL_PC_TBL_LEN. */
+#define LL_PC_TBL_LEN                                (1 << LL_PC_TBL_POW)
+
+/*! \brief      Calculate microsecond format from channel reporting parameter (200 millisecond ticks). */
+#define LCTR_CH_RPT_IND_US(x)                        ((((uint64_t) x) * 200) * 1000)
+
+/*! \brief      Calculate microsecond format from channel reporting parameter (200 millisecond ticks). */
+#define LCTR_CH_RPT_IND_US(x)    ((((uint64_t) x) * 200) * 1000)
+
 /**************************************************************************************************
   Data Types
 **************************************************************************************************/
@@ -135,6 +144,15 @@ typedef void (*LctrRmCback_t)(uint32_t rsvnOffs[], uint32_t refTime);
 
 /*! \brief      Channel class update handler call signature. */
 typedef uint8_t (*lctrChClassHdlr_t)(uint64_t chanMap);
+
+/*! \brief      RSSI running average data type. */
+typedef struct
+{
+  int8_t averageRssi[LL_PC_TBL_LEN];
+                                    /*!< Running average RSSI. */
+  uint8_t rssiIdx;                  /*!< Running average RSSI index. */
+  uint8_t avgCount;                 /*!< Count of average entries since last reset. */
+} lctrRssiRunAvg_t;
 
 /**************************************************************************************************
   Globals
@@ -163,6 +181,10 @@ void lctrPeriodicBuildRemapTable(lmgrChanParam_t *pChanParam);
 uint16_t lctrCalcTotalAccuracy(uint8_t mstScaIdx);
 uint32_t lctrComputeCrcInit(void);
 uint32_t lctrCalcWindowWideningUsec(uint32_t unsyncTimeUsec, uint32_t caPpm);
+
+/* RSSI Averaging. */
+int8_t lctrRssiGetAverage(lctrRssiRunAvg_t *pAvg);
+void lctrRssiAddAveragePoint(lctrRssiRunAvg_t *pAvg, int8_t value);
 
 /* Host events */
 void lctrNotifyHostHwErrInd(uint8_t code);

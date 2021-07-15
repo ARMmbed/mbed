@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2009-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
  *  limitations under the License.
  *
  *  This module implements core platform-dependent HCI features for transmit data path, receive
- *  data path, the “optimization” API, and the main event handler. This module contains separate
+ *  data path, the 'optimization' API, and the main event handler. This module contains separate
  *  implementations for dual chip and single chip.
  */
 /*************************************************************************************************/
@@ -38,6 +38,8 @@
 #include "hci_evt.h"
 #include "hci_api.h"
 #include "hci_main.h"
+
+#include "mbed_wsf_trace.h"
 
 /*************************************************************************************************/
 /*!
@@ -65,8 +67,13 @@ void hciCoreNumCmplPkts(uint8_t *pMsg)
   uint8_t         numHandles;
   uint16_t        bufs;
   uint16_t        handle;
+
   uint8_t         availBufs = 0;
   hciCoreConn_t   *pConn;
+
+  uint8_t         isoAvailBufs = 0;
+  hciCoreCis_t    *pCis;
+  hciCoreBis_t    *pBis;
 
   /* parse number of handles */
   BSTREAM_TO_UINT8(numHandles, pMsg);
@@ -96,10 +103,39 @@ void hciCoreNumCmplPkts(uint8_t *pMsg)
         (*hciCb.flowCback)(handle, FALSE);
       }
     }
+
+    else if ((pCis = isoFcnIfTbl[HCI_CORE_CIS]->findByHandle(handle)) != NULL)
+    {
+      pCis->txCb.outBufs -= (uint8_t) bufs;
+
+      isoAvailBufs += (uint8_t) bufs;
+
+      /* TODO: Flow control callback once CIS fragmentation is implemented. */
+    }
+
+    else if ((pBis = isoFcnIfTbl[HCI_CORE_BIS]->findByHandle(handle)) != NULL)
+    {
+      if (pBis->pBig->role == HCI_ROLE_MASTER)
+      {
+        /* Should not happen, but protect the master role data. */
+        HCI_TRACE_WARN1("BIS Master received NUM_CMPL_PKTS evt. Handle=%d", pBis->handle);
+        isoAvailBufs += (uint8_t) bufs;
+        return;
+      }
+
+      pBis->roleData.slv.txCb.outBufs -= (uint8_t) bufs;
+
+      isoAvailBufs += (uint8_t) bufs;
+
+      /* TODO: Flow control callback once BIS fragmentation is implemented. */
+    }
   }
 
-  /* service TX data path */
+  /* service ACL TX data path */
   hciCoreTxReady(availBufs);
+
+  /* service ISO TX datapath */
+  hciIsoTxReadyCb(isoAvailBufs);
 }
 
 /*************************************************************************************************/
@@ -193,15 +229,10 @@ void HciCoreHandler(wsfEventMask_t event, wsfMsgHdr_t *pMsg)
       /* Handle ISO data */
       else
       {
-        if (hciCb.isoCback)
+        if ((pBuf = hciIsoReassembleCb(pBuf)) != NULL)
         {
           /* Call ISO callback; client will free buffer */
           hciCb.isoCback(pBuf);
-        }
-        else
-        {
-          /* free buffer */
-          WsfMsgFree(pBuf);
         }
       }
     }

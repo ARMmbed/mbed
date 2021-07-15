@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2010-2018 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -45,6 +45,9 @@
 #ifndef SMP_DHKEY_QUAL_INCLUDED
 #define SMP_DHKEY_QUAL_INCLUDED FALSE
 #endif
+
+/* Min number of differences required in the bits of the local and peer public keys */
+#define SMP_PUBLIC_KEY_DELTA_REQUIRED           2
 
 /**************************************************************************************************
   Global Variables
@@ -496,32 +499,71 @@ void smpScActAuthSelect(smpCcb_t *pCcb, smpMsg_t *pMsg)
 {
   wsfMsgHdr_t hdr;
   uint8_t *pPacket = pMsg->data.pPacket + L2C_PAYLOAD_START;
+  uint16_t deltaCnt = 0;
 
   /* Process public key from peer (store in MSB first format) */
   WStrReverseCpy(pCcb->pScCcb->pPeerPublicKey->pubKeyX, &pPacket[SMP_PUB_KEY_X_POS], SMP_PUB_KEY_LEN);
   WStrReverseCpy(pCcb->pScCcb->pPeerPublicKey->pubKeyY, &pPacket[SMP_PUB_KEY_Y_POS], SMP_PUB_KEY_LEN);
 
-  /* Message state machine indicating authorization mode (JW, OOB, or passkey) */
+  /* Verify the peer and local keys do not match and are also not the same except for one bit */
+  for (uint8_t i = 0; i < SMP_PUB_KEY_LEN; i++)
+  {
+    uint8_t peerByteX = pCcb->pScCcb->pPeerPublicKey->pubKeyX[i];
+    uint8_t peerByteY = pCcb->pScCcb->pPeerPublicKey->pubKeyY[i];
+    uint8_t localByteX = pCcb->pScCcb->pLocalPublicKey->pubKeyX[i];
+    uint8_t localByteY = pCcb->pScCcb->pLocalPublicKey->pubKeyY[i];
+
+    for (uint8_t j = 0; j < 8; j++)
+    {
+      if ((peerByteX & (1 << j)) != (localByteX & (1 << j)))
+      {
+        deltaCnt++;
+      }
+
+      if ((peerByteY & (1 << j)) != (localByteY & (1 << j)))
+      {
+        deltaCnt++;
+      }
+    }
+
+    if (deltaCnt >= SMP_PUBLIC_KEY_DELTA_REQUIRED)
+    {
+      break;
+    }
+  }
+  
+  /* Setup message */
   hdr.param = pCcb->connId;
 
-  switch(pCcb->pScCcb->authType)
+  if (deltaCnt < SMP_PUBLIC_KEY_DELTA_REQUIRED)
   {
-  case SMP_AUTH_TYPE_NUM_COMP:
-  case SMP_AUTH_TYPE_JUST_WORKS:
-    hdr.event = SMP_MSG_INT_JW_NC;
-    break;
-  case SMP_AUTH_TYPE_OOB:
-    hdr.event = SMP_MSG_INT_OOB;
-    break;
-  case SMP_AUTH_TYPE_PASSKEY:
-    hdr.event = SMP_MSG_INT_PASSKEY;
-    break;
-  default:
+    /* Cancel pairing */
     hdr.status = SMP_ERR_UNSPECIFIED;
     hdr.event = SMP_MSG_API_CANCEL_REQ;
-    break;
+  }
+  else
+  {
+    /* Select authorization mode (JW, OOB, or passkey) */
+    switch(pCcb->pScCcb->authType)
+    {
+    case SMP_AUTH_TYPE_NUM_COMP:
+    case SMP_AUTH_TYPE_JUST_WORKS:
+      hdr.event = SMP_MSG_INT_JW_NC;
+      break;
+    case SMP_AUTH_TYPE_OOB:
+      hdr.event = SMP_MSG_INT_OOB;
+      break;
+    case SMP_AUTH_TYPE_PASSKEY:
+      hdr.event = SMP_MSG_INT_PASSKEY;
+      break;
+    default:
+      hdr.status = SMP_ERR_UNSPECIFIED;
+      hdr.event = SMP_MSG_API_CANCEL_REQ;
+      break;
+    }
   }
 
+  /* Message state machine */
   smpSmExecute(pCcb, (smpMsg_t *) &hdr);
 }
 

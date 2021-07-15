@@ -168,12 +168,12 @@ static void lctrNotifyHostCisReq(lctrCisCtx_t *pCisCtx)
 {
   LlCisReqInd_t evt =
   {
-      .hdr =
-      {
-          .param         = pCisCtx->cisHandle,
-          .event         = LL_CIS_REQ_IND,
-          .status        = LL_SUCCESS
-      }
+    .hdr =
+    {
+      .param         = pCisCtx->cisHandle,
+      .event         = LL_CIS_REQ_IND,
+      .status        = LL_SUCCESS
+    }
   };
 
   evt.aclHandle     = pCisCtx->aclHandle;
@@ -181,7 +181,7 @@ static void lctrNotifyHostCisReq(lctrCisCtx_t *pCisCtx)
   evt.cigId         = pCisCtx->cigId;
   evt.cisId         = pCisCtx->cisId;
 
-  LL_TRACE_INFO1("### LlEvent ###  LL_CIS_REQ_IND, cisHandle=%u", pCisCtx->cisHandle);
+  LL_TRACE_INFO3("### LlEvent ###  LL_CIS_REQ_IND, cisHandle=%u cigId=%u cisId=%u", pCisCtx->cisHandle, pCisCtx->cigId, pCisCtx->cisId);
 
   bool_t evtSent = LmgrSendEvent((LlEvt_t *)&evt);
 
@@ -363,7 +363,7 @@ void lctrSlvCisLlcpActPeerCisInd(lctrConnCtx_t *pCtx, lctrCisCtx_t *pCisCtx)
       {
         /* If the anchor point of the stream is before end of the first stream, it is interleaved packing scheme. */
         if (BbGetTargetTimeDelta(cigRefTime + pHeadCisCtx->subIntervUsec,
-				 pCisCtx->data.slv.anchorOffsetUsec + pCtx->data.slv.anchorPointUsec + LCTR_CONN_IND_US(pCtx->connInterval)) > 0)
+                                 pCisCtx->data.slv.anchorOffsetUsec + pCtx->data.slv.anchorPointUsec + LCTR_CONN_IND_US(pCtx->connInterval)) > 0)
         {
           pCigCtx->packing = LL_PACKING_INTERLEAVED;
         }

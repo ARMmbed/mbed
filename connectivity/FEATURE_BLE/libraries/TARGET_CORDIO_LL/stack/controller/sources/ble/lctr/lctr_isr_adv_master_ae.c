@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@
 #include "lctr_api_bis_master.h"
 #include "sch_api.h"
 #include "sch_api_ble.h"
+#include "bb_ble_api_op.h"
 #include "bb_ble_api_reslist.h"
 #include "bb_ble_api_whitelist.h"
 #include "bb_ble_api_periodiclist.h"
@@ -881,6 +882,40 @@ bool_t lctrMstDiscoverRxExtAdvPktHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBuf
 
 /*************************************************************************************************/
 /*!
+ *  \brief      Check if an Aux Scan should be programmed ASAP because of a too small auxOffset.
+ *
+ *  \param      pBod        Originating operation.
+ *  \param      refTime     Refference time in microseconds
+ *  \param      remScanDur  Remaining scan duration in microseconds
+ *
+ *  \return     TRUE if Aux Scan was programmed, FALSE otherwise.
+ */
+/*************************************************************************************************/
+bool_t lctrMstLinkAuxOffsetScanSetup(BbOpDesc_t *pBod, uint32_t refTime, uint32_t remScanDur)
+{
+  bool_t result = FALSE;
+  lctrExtScanCtx_t * const pExtScanCtx = pBod->pCtx;
+  BbOpDesc_t * const pAuxBod = &pExtScanCtx->auxScanBod;
+
+  if (pExtScanCtx->scheduleAuxAsap == TRUE)
+  {
+    pExtScanCtx->scheduleAuxAsap = FALSE;
+
+    /* Check if Aux Scan can be programmed in the remaining Ext Scan duration. */
+    if (BbGetTargetTimeDelta(pAuxBod->dueUsec + pAuxBod->minDurUsec, refTime) < remScanDur)
+    {
+      /* The Aux Scan will run in the context of the Ext Scan BOD. */
+      pBod->prot.pBle->op.mstAdv.auxScanBod = pAuxBod;
+      BbMstExecuteLinkedAuxScanOp(pAuxBod, &pExtScanCtx->auxBleData);
+      result = TRUE;
+    }
+  }
+
+  return result;
+}
+
+/*************************************************************************************************/
+/*!
  *  \brief      Extended scan discover state advertising packet receive (primary channel)
  *              post process handler.
  *
@@ -947,12 +982,6 @@ void lctrMstDiscoverRxExtAdvPktPostProcessHandler(BbOpDesc_t *pOp, const uint8_t
         else
         {
           /* Delay Non-connectable and non-scannable with auxiliary packet PDU filtering in the AUX_ADV_IND.*/
-          lctrMstExtScanIsr.advAReceived = FALSE;
-          lctrMstExtScanIsr.tgtAReceived = FALSE;
-          lctrMstExtScanIsr.advA = 0;
-          lctrMstExtScanIsr.tgtA = 0;
-          lctrMstExtScanIsr.advARand = 0;
-          lctrMstExtScanIsr.tgtARand = 0;
 
           /* Retrieve advA and tgtA if present. */
           if (extAdvHdrFlags & LL_EXT_HDR_ADV_ADDR_BIT)
@@ -961,11 +990,24 @@ void lctrMstDiscoverRxExtAdvPktPostProcessHandler(BbOpDesc_t *pOp, const uint8_t
             lctrMstExtScanIsr.advA = pExtScanCtx->extAdvHdr.advAddr;
             lctrMstExtScanIsr.advARand = advHdr.txAddrRnd;
           }
+          else
+          {
+            lctrMstExtScanIsr.advAReceived = FALSE;
+            lctrMstExtScanIsr.advA = 0;
+            lctrMstExtScanIsr.advARand = 0;
+          }
+          
           if (extAdvHdrFlags & LL_EXT_HDR_TGT_ADDR_BIT)
           {
             lctrMstExtScanIsr.tgtAReceived = TRUE;
             lctrMstExtScanIsr.tgtA = pExtScanCtx->extAdvHdr.tgtAddr;
             lctrMstExtScanIsr.tgtARand = advHdr.rxAddrRnd;
+          }
+          else
+          {
+            lctrMstExtScanIsr.tgtAReceived = FALSE;
+            lctrMstExtScanIsr.tgtA = 0;
+            lctrMstExtScanIsr.tgtARand = 0;
           }
         }
       }
@@ -1201,98 +1243,7 @@ bool_t lctrMstDiscoverRxAuxAdvPktHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBuf
         /* Continue processing for sync establishment filter even when scan filtering failed. */
       }
 
-      /*** Periodic advertising event filtering. ***/
-      bool_t advAMatch = FALSE;
-      uint64_t peerIdAddr = 0;
-      uint8_t peerIdAddrType = 0;
-
-      BbBlePduFiltResultsGetPeerIdAddr(&pAuxScan->filtResults, &peerIdAddr, &peerIdAddrType);
-
-      if ((lctrPerCreateSync.state == LCTR_CREATE_SYNC_STATE_DISCOVER) &&
-          (lctrMstPerScanIsr.filtResult == FALSE))
-      {
-        if ((lctrPerCreateSync.filtParam.advSID != pExtScanCtx->extAdvHdr.sid) ||
-            (lctrPerCreateSync.filtParam.advAddrType != (peerIdAddrType & LL_ADDR_RANDOM_BIT)) ||
-            (lctrPerCreateSync.filtParam.advAddr != peerIdAddr))
-        {
-          /* Address type, address or SID does not match. */
-          lctrMstPerScanIsr.filtResult = TRUE;
-        }
-      }
-
-      if ((lctrPerCreateSync.state == LCTR_CREATE_SYNC_STATE_DISCOVER) &&
-          (lctrMstPerScanIsr.filtResult == TRUE) &&
-          (lctrMstExtScanIsr.extAdvHdrFlags & LL_EXT_HDR_ADI_BIT) &&
-          ((lctrMstExtScanIsr.extAdvHdrFlags & LL_EXT_HDR_ADV_ADDR_BIT) ||
-           (lctrMstExtScanIsr.extAdvHdrFlags & LL_EXT_HDR_SYNC_INFO_BIT)))
-      {
-        if (lctrPerCreateSync.filtParam.filterPolicy == LL_PER_SCAN_FILTER_PL_BIT)
-        {
-          if ((BbBlePeriodicListCheckAddr((peerIdAddrType & LL_ADDR_RANDOM_BIT), peerIdAddr,
-                                          pExtScanCtx->extAdvHdr.sid)) == FALSE)
-          {
-            /* Not in the periodic list. */
-            break;
-          }
-          else
-          {
-            lctrMstPerScanIsr.filtResult = FALSE;
-            advAMatch = TRUE;
-          }
-        }
-        else
-        {
-          if ((lctrPerCreateSync.filtParam.advSID != pExtScanCtx->extAdvHdr.sid) ||
-              (lctrPerCreateSync.filtParam.advAddrType != (peerIdAddrType & LL_ADDR_RANDOM_BIT)) ||
-              (lctrPerCreateSync.filtParam.advAddr != peerIdAddr))
-          {
-            /* Address type, address or SID does not match. */
-            break;
-          }
-          else
-          {
-            lctrMstPerScanIsr.filtResult = FALSE;
-            advAMatch = TRUE;
-          }
-        }
-      }
-
-      if (pExtScanCtx->extAdvHdr.extHdrFlags & LL_EXT_HDR_SYNC_INFO_BIT)
-      {
-        lctrUnpackSyncInfo(&pExtScanCtx->secSyncInfo, pExtScanCtx->extAdvHdr.pSyncInfo);
-      }
-
-      if ((lctrPerCreateSync.state == LCTR_CREATE_SYNC_STATE_DISCOVER) &&
-          (lctrMstPerScanIsr.filtResult == FALSE) &&
-          (pExtScanCtx->extAdvHdr.extHdrFlags & LL_EXT_HDR_SYNC_INFO_BIT) &&
-          lctrPerCreateSync.createSyncPending == FALSE)
-      {
-        lctrPerScanCtx_t *pPerScanCtx = lctrPerCreateSync.pPerScanCtx;
-        /*** Save peer periodic advertising parameters. ***/
-        pPerScanCtx->eventCounter = pExtScanCtx->secSyncInfo.eventCounter;
-        pPerScanCtx->initEventCounter = pExtScanCtx->secSyncInfo.eventCounter;
-        pPerScanCtx->perInterUsec = LCTR_PER_INTER_TO_US(pExtScanCtx->secSyncInfo.syncInter);
-        pPerScanCtx->sca = pExtScanCtx->secSyncInfo.sca;
-        pPerScanCtx->rxPhys = lctrConvertAuxPtrPhyToBbPhy(pExtScanCtx->priChAuxPtr.auxPhy);
-        pPerScanCtx->skipInterUsec = pPerScanCtx->perInterUsec * pPerScanCtx->skip;
-
-        if (advAMatch == TRUE)
-        {
-          /* AdvA is received in the aux_adv_ind and pass the filtering, save info in the context. */
-          pPerScanCtx->advAddr = peerIdAddr;
-          pPerScanCtx->advAddrType = peerIdAddrType;
-          pPerScanCtx->advSID = pExtScanCtx->extAdvHdr.sid;
-
-          /* Address to be used for sync transfer. */
-          pPerScanCtx->trsfAdvAddr = pExtScanCtx->extAdvHdr.advAddr;
-          pPerScanCtx->trsfAddrType = lctrMstExtScanIsr.advHdr.txAddrRnd;
-        }
-
-        uint32_t endTs = pAuxScan->auxStartTsUsec +
-                         SchBleCalcAdvPktDurationUsec(pBle->chan.rxPhy, pAuxScan->auxRxPhyOptions, pAuxScan->txAuxReqLen);
-        lctrMstPerScanOpCommit(pExtScanCtx, &pExtScanCtx->priChAuxPtr, &pExtScanCtx->secSyncInfo, pAuxScan->auxStartTsUsec, endTs);
-        lctrMstPerScanIsr.syncWithSlave = FALSE;
-      }
+      /*** Periodic advertising event filtering done in post process. ***/
       break;
     }
 
@@ -1396,6 +1347,131 @@ bool_t lctrMstDiscoverRxAuxAdvPktHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBuf
   pExtScanCtx->data.scan.auxAdvRpt.rssi = pAuxScan->auxAdvRssi;
 
   return txScanReq;
+}
+
+/*************************************************************************************************/
+/*!
+ *  \brief      Auxiliary scan discover state advertising packet receive
+ *              post process handler.
+ *
+ *  \param      pOp     Originating operation.
+ *  \param      pAdvBuf Received advertising buffer.
+ *
+ */
+/*************************************************************************************************/
+void lctrMstDiscoverRxAuxAdvPktPostProcessHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBuf)
+{
+  WSF_ASSERT(pOp->protId == BB_PROT_BLE);
+  WSF_ASSERT(pOp->prot.pBle->chan.opType == BB_BLE_OP_MST_AUX_ADV_EVENT);
+
+  BbBleData_t * const pBle = pOp->prot.pBle;
+  BbBleMstAuxAdvEvent_t * const pAuxScan = &pBle->op.mstAuxAdv;
+  lctrExtScanCtx_t * pExtScanCtx = pOp->pCtx;
+
+  /*** Periodic advertising event filtering. ***/
+
+  switch (lctrMstExtScanIsr.advHdr.pduType)
+  {
+    case LL_PDU_AUX_ADV_IND:
+    {
+      bool_t advAMatch = FALSE;
+      uint64_t peerIdAddr = 0;
+      uint8_t peerIdAddrType = 0;
+
+      BbBlePduFiltResultsGetPeerIdAddr(&pAuxScan->filtResults, &peerIdAddr, &peerIdAddrType);
+
+      if ((lctrPerCreateSync.state == LCTR_CREATE_SYNC_STATE_DISCOVER) &&
+          (lctrMstPerScanIsr.filtResult == FALSE))
+      {
+        if ((lctrPerCreateSync.filtParam.advSID != pExtScanCtx->extAdvHdr.sid) ||
+            (lctrPerCreateSync.filtParam.advAddrType != (peerIdAddrType & LL_ADDR_RANDOM_BIT)) ||
+            (lctrPerCreateSync.filtParam.advAddr != peerIdAddr))
+        {
+          /* Address type, address or SID does not match. */
+          lctrMstPerScanIsr.filtResult = TRUE;
+        }
+      }
+
+      if ((lctrPerCreateSync.state == LCTR_CREATE_SYNC_STATE_DISCOVER) &&
+          (lctrMstPerScanIsr.filtResult == TRUE) &&
+          (lctrMstExtScanIsr.extAdvHdrFlags & LL_EXT_HDR_ADI_BIT) &&
+          ((lctrMstExtScanIsr.extAdvHdrFlags & LL_EXT_HDR_ADV_ADDR_BIT) ||
+           (lctrMstExtScanIsr.extAdvHdrFlags & LL_EXT_HDR_SYNC_INFO_BIT)))
+      {
+        if (lctrPerCreateSync.filtParam.filterPolicy == LL_PER_SCAN_FILTER_PL_BIT)
+        {
+          if ((BbBlePeriodicListCheckAddr((peerIdAddrType & LL_ADDR_RANDOM_BIT), peerIdAddr,
+                                          pExtScanCtx->extAdvHdr.sid)) == FALSE)
+          {
+            /* Not in the periodic list. */
+            break;
+          }
+          else
+          {
+            lctrMstPerScanIsr.filtResult = FALSE;
+            advAMatch = TRUE;
+          }
+        }
+        else
+        {
+          if ((lctrPerCreateSync.filtParam.advSID != pExtScanCtx->extAdvHdr.sid) ||
+              (lctrPerCreateSync.filtParam.advAddrType != (peerIdAddrType & LL_ADDR_RANDOM_BIT)) ||
+              (lctrPerCreateSync.filtParam.advAddr != peerIdAddr))
+          {
+            /* Address type, address or SID does not match. */
+            break;
+          }
+          else
+          {
+            lctrMstPerScanIsr.filtResult = FALSE;
+            advAMatch = TRUE;
+          }
+        }
+      }
+
+      if (pExtScanCtx->extAdvHdr.extHdrFlags & LL_EXT_HDR_SYNC_INFO_BIT)
+      {
+        lctrUnpackSyncInfo(&pExtScanCtx->secSyncInfo, pExtScanCtx->extAdvHdr.pSyncInfo);
+      }
+
+      if ((lctrPerCreateSync.state == LCTR_CREATE_SYNC_STATE_DISCOVER) &&
+          (lctrMstPerScanIsr.filtResult == FALSE) &&
+          (pExtScanCtx->extAdvHdr.extHdrFlags & LL_EXT_HDR_SYNC_INFO_BIT) &&
+          lctrPerCreateSync.createSyncPending == FALSE)
+      {
+        lctrPerScanCtx_t *pPerScanCtx = lctrPerCreateSync.pPerScanCtx;
+        /* Save peer periodic advertising parameters. */
+        pPerScanCtx->eventCounter = pExtScanCtx->secSyncInfo.eventCounter;
+        pPerScanCtx->initEventCounter = pExtScanCtx->secSyncInfo.eventCounter;
+        pPerScanCtx->perInterUsec = LCTR_PER_INTER_TO_US(pExtScanCtx->secSyncInfo.syncInter);
+        pPerScanCtx->sca = pExtScanCtx->secSyncInfo.sca;
+        pPerScanCtx->rxPhys = lctrConvertAuxPtrPhyToBbPhy(pExtScanCtx->priChAuxPtr.auxPhy);
+        pPerScanCtx->skipInterUsec = pPerScanCtx->perInterUsec * pPerScanCtx->skip;
+
+        if (advAMatch == TRUE)
+        {
+          /* AdvA is received in the aux_adv_ind and pass the filtering, save info in the context. */
+          pPerScanCtx->advAddr = peerIdAddr;
+          pPerScanCtx->advAddrType = peerIdAddrType;
+          pPerScanCtx->advSID = pExtScanCtx->extAdvHdr.sid;
+
+          /* Address to be used for sync transfer. */
+          pPerScanCtx->trsfAdvAddr = pExtScanCtx->extAdvHdr.advAddr;
+          pPerScanCtx->trsfAddrType = lctrMstExtScanIsr.advHdr.txAddrRnd;
+        }
+
+        uint32_t endTs = pAuxScan->auxStartTsUsec +
+                         SchBleCalcAdvPktDurationUsec(pBle->chan.rxPhy, pAuxScan->auxRxPhyOptions, pAuxScan->txAuxReqLen);
+        lctrMstPerScanOpCommit(pExtScanCtx, &pExtScanCtx->priChAuxPtr, &pExtScanCtx->secSyncInfo, pAuxScan->auxStartTsUsec, endTs);
+        lctrMstPerScanIsr.syncWithSlave = FALSE;
+      }
+      break;
+    }
+
+    default:
+      LL_TRACE_WARN1("Received advertising PDU with invalid PDU type=%u", lctrMstExtScanIsr.advHdr.pduType);
+      lctrMstExtScanIsr.filtResult = TRUE;
+  }
 }
 
 /*************************************************************************************************/
@@ -1969,6 +2045,10 @@ void lctrMstExtDiscoverEndOp(BbOpDesc_t *pOp)
     return;
   }
 
+  /* Clear Aux Scan BOD link. */
+  pExtScanCtx->scanBleData.op.mstAdv.auxScanOpRunning = FALSE;
+  pExtScanCtx->scanBleData.op.mstAdv.auxScanBod = NULL;
+
   WSF_ASSERT(pOp->protId == BB_PROT_BLE);
   WSF_ASSERT(pOp->prot.pBle->chan.opType == BB_BLE_OP_MST_ADV_EVENT);
 
@@ -2102,7 +2182,7 @@ void lctrMstPerScanEndOp(BbOpDesc_t *pOp)
     skip = 1;
   }
 
-  uint16_t numUnsyncIntervals     = pPerScanCtx->eventCounter - pPerScanCtx->lastActiveEvent;
+  uint16_t numUnsyncIntervals = pPerScanCtx->eventCounter - pPerScanCtx->lastActiveEvent;
 
   while (TRUE)
   {
@@ -2156,6 +2236,8 @@ void lctrMstPerScanAbortOp(BbOpDesc_t *pOp)
 {
   lctrPerScanCtx_t * const pPerScanCtx = pOp->pCtx;
 
+  LL_TRACE_WARN2("!!! Periodic Scan BOD aborted, syncHandle=%u, eventCounter=%u", LCTR_GET_PER_SCAN_HANDLE(pPerScanCtx), pPerScanCtx->eventCounter);
+
   pPerScanCtx->bodAborted = TRUE;
   lctrMstPerScanEndOp(pOp);
 }
@@ -2178,6 +2260,23 @@ uint32_t lctrMstPerScanRxPerAdvPktHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBu
 
   BbBleData_t * const pBle = pOp->prot.pBle;
   lctrPerScanCtx_t * const pPerScanCtx = pOp->pCtx;
+
+  switch (status)
+  {
+    case BB_STATUS_SUCCESS:
+      break;
+    case BB_STATUS_CRC_FAILED:
+      LL_TRACE_WARN3("lctrMstPerScanRxPerAdvPktHandler: BB failed with status=CRC_FAILED, syncHandle=%u, bleChan=%u, eventCounter=%u", LCTR_GET_PER_SCAN_HANDLE(pPerScanCtx), pBle->chan.chanIdx, pPerScanCtx->eventCounter);
+      break;
+    case BB_STATUS_RX_TIMEOUT:
+      LL_TRACE_WARN3("lctrMstPerScanRxPerAdvPktHandler: BB failed with status=RX_TIMEOUT, syncHandle=%u, bleChan=%u, eventCounter=%u", LCTR_GET_PER_SCAN_HANDLE(pPerScanCtx), pBle->chan.chanIdx, pPerScanCtx->eventCounter);
+      break;
+    case BB_STATUS_FAILED:
+      LL_TRACE_WARN3("lctrMstPerScanRxPerAdvPktHandler: BB failed with status=FAILED, syncHandle=%u, bleChan=%u, eventCounter=%u", LCTR_GET_PER_SCAN_HANDLE(pPerScanCtx), pBle->chan.chanIdx, pPerScanCtx->eventCounter);
+      break;
+    default:
+      break;
+  }
 
   /* BB_STATUS_RX_TIMEOUT or BB_STATUS_CRC_FAILED with pAdvBuf NULL. */
   if (pAdvBuf == NULL)
@@ -2216,7 +2315,7 @@ uint32_t lctrMstPerScanRxPerAdvPktHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBu
     lctrMstPerScanIsr.syncWithSlave = TRUE;
   }
 
-  /*** ACAD processing. ***/
+  /*** ACAD processing ***/
 
   lctrMstAcadHandler(pPerScanCtx);
 
@@ -2242,7 +2341,20 @@ uint32_t lctrMstPerScanRxPerAdvPktHandler(BbOpDesc_t *pOp, const uint8_t *pAdvBu
     }
   }
 
-  /*** Periodic Advertising Data processing. ***/
+  /*** ADI Filtering. ***/
+
+  if (pPerScanCtx->dupFilterEnable && (lctrMstExtScanIsr.extAdvHdrFlags & LL_EXT_HDR_ADI_BIT))
+  {
+    /* Duplicate data; do not listen further. */
+    if (pPerScanCtx->extAdvHdr.did == pPerScanCtx->lastDid)
+    {
+      return 0;
+    }
+
+    /* pPerScanCtx->lastDid = pPerScanCtx->extAdvHdr.did; */ /* Done in lctrMstPerScanRxPerAdvPktPostHandler() */
+  }
+
+  /*** Periodic Advertising Data processing ***/
 
   uint32_t auxOffsetUsec = 0;
   if (lctrMstExtScanIsr.extAdvHdrFlags & LL_EXT_HDR_AUX_PTR_BIT)
@@ -2278,6 +2390,20 @@ bool_t lctrMstPerScanRxPerAdvPktPostHandler(BbOpDesc_t *pOp, const uint8_t *pAdv
   if (pPerScanCtx->state == LCTR_PER_SCAN_STATE_SYNC_ESTD)
   {
     WsfTimerStartMs(&pPerScanCtx->tmrSupTimeout, pPerScanCtx->syncTimeOutMs);
+
+    if (pPerScanCtx->dupFilterEnable)
+    {
+      if (lctrMstExtScanIsr.extAdvHdrFlags & LL_EXT_HDR_ADI_BIT)
+      {
+        /* Received this data before, do not listen further. */
+        if (pPerScanCtx->extAdvHdr.did == pPerScanCtx->lastDid)
+        {
+          return FALSE;
+        }
+
+        pPerScanCtx->lastDid = pPerScanCtx->extAdvHdr.did;
+      }
+    }
   }
 
   /* BB_STATUS_RX_TIMEOUT or BB_STATUS_CRC_FAILED with pAdvBuf NULL. */

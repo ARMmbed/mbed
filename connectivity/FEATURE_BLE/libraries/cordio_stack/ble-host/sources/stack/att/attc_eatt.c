@@ -77,26 +77,40 @@ static uint8_t eattcGetFreeSlot(dmConnId_t connId, uint8_t priority, uint16_t da
 
   if (pEattCcb)
   {
-    uint8_t i;
-
-    for (i = 0; i < EATT_CONN_CHAN_MAX; i++)
+    if (pEattCfg->pPriorityTbl)
     {
-      attcCcb_t  *pCcb;
-      uint8_t    slot = i + 1;
+      uint8_t i;
 
-      if ((pCcb = attcCcbByConnId(connId, slot)))
+      for (i = 0; i < EATT_CONN_CHAN_MAX; i++)
       {
+        uint8_t      slot = i + 1;
         eattChanCb_t *pChanCb = &pEattCcb->pChanCb[i];
-  
+      
         if (pChanCb->inUse && (pChanCb->priority >= priority) && (pChanCb->localMtu >= dataLen))
         {
-          if (pCcb->outReq.hdr.event == ATTC_MSG_API_NONE)
+          attcCcb_t *pCcb = attcCcbByConnId(connId, slot);
+          attCcb_t  *pAttCcb = attCcbByConnId(connId);
+
+          if (pAttCcb && !(pAttCcb->sccb[slot].control & ATT_CCB_STATUS_CONTEXT_LOCK))
           {
-            EATT_TRACE_INFO1("eattcGetFreeSlot: allocating slot: %#x", slot);
-            return slot;
+            if (pCcb && (pCcb->outReq.hdr.event == ATTC_MSG_API_NONE))
+            {
+              EATT_TRACE_INFO1("eattcGetFreeSlot: allocating slot: 0x%x", slot);
+          
+              /* Reserve the slot until the API function is processed in the ATT */
+              pAttCcb->sccb[slot].control |= ATT_CCB_STATUS_CONTEXT_LOCK;
+
+              return slot;
+            }
           }
         }
       }
+    }
+    else
+    {
+      /* If pEattCfg->pPriorityTbl is NULL, the priority parameter is the L2CAP channel index for this connection. */
+      WSF_ASSERT(priority < EATT_CONN_CHAN_MAX);
+      return priority + 1;
     }
   }
 
@@ -149,7 +163,7 @@ static void eattcL2cCocDataInd(l2cCocEvt_t *pEvt)
     /* else unknown opcode */
     else
     {
-      ATT_TRACE_WARN1("eattc unknown opcode 0x%02x", opcode);
+      attSendOpNotSupportedErr(pCcb->pMainCcb, pCcb->slot, opcode);
     }
   }
   else
@@ -262,7 +276,7 @@ void eattcSendMsg(dmConnId_t connId, uint8_t priority, uint16_t handle, uint8_t 
     /* allocate message buffer */
     if ((pMsg = WsfMsgAlloc(sizeof(attcApiMsg_t))) != NULL)
     {
-      EATT_TRACE_INFO2("eattcSendMsg: sending event: %#x slot: %#x", msgId, slot);
+      EATT_TRACE_INFO2("eattcSendMsg: sending event: 0x%x slot: 0x%x", msgId, slot);
 
       /* set parameters */
       pMsg->hdr.param = connId;
@@ -274,6 +288,16 @@ void eattcSendMsg(dmConnId_t connId, uint8_t priority, uint16_t handle, uint8_t 
 
       /* send message */
       WsfMsgSend(attCb.handlerId, pMsg);
+    }
+    else
+    {
+      attCcb_t *pAttCcb = attCcbByConnId(connId);
+
+      /* Release the slot */
+      if (pAttCcb)
+      {
+        pAttCcb->sccb[slot].control &= ~ATT_CCB_STATUS_CONTEXT_LOCK;
+      }
     }
   }
   else

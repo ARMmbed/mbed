@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -207,7 +207,11 @@ static void lctrSetCis(lctrCisCtx_t *pCisCtx, LlCisCigParams_t *pSetCigParam, Ll
     pCisCtx->ftMToS = LlMathDivideUint32(pSetCigParam->transLatMToS * 1000, LCTR_ISO_INT_TO_US(pCisCtx->isoInterval));
     pCisCtx->ftSToM = LlMathDivideUint32(pSetCigParam->transLatSToM * 1000, LCTR_ISO_INT_TO_US(pCisCtx->isoInterval));
 
-    if (pCisCtx->sduSizeMToS / pCisCtx->localDataPdu.maxTxLen * pCisCtx->localDataPdu.maxTxLen < pCisCtx->sduSizeMToS)
+    if (pCisCtx->localDataPdu.maxTxLen == 0)
+    {
+      pCisCtx->bnMToS = 0;
+    }
+    else if (pCisCtx->sduSizeMToS / pCisCtx->localDataPdu.maxTxLen * pCisCtx->localDataPdu.maxTxLen < pCisCtx->sduSizeMToS)
     {
       pCisCtx->bnMToS = pCisCtx->sduSizeMToS / pCisCtx->localDataPdu.maxTxLen + 1;
     }
@@ -216,7 +220,11 @@ static void lctrSetCis(lctrCisCtx_t *pCisCtx, LlCisCigParams_t *pSetCigParam, Ll
       pCisCtx->bnMToS = pCisCtx->sduSizeMToS / pCisCtx->localDataPdu.maxTxLen;
     }
 
-    if (pCisCtx->sduSizeSToM / pCisCtx->localDataPdu.maxRxLen * pCisCtx->localDataPdu.maxRxLen < pCisCtx->sduSizeSToM)
+    if (pCisCtx->localDataPdu.maxRxLen == 0)
+    {
+      pCisCtx->bnSToM = 0;
+    }
+    else if (pCisCtx->sduSizeSToM / pCisCtx->localDataPdu.maxRxLen * pCisCtx->localDataPdu.maxRxLen < pCisCtx->sduSizeSToM)
     {
       pCisCtx->bnSToM = pCisCtx->sduSizeSToM / pCisCtx->localDataPdu.maxRxLen + 1;
     }
@@ -255,7 +263,11 @@ static void lctrSetCis(lctrCisCtx_t *pCisCtx, LlCisCigParams_t *pSetCigParam, Ll
     pCisCtx->ftMToS = LlMathDivideUint32(pSetCigParam->transLatMToS * 1000, LCTR_ISO_INT_TO_US(pCisCtx->isoInterval));
     pCisCtx->ftSToM = LlMathDivideUint32(pSetCigParam->transLatSToM * 1000, LCTR_ISO_INT_TO_US(pCisCtx->isoInterval));
 
-    if (pCisCtx->sduSizeMToS / pCisCtx->localDataPdu.maxTxLen * pCisCtx->localDataPdu.maxTxLen < pCisCtx->sduSizeMToS)
+    if (pCisCtx->localDataPdu.maxTxLen == 0)
+    {
+      pCisCtx->bnMToS = 0;
+    }
+    else if (pCisCtx->sduSizeMToS / pCisCtx->localDataPdu.maxTxLen * pCisCtx->localDataPdu.maxTxLen < pCisCtx->sduSizeMToS)
     {
       pCisCtx->bnMToS = pCisCtx->sduSizeMToS / pCisCtx->localDataPdu.maxTxLen + 1;
     }
@@ -264,7 +276,11 @@ static void lctrSetCis(lctrCisCtx_t *pCisCtx, LlCisCigParams_t *pSetCigParam, Ll
       pCisCtx->bnMToS = pCisCtx->sduSizeMToS / pCisCtx->localDataPdu.maxTxLen;
     }
 
-    if (pCisCtx->sduSizeSToM / pCisCtx->localDataPdu.maxRxLen * pCisCtx->localDataPdu.maxRxLen < pCisCtx->sduSizeSToM)
+    if (pCisCtx->localDataPdu.maxRxLen == 0)
+    {
+      pCisCtx->bnSToM = 0;
+    }
+    else if (pCisCtx->sduSizeSToM / pCisCtx->localDataPdu.maxRxLen * pCisCtx->localDataPdu.maxRxLen < pCisCtx->sduSizeSToM)
     {
       pCisCtx->bnSToM = pCisCtx->sduSizeSToM / pCisCtx->localDataPdu.maxRxLen + 1;
     }
@@ -359,6 +375,7 @@ static void lctrSetCig(lctrCigCtx_t *pCigCtx, LlCisCigParams_t *pSetCigParam)
       pCisCtx = lctrFindCisById(pSetCigParam->cigId, pSetCigParam->pCisParam[i].cisId);
 
       WSF_ASSERT(pCisCtx);
+      pCisCtx->cisSyncDelayUsec = 0;
 
       for (unsigned int j = i; j < pSetCigParam->numCis; j++)
       {
@@ -569,6 +586,40 @@ uint8_t LctrSetCigParam(LlCisCigParams_t *pSetCigParam, uint16_t *pCisHandles)
         pCisHandles[i] = pCisCtx->cisHandle;
       }
       lctrSetCig(pCigCtx, pSetCigParam);
+
+      /* Invalid CIG parameters. Attempt adjusting of CIG parameters. */
+      bool_t paramsChanged = TRUE;
+      if (pCigCtx->isValid == FALSE)
+      {
+        LL_TRACE_WARN1("LctrSetCigParam, invalid parameters in cigID=%u; adjust parameters", pSetCigParam->cigId);
+      }
+      while ((pCigCtx->isValid == FALSE) && (paramsChanged == TRUE))
+      {
+        paramsChanged = FALSE;
+        for (unsigned int i = 0; i < pSetCigParam->numCis; i++)
+        {
+          /* Try to adjust CIS RTE to lower than host-reccomended value. */
+          pCisCtx = lctrFindCisByHandle(pCisHandles[i]);
+          if (pSetCigParam->pCisParam[i].rteMToS > 0)
+          {
+            pSetCigParam->pCisParam[i].rteMToS--;
+            paramsChanged = TRUE;
+          }
+          if (pSetCigParam->pCisParam[i].rteSToM > 0)
+          {
+            pSetCigParam->pCisParam[i].rteSToM--;
+            paramsChanged = TRUE;
+          }
+
+          /* Re-apply parameters. */
+          lctrSetCis(pCisCtx, pSetCigParam, &pSetCigParam->pCisParam[i]);
+          lctrSetCig(pCigCtx, pSetCigParam);
+          if (pCigCtx->isValid)
+          {
+            break;
+          }
+        }
+      }
     }
   }
   else
@@ -596,6 +647,40 @@ uint8_t LctrSetCigParam(LlCisCigParams_t *pSetCigParam, uint16_t *pCisHandles)
         pCisHandles[i] = pCisCtx->cisHandle;
       }
       lctrSetCig(pCigCtx, pSetCigParam);
+    }
+
+    /* Invalid CIG parameters. Attempt adjusting of CIG parameters. */
+    bool_t paramsChanged = TRUE;
+    if (pCigCtx->isValid == FALSE)
+    {
+      LL_TRACE_WARN1("LctrSetCigParam: invalid parameters in cigID=%u; adjust parameters", pSetCigParam->cigId);
+    }
+    while ((pCigCtx->isValid == FALSE) && (paramsChanged == TRUE))
+    {
+      paramsChanged = FALSE;
+      for (unsigned int i = 0; i < pSetCigParam->numCis; i++)
+      {
+        /* Try to adjust CIS RTE to lower than host-reccomended value. */
+        pCisCtx = lctrFindCisByHandle(pCisHandles[i]);
+        if (pSetCigParam->pCisParam[i].rteMToS > 0)
+        {
+          pSetCigParam->pCisParam[i].rteMToS--;
+          paramsChanged = TRUE;
+        }
+        if (pSetCigParam->pCisParam[i].rteSToM > 0)
+        {
+          pSetCigParam->pCisParam[i].rteSToM--;
+          paramsChanged = TRUE;
+        }
+
+        /* Re-apply parameters. */
+        lctrSetCis(pCisCtx, pSetCigParam, &pSetCigParam->pCisParam[i]);
+        lctrSetCig(pCigCtx, pSetCigParam);
+        if (pCigCtx->isValid)
+        {
+          break;
+        }
+      }
     }
   }
 
@@ -772,6 +857,7 @@ void LctrMstCisInit(void)
   /* Add CIS function pointers */
   LctrUpdateCisChanMapFn = LctrCisUpdateChanMap;
   lctrRegisterChClassHandler(lctrMstCisChClassUpdate);
+  lctrCisServicePowerMonitorFn = lctrCisServicePowerMonitor;
 
   /* Add CIS event handlers. */
   lctrEventHdlrTbl[LCTR_EVENT_CIS_TX_PENDING]  = lctrIsoTxPendingHandler;
@@ -826,6 +912,8 @@ uint8_t LctrCreateCis(uint8_t numCis, LlCisCreateCisParams_t *pCreateCisParam)
       LL_TRACE_WARN0("LctrCreateCis, CIS is already established");
       return LL_ERROR_CODE_ACL_CONN_ALREADY_EXISTS;
     }
+
+    pCisCtx->isClosing = FALSE;
   }
 
   lmgrCisMstCb.createCisPend = TRUE;
@@ -873,6 +961,7 @@ void lctrMstCisBuildCigOp(lctrCigCtx_t *pCigCtx)
 
   BbBleData_t * const pBle = &pCisCtx->bleData;
   BbBleMstCisEvent_t * const pCis = &pBle->op.mstCis;
+  lctrConnCtx_t * pConnCtx = LCTR_GET_CONN_CTX(pCisCtx->aclHandle);
 
   memset(pOp, 0, sizeof(BbOpDesc_t));
   memset(pBle, 0, sizeof(BbBleData_t));
@@ -897,8 +986,18 @@ void lctrMstCisBuildCigOp(lctrCigCtx_t *pCigCtx)
   pBle->chan.peerTxStableModIdx = TRUE;
   pBle->chan.peerRxStableModIdx = TRUE;
 
-  /* Set PHY options to mirror acl connection option. */
-  pBle->chan.initTxPhyOptions = BB_PHY_OPTIONS_BLE_S8;
+  if (lmgrGetOpFlag(LL_OP_MODE_FLAG_FORCE_CIS_CODED_PHY_S2))
+  {
+    /* Force Coded PHY option to S2. */
+    pBle->chan.initTxPhyOptions = BB_PHY_OPTIONS_BLE_S2;
+    pBle->chan.tifsTxPhyOptions = BB_PHY_OPTIONS_BLE_S2;
+  }
+  else
+  {
+    /* Set PHY options to mirror ACL connection option. */
+    pBle->chan.initTxPhyOptions = pConnCtx->bleData.chan.initTxPhyOptions;
+    pBle->chan.tifsTxPhyOptions = pConnCtx->bleData.chan.tifsTxPhyOptions;
+  }
 
 #if (LL_ENABLE_TESTER)
   pBle->chan.accAddrRx = pCisCtx->accessAddr ^ llTesterCb.cisAccessAddrRx;
@@ -916,8 +1015,7 @@ void lctrMstCisBuildCigOp(lctrCigCtx_t *pCigCtx)
 
   /*** General setup ***/
 
-  /* pOp->minDurUsec = pFirstCisCtx->subIntervUsec * WSF_MAX(pFirstCisCtx->bnMToS, pFirstCisCtx->bnSToM); */ /* Guarantee at least Max BN */
-  pOp->minDurUsec = pCigCtx->cigSyncDelayUsec;
+  pOp->minDurUsec = pCisCtx->subIntervUsec * WSF_MAX(pCisCtx->bnMToS, pCisCtx->bnSToM); /* Guarantee at least Max BN */
   pOp->maxDurUsec = pCigCtx->cigSyncDelayUsec;
 
   /* pOp->due = 0 */  /* set in lctrMstCisCigOpCommit() */
@@ -931,6 +1029,7 @@ void lctrMstCisBuildCigOp(lctrCigCtx_t *pCigCtx)
   /*** BLE stream setup ***/
 
   pCis->checkContOpCback = lctrMstCisCheckContOp;
+  pCis->checkContOpPostCback = lctrMstCisCheckContOpPostCback;
   pCis->execCback = lctrMstCisCigBeginOp;
   pCis->contExecCback = lctrMstCisCigContOp;
   pCis->postSubEvtCback = lctrMstCisCigPostSubEvt;
@@ -979,15 +1078,17 @@ void lctrMstCisBuildCisData(lctrCisCtx_t *pCisCtx)
   pBle->chan.peerTxStableModIdx = TRUE;
   pBle->chan.peerRxStableModIdx = TRUE;
 
-  /* Set PHY options to mirror acl connection option. */
-  if (pConnCtx->bleData.chan.tifsTxPhyOptions != BB_PHY_OPTIONS_DEFAULT)
+  if (lmgrGetOpFlag(LL_OP_MODE_FLAG_FORCE_CIS_CODED_PHY_S2))
   {
-    /* Set PHY options to host defined behavior. */
-    pBle->chan.initTxPhyOptions = pConnCtx->bleData.chan.tifsTxPhyOptions;
+    /* Force Coded PHY option to S2. */
+    pBle->chan.initTxPhyOptions = BB_PHY_OPTIONS_BLE_S2;
+    pBle->chan.tifsTxPhyOptions = BB_PHY_OPTIONS_BLE_S2;
   }
   else
   {
-    pBle->chan.initTxPhyOptions = BB_PHY_OPTIONS_BLE_S8;
+    /* Set PHY options to mirror ACL connection option. */
+    pBle->chan.initTxPhyOptions = pConnCtx->bleData.chan.initTxPhyOptions;
+    pBle->chan.tifsTxPhyOptions = pConnCtx->bleData.chan.tifsTxPhyOptions;
   }
 
 #if (LL_ENABLE_TESTER)
@@ -1007,6 +1108,7 @@ void lctrMstCisBuildCisData(lctrCisCtx_t *pCisCtx)
   /*** BLE stream setup ***/
 
   pCis->checkContOpCback = lctrMstCisCheckContOp;
+  pCis->checkContOpPostCback = lctrMstCisCheckContOpPostCback;
   pCis->execCback = lctrMstCisCigBeginOp;
   pCis->contExecCback = lctrMstCisCigContOp;
   pCis->postSubEvtCback = lctrMstCisCigPostSubEvt;
@@ -1034,8 +1136,9 @@ void lctrMstCisCigOpCommit(lctrCigCtx_t *pCigCtx, lctrConnCtx_t *pCtx, lctrCisCt
   {
     /* Recalculate the CE ref if it is already past. */
     pCisCtx->ceRef = pCtx->eventCounter +
-                     LL_MIN_INSTANT + 1 +     /* +1 for next CE */
-                     pCtx->maxLatency;        /* ensure slave will listen to this packet */
+                     ((LL_MIN_INSTANT + 1 +     /* +1 for next CE */
+                       pCtx->maxLatency) *      /* ensure slave will listen to this packet */
+                      pCtx->ecu.srFactor);      /* include subrating factor */
 
     refTime = pConnBod->dueUsec + (pCisCtx->ceRef - pCtx->eventCounter) * LCTR_CONN_IND_US(pCtx->connInterval);
 

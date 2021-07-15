@@ -4,7 +4,7 @@
  *
  *  \brief  DM Broadcast Isochronous Stream (BIS) management for master.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -473,6 +473,8 @@ void dmBisSmActBigSyncEst(dmBigSyncCb_t *pBigSyncCb, dmBisMsg_t *pMsg)
     pBigSyncCb->bisHandle[i] = pMsg->bigSyncEst.bisHandle[i];
   }
 
+  /* TODO: create BIS HCI context. */
+
   pMsg->hdr.event = DM_BIG_SYNC_EST_IND;
   (*dmCb.cback)((dmEvt_t *) pMsg);
 }
@@ -510,6 +512,8 @@ void dmBisSmActBigSyncLost(dmBigSyncCb_t *pBigSyncCb, dmBisMsg_t *pMsg)
 {
   /* reset BIG sync cb */
   dmBigSyncCbInit(pBigSyncCb);
+
+  /* TODO: clear BIS HCI context. */
 
   pMsg->hdr.event = DM_BIG_SYNC_LOST_IND;
   (*dmCb.cback)((dmEvt_t *) pMsg);
@@ -604,25 +608,7 @@ static void dmBisReset(void)
 /*************************************************************************************************/
 static void dmBisHciHandler(hciEvt_t *pEvent)
 {
-  dmBigSyncCb_t *pBigSyncCb;
-
-  /* handle special case for BIGInfo advertising report event */
-  if (pEvent->hdr.event == HCI_LE_BIG_INFO_ADV_REPORT_CBACK_EVT)
-  {
-    /* if periodic advertising sync has been established */
-    if (DmSyncEnabled(pEvent->hdr.param))
-    {
-      /* store sync info */
-      DmSyncSetEncrypt(pEvent->hdr.param, pEvent->leBigInfoAdvRpt.encrypt);
-
-      pEvent->hdr.event = DM_BIG_INFO_ADV_REPORT_IND;
-      (*dmCb.cback)((dmEvt_t *) pEvent);
-    }
-
-    return;
-  }
-
-  pBigSyncCb = dmBigSyncCbByHandle((uint8_t) pEvent->hdr.param);
+  dmBigSyncCb_t *pBigSyncCb = dmBigSyncCbByHandle((uint8_t) pEvent->hdr.param);
 
   /* handle special cases for BIG sync established event */
   if (pEvent->hdr.event == HCI_LE_BIG_SYNC_EST_CBACK_EVT)
@@ -713,7 +699,7 @@ void DmBigSyncStart(uint8_t bigHandle, uint16_t syncHandle, uint8_t mse, uint16_
 /*!
  *  \brief  Stop synchronizing or cancel the process of synchronizing to the Broadcast Isochronous
  *          Group (BIG) identified by the handle.
- * 
+ *
  *  \note   The command also terminates the reception of BISes in the BIG specified in \ref
  *          DmBigSyncStart, destroys the associated connection handles of the BISes in the BIG
  *          and removes the data paths for all BISes in the BIG.

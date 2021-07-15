@@ -166,6 +166,9 @@ void EattsHandleValueNtfZeroCpy(dmConnId_t connId, uint8_t priority, uint16_t ha
  *  \brief  Initialize the Enhanced ATT Server.
  *
  *  \return None
+ *
+ *  \note   EattInit must be called after the ATT task is created and before calling EattsInit 
+ *          and/or EattcInit.
  */
  /*************************************************************************************************/
 void EattsInit();
@@ -398,6 +401,9 @@ void EattcReadMultVarLenReq(dmConnId_t connId, uint8_t priority, uint8_t numHand
  *  \brief  Initialize the Enhanced ATT Client.
  *
  *  \return None
+ *
+ *  \note   EattInit must be called after the ATT task is created and before calling EattsInit 
+ *          and/or EattcInit.
  */
  /*************************************************************************************************/
 void EattcInit();
@@ -441,6 +447,9 @@ uint8_t EattGetNumChannelsInUse(dmConnId_t connId);
  *  \brief  Initialize the Enhanced ATT subsystem.
  *
  *  \return None
+ *
+ *  \note   EattInit must be called after the ATT task is created and before calling EattsInit 
+ *          and/or EattcInit.
  */
  /*************************************************************************************************/
 void EattInit(uint8_t roleBits);

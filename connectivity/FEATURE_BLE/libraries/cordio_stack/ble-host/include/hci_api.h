@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2009-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -130,10 +130,23 @@ extern "C" {
 #define HCI_LE_BIG_SYNC_LOST_CBACK_EVT                   83  /*!< \brief LE BIG sync lost */
 #define HCI_LE_BIG_TERM_SYNC_CMPL_CBACK_EVT              84  /*!< \brief LE BIG terminate sync complete */
 #define HCI_LE_BIG_INFO_ADV_REPORT_CBACK_EVT             85  /*!< \brief LE BIG Info advertising report */
+
 #if MBED_CONF_CORDIO_ROUTE_UNHANDLED_COMMAND_COMPLETE_EVENTS
 #define HCI_UNHANDLED_CMD_CMPL_CBACK_EVT                 86  /*!< \brief Unhandled event */
 #endif
+
+#define HCI_LE_MAX_CBACK_EVT                             HCI_LE_BIG_INFO_ADV_REPORT_CBACK_EVT
+                                                             /*!< \brief Max callback event ID number  */
 /**@}*/
+
+/*! \brief HCI calculate SDU header length. */
+#define HCI_GET_SDU_HDR_LEN(useTs)               (HCI_ISO_HDR_LEN + (useTs ? HCI_ISO_DL_MAX_LEN : HCI_ISO_DL_MIN_LEN))
+
+/*! \brief HCI Get base of SDU data buffer. */
+#define HCI_GET_SDU_PAYLOAD_BUF(pHdrBuf, useTs)  (pHdrBuf + HCI_GET_SDU_HDR_LEN(useTs))
+
+/*! \brief HCI Get base of SDU Header buffer. */
+#define HCI_GET_SDU_HDR_BUF(pDataBuf, useTs)     (pDataBuf - HCI_GET_SDU_HDR_LEN(useTs))
 
 /**************************************************************************************************
   Data Types
@@ -840,7 +853,7 @@ typedef struct
 {
   wsfMsgHdr_t         hdr;                  /*!< \brief Event header. */
   uint8_t             status;               /*!< \brief Status. */
-  uint8_t             handle;               /*!< \brief Connection handle of the CIS or BIS. */
+  uint16_t            handle;               /*!< \brief Connection handle of the CIS or BIS. */
 } hciLeSetupIsoDataPathCmdCmplEvt_t;
 
 /*! \brief LE remove ISO data path command complete event */
@@ -848,7 +861,7 @@ typedef struct
 {
   wsfMsgHdr_t         hdr;                  /*!< \brief Event header. */
   uint8_t             status;               /*!< \brief Status. */
-  uint8_t             handle;               /*!< \brief Connection handle of the CIS or BIS. */
+  uint16_t            handle;               /*!< \brief Connection handle of the CIS or BIS. */
 } hciLeRemoveIsoDataPathCmdCmplEvt_t;
 
 /*! \brief Config data path command complete event */
@@ -992,7 +1005,7 @@ typedef union
   hciLeConnCteReqEnableCmdCmplEvt_t   leConnCteReqEnableCmdCmpl;   /*!< \brief LE connection CTE request enable command complete. */
   hciLeConnCteRspEnableCmdCmplEvt_t   leConnCteRspEnableCmdCmpl;   /*!< \brief LE connection CTE response enable command complete. */
   hciLeReadAntennaInfoCmdCmplEvt_t    leReadAntennaInfoCmdCmpl;    /*!< \brief LE read antenna information command complete. */
-  hciLeSetCigParamsCmdCmplEvt_t       leSetCigParamsCmdCmpl;       /*!< \brief LE set CIG parameters command complete. */ 
+  hciLeSetCigParamsCmdCmplEvt_t       leSetCigParamsCmdCmpl;       /*!< \brief LE set CIG parameters command complete. */
   hciLeRemoveCigCmdCmplEvt_t          leRemoveCigCmdCmpl;          /*!< \brief LE remove CIG command complete. */
   HciLeCisEstEvt_t                    leCisEst;                    /*!< \brief LE CIS established. */
   HciLeCisReqEvt_t                    leCisReq;                    /*!< \brief LE CIS request. */
@@ -1125,7 +1138,7 @@ typedef struct
   uint32_t      sduInterUsec;          /*!< \brief Interval, in microseconds, of BIG SDUs. */
   uint16_t      maxSdu;                /*!< \brief Maximum size of an SDU. */
   uint16_t      mtlMs;                 /*!< \brief Maximum time in milliseconds. */
-  uint8_t       rtn;                   /*!< \brief Retransmitted number. */
+  uint8_t       rtn;                   /*!< \brief Retransmission number. */
   uint8_t       phys;                  /*!< \brief Transmitter PHYs of packets. */
   uint8_t       packing;               /*!< \brief Sequential or Interleaved packing. */
   uint8_t       framing;               /*!< \brief Unframed or Framed. */
@@ -1315,7 +1328,7 @@ void HciAclRegister(hciAclCback_t aclCback, hciFlowCback_t flowCback);
  *  \return None.
  */
 /*************************************************************************************************/
-void HciIsoRegister(hciAclCback_t isoCback, hciFlowCback_t flowCback);
+void HciIsoRegister(hciIsoCback_t isoCback, hciFlowCback_t flowCback);
 
 /*************************************************************************************************/
 /*!

@@ -1,0 +1,422 @@
+#!/bin/bash
+
+# Copyright (c) 2021 Arm Limited
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+################################################################################
+# Globals
+################################################################################
+HERE=$(dirname "$(realpath "$0")")
+
+CONFIG_FILE=".cordio-update"
+DEFAULT_EDITOR="nano"
+
+[[ -z "$OLD_HOST_REPO"       ]] && OLD_HOST_REPO="https://github.com/packetcraft-inc/stacks"
+[[ -z "$OLD_HOST_SHA"        ]] && OLD_HOST_SHA=
+[[ -z "$OLD_CONTROLLER_REPO" ]] && OLD_CONTROLLER_REPO="https://github.com/packetcraft-inc/stacks"
+[[ -z "$OLD_CONTROLLER_SHA"  ]] && OLD_CONTROLLER_SHA=
+[[ -z "$NEW_HOST_REPO"       ]] && NEW_HOST_REPO="https://bitbucket.org/packetcraft-83c2dc73/host-mesh.ea/src/master/"
+[[ -z "$NEW_HOST_SHA"        ]] && NEW_HOST_SHA=""
+[[ -z "$NEW_CONTROLLER_REPO" ]] && NEW_CONTROLLER_REPO="https://bitbucket.org/packetcraft-83c2dc73/controller.ea/branch/feature/FW-3058/"
+[[ -z "$NEW_CONTROLLER_SHA"  ]] && NEW_CONTROLLER_SHA=
+[[ -z "$OLD_DIR"             ]] && OLD_DIR="old-cordio"
+[[ -z "$NEW_DIR"             ]] && NEW_DIR="new-cordio"
+[[ -z "$DIFF_DIR"            ]] && DIFF_DIR="diffs"
+
+CLONE_OLD=0
+CLONE_NEW=0
+CLEAN=0
+RESTRUCTURE=0
+DIFFS=0
+SUMMARY=0
+REPLACE=0
+
+################################################################################
+# Functions
+################################################################################
+function colorise {
+    local echo_args="-e "
+    local echo_prefix=""
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" =~ -[a-zA-Z]+ ]]; then
+            echo_args+="$1 "
+        elif [[ "$1" =~ ^([01];)?[0-9]+m$ ]]; then
+            echo_prefix+="\033[$1"
+        else
+            break
+        fi
+        shift
+    done
+
+    echo $echo_args "${echo_prefix}$*\033[0m"
+}
+
+function blueify {
+    colorise "1;37m" "0;44m" $*
+}
+
+function redify {
+    colorise "1;37m" "0;41m" $*
+}
+
+function say {
+    blueify "> $*" >&2
+}
+
+function die {
+    redify "> $*"
+    exit 1
+}
+
+function die_if_unset {
+    [[ -z ${!1} ]] && die "$1 is not set"
+}
+
+function cleanup {
+    [[ "$WORKDIR" =~ \/tmp\/.+ ]] && [[ -d "$WORKDIR" ]] && rm -rf "$WORKDIR"
+}
+trap cleanup EXIT
+
+function prompt {
+    say $*
+    blueify -n "Type \"yes\" when you are ready to continue: " >&2
+    local answer
+    while true; do
+        read answer
+        if [[ "$answer" = "yes" ]]; then
+            break
+        else
+            redify -n "Please type \"yes\": " >&2
+        fi
+    done
+}
+
+function show_usage {
+    cat <<EOF
+Usage: $0 [options] [functions]
+
+Options:
+    -h,--help     Show this help and quit
+
+Functions:
+    --clone-old     Clone the GitHub repo (old Cordio)
+    --clone-new     Clone to BitBucket repos (new Cordio)
+    --clean       Clean up cloned repos
+    --restructure Restructure the new Cordio to match how the old Cordio was brought into mbed OS
+    --make-diffs  Create diffs between the old Cordio and mbed OS
+    --summary     Create a summary of the cloned repos
+    --replace     Replace the Cordio in MBED_ROOT with the new Cordio
+
+NB: By default, all of the above functions are implicitly enabled and will run in order. Explicitly enabling a function
+implicitly disables the others unless they are explicitly enabled as well. The order of execution can not be affected by
+command-line arguments.
+
+Configuration file:
+If present, configuration will be read from a file called $CONFIG_FILE in the same location as the script. The following
+variables can be set there:
+
+    MBED_ROOT           Path to a local copy of the mbed OS Git repo, main branch. The default is to look for a .git
+                        directory that is higher than the current directory.
+    WORKDIR             Directory to store work in. Defaults to a random temporary directory which is deleted if the
+                        script exits for any reason (user-supplied directories are not deleted).
+    GITHUB_USERNAME     Username to use when pulling Git repo. Defaults to current user's name.
+    GITHUB_PASSWORD     Password to use when pulling Git repo. Required if --clone-old is enabled.
+    BITBUCKET_USERNAME  Username to use when pulling BitBucket repos. Defaults to current user's name.
+    BITBUCKET_PASSWORD  Password to use when pulling BitBucket repos. Required if --clone-new is enabled.
+
+Environment:
+If no configuration file is present the above variables will be read from the environment. Additionally, the following
+can be set:
+
+    EDITOR              Set to an executable program. Defaults to $DEFAULT_EDITOR.
+    dos2unix            Should be executable via PATH.
+EOF
+}
+
+function check_env {
+    if [[ -f "$CONFIG_FILE" ]]; then
+    . "$CONFIG_FILE"
+    say "Configuration loaded from $CONFIG_FILE"
+    else
+        say "Configuration file $CONFIG_FILE not found, looking at shell variables"
+    fi
+
+    if [[ ! -d "$MBED_ROOT" ]]; then
+        say "MBED_ROOT was not set to an existing directory. I will look for a .git directory in \"$HERE\" or a parent \
+and assume that is the MBED_ROOT"
+        MBED_ROOT="$HERE"
+        while [[ "$MBED_ROOT" != "/" ]] && [[ ! -d "$MBED_ROOT/.git" ]]; do
+            MBED_ROOT="$(dirname "$MBED_ROOT")"
+        done
+        if [[ -d "$MBED_ROOT/.git" ]]; then
+            say "MBED_ROOT set to \"$MBED_ROOT\""
+        else
+            die "Could not find a .git directory in any parent directory of $HERE; please set MBED_ROOT explicitly"
+        fi
+    fi
+
+    if [[ -z "$WORKDIR" ]]; then
+        say "WORKDIR was not set, a temporary directory will be used"
+        WORKDIR=$(mktemp -d)
+    else
+        say "WORKDIR set to \"$WORKDIR\""
+    fi
+
+    if [[ -z "$EDITOR" ]]; then
+        say "Warning: EDITOR not set, $DEFAULT_EDITOR will be used"
+    fi
+
+    [[ ! -x $(which dos2unix) ]] && say "dos2unix not found"
+
+    while [[ ! -z $1 ]]; do
+        case "$1" in
+            -h|--help)     show_usage     ; exit 0 ;;
+            --clone-old)   CLONE_OLD=1             ;;
+            --clone-new)   CLONE_NEW=1             ;;
+            --clean)       CLEAN=1                 ;;
+            --restructure) RESTRUCTURE=1           ;;
+            --make-diffs)  DIFFS=1                 ;;
+            --summary)     SUMMARY=1               ;;
+            --replace)     REPLACE=1               ;;
+            *)             show_usage >&2 ; exit 1 ;;
+        esac
+
+        shift
+    done
+
+    if [[ $[CLONE_OLD + $CLONE_NEW + $CLEAN + $RESTRUCTURE + $DIFFS + $SUMMARY + $REPLACE] -eq 0 ]]; then
+        CLONE_OLD=1
+        CLONE_NEW=1
+        CLEAN=1
+        RESTRUCTURE=1
+        DIFFS=1
+        SUMMARY=1
+        REPLACE=1
+    fi
+
+    if [[ $CLONE_OLD -ne 0 ]]; then
+        die_if_unset GITHUB_PASSWORD
+        if [[ -z "$GITHUB_USERNAME" ]]; then
+            say "Warning: GITHUB_USERNAME is not set, $USER will be used"
+            GITHUB_USERNAME=$USER
+        fi
+    fi
+
+    if [[ $CLONE_NEW -ne 0 ]]; then 
+        die_if_unset BITBUCKET_PASSWORD
+        if [[ -z "$BITBUCKET_USERNAME" ]]; then
+            say "Warning: BITBUCKET_USERNAME is not set, $USER will be used"
+            BITBUCKET_USERNAME=$USER
+        fi
+    fi
+}
+
+function mbedcp {
+    cp -arf "$MBED_ROOT/$1" "$1"
+}
+
+function dir_setup {
+    say "Ensuring directory structure..."
+    mkdir -p "$MBED_ROOT"
+    mkdir -p "$WORKDIR/$OLD_DIR"
+    mkdir -p "$WORKDIR/$NEW_DIR"
+    cd "$WORKDIR"
+
+    MBED_ROOT=$(realpath "$MBED_ROOT")
+    WORKDIR=$(realpath "$WORKDIR")
+    OLD_DIR=$(realpath "$WORKDIR/$OLD_DIR")
+    NEW_DIR=$(realpath "$WORKDIR/$NEW_DIR")
+}
+
+# Clone a GH or BB repo with credentials
+# $@ = args for git clone
+function clone_with_creds {
+    if [[ ! -z $(echo "$1" | grep github) ]]; then
+        git clone "$1" "$2" <<EOF
+$GITHUB_USERNAME
+$GITHUB_PASSWORD
+EOF
+    elif [[ ! -z $(echo "$1" | grep bitbucket) ]]; then
+        git clone "$1" "$2" <<EOF
+$BITBUCKET_USERNAME
+$BITBUCKET_PASSWORD
+EOF
+    fi
+}
+
+# Clone a repo into a temporary folder, optionally checkout a branch/SHA, then move the repo's contents somewhere else.
+# Calling this twice with the same target directory allows two repos to be cloned into one location, although the .git
+# directories are not copied.
+# $1 = the repo
+# $2 = the target location
+# [$3] the branch or SHA
+function clone_checkout_mv {
+    local tmp=$(mktemp -d)
+    clone_with_creds "$1" "$tmp"
+    [[ ! -z "$3" ]] && ( cd "$tmp" && git checkout "$3" )
+    mv $tmp/* "$2"
+    rm -rf "$tmp"
+}
+
+# Clone a controller/host repo pair
+# $1 = controller repo
+# $2 = host repo
+# $3 = target directory
+# [$4] = controller SHA/branch to checkout
+# [$5] = host SHA/branch to checkout
+# If $1 and $2 are the same repository only one clone & checkout (using $4) will be performed
+function clone_repo_pair {
+    if [[ $(find "$3" -type f 2>/dev/null | wc -l) -ne 0 ]]; then
+        say "$3 contains files, so repo won't be cloned"
+        return
+    fi
+
+    clone_checkout_mv "$1" "$3" "$4"
+    [[ "$1" != "$2" ]] && clone_checkout_mv "$2" "$3" "$5"
+
+    # Delete unneeded dirs
+    rm -rf $3/{ble-apps,ble-mesh-apps,ble-mesh-model,ble-mesh-profile,ble-profiles}
+}
+
+function clone_old {
+    clone_repo_pair "$OLD_CONTROLLER_REPO" "$OLD_HOST_REPO" "$OLD_DIR" "$OLD_CONTROLLER_SHA" "$OLD_HOST_SHA"
+}
+
+function clone_new {
+    clone_repo_pair "$NEW_CONTROLLER_REPO" "$NEW_HOST_REPO" "$NEW_DIR" "$NEW_CONTROLLER_SHA" "$NEW_HOST_SHA"
+}
+
+function initial_cleanup {
+    find -type f \( ! -iname '.*' -a ! -iname '*.c' -a ! -iname '*.h' \) -exec rm -rf {} \; 2>/dev/null
+    find -type d \( -iname 'build' -o -iname 'doc' -o -iname 'documentation' \) -exec rm -rf {} \; 2>/dev/null
+    find -type d -empty -delete 2>/dev/null
+    [[ -x $(which dos2unix) ]] && find -type f \( -iname '*.c' -o -iname '*.h' \) -exec dos2unix {} \; 2>/dev/null >&2
+}
+
+function findrel {
+    find $* -exec realpath --relative-to="$1" {} \;
+}
+
+function restructure {
+    prompt "I am going to look at where files from the OLD CORDIO ended up when it was last integrated into MBED OS. \
+I will then generate a script to apply those changes to the NEW CORDIO (you will be asked to check and edit the script \
+before it runs). >1000 files will be moved or deleted, but files in the NEW CORDIO that didn't exist in the OLD CORDIO \
+or were moved by PC will stay where they are, so you may need to move them manually."
+    tmpfile=$(mktemp)
+    echo "#!/bin/bash" >"$tmpfile"
+    echo "# $tmpfile - Double check the changes. If happy with them, remove the 'exit 0' line below." >>"$tmpfile"
+    echo "exit 0" >>"$tmpfile"
+    "$HERE/restructure.py" "$MBED_ROOT" "$OLD_DIR" "$NEW_DIR" | sort -u >>"$tmpfile"
+    "$EDITOR" "$tmpfile"
+    chmod +x "$tmpfile"
+    cd "$NEW_DIR"
+    "$tmpfile"
+    rm "$tmpfile"
+    find -type d -empty -delete
+    count=$(find \( -iname '*.c' -o -iname '*.h' \) | grep -vE 'connectivity' | wc -l)
+    if [[ $count -gt 0 ]]; then
+        prompt "There are $count files that couldn't be moved - they were probably added or moved by PacketCraft. \
+You should now manually rearrange them."
+    fi
+    cd ..
+}
+
+function make_diffs {
+    local old2mbed="$DIFF_DIR/old2mbed"
+    local old2new="$DIFF_DIR/old2new"
+    mkdir -p "$old2mbed" "$old2new"
+
+    local old
+    find "$OLD_DIR" \( -iname '*.c' -o -iname '*.h' \) | while read old; do
+        local mbed=$(find "$MBED_ROOT" -name "$(basename "$old")" | head -n 1)
+        local new=$(find "$NEW_DIR" -name "$(basename "$old")" | head -n 1)
+
+        [[ "$mbed" = "" ]] && continue # File not included in mbed
+        [[ "$new" = "" ]]  && continue # File deleted from Cordio
+
+        local out="$old2mbed/$(realpath --relative-to="$MBED_ROOT" "$mbed").diff"
+        mkdir -p "$(dirname "$out")"
+
+        if git diff "$old" "$mbed" >"$out" || git diff "$new" "$mbed" >/dev/null; then
+            rm -f "$out"
+        else
+            echo "diff \"old/$old\" \"mbed/$mbed\"" >&2
+        fi
+
+        out="$old2new/$(realpath --relative-to="$MBED_ROOT" "$mbed").diff"
+        mkdir -p "$(dirname "$out")"
+
+        if git diff "$old" "$new" >"$out" || git diff "$new" "$mbed" >/dev/null; then
+            rm -f "$out"
+        else
+            echo "diff \"old$old\" \"new$new\"" >&2
+        fi
+    done
+
+    # Delete empty files & dirs
+    find "$DIFF_DIR" -empty -delete
+    count=$(find "$DIFF_DIR" -iname '*.diff' | wc -l)
+    prompt "I have created $(find "$DIFF_DIR" -name '*.diff' | wc -l) diffs between files in OLD CORDIO and MBED OS. \
+You now need to apply the diffs manually to the NEW CORDIO to reapply fixes."
+}
+
+export TAG_SEPARATOR="=========="
+function findtags {
+    find "$1" \( -iname '*.c' -o -iname '*.h' \) | ctags --filter=yes | awk '{print $1,$2}'
+    echo "$TAG_SEPARATOR"
+}
+
+function summary {
+    tags=$(mktemp)
+
+    findtags "$OLD_DIR"  >>"$tags"
+    findtags "$NEW_DIR"  >>"$tags"
+    "$HERE/summary.py" "$TAG_SEPARATOR" <"$tags"
+
+    rm -f "$tags"
+}
+
+function replace {
+    prompt "I am now going to copy the new Cordio files over the old ones (use ^C if you don't want this). \
+I will then ask you to create a Git commit (if you abort the commit the changes will remain unstaged)."
+
+    # Delete existing source files
+    find "$MBED_ROOT/connectivity/drivers/ble/FEATURE_BLE/TARGET_NORDIC/TARGET_NORDIC_CORDIO/TARGET_NRF5x/stack/sources" \( -iname '*.c' -o -iname '*.h' \) -delete
+    find "$MBED_ROOT/connectivity/FEATURE_BLE/libraries/cordio_stack" \( -iname '*.c' -o -iname '*.h' \) -delete
+    find "$MBED_ROOT/connectivity/FEATURE_BLE/libraries/TARGET_CORDIO_LL/stack" \( -iname '*.c' -o -iname '*.h' \) -delete
+    find "$MBED_ROOT/connectivity/FEATURE_BLE/source/cordio/stack_adaptation/" \( -iname 'hci_*.c' -o -iname 'wsf_*.c' \) -delete
+
+    # Delete any dirs that became empty.
+    find "$MBED_ROOT/connectivity" -type d -empty -delete
+
+    # Copy the new files over.
+    cp -arf "$NEW_DIR/connectivity/*" "$MBED_ROOT/connectivity/"
+    git add .
+    git commit
+    git reset
+}
+
+################################################################################
+# Script
+################################################################################
+check_env $*
+dir_setup
+[[ $CLONE_OLD   -ne 0 ]] && clone_old
+[[ $CLONE_NEW   -ne 0 ]] && clone_new
+[[ $CLEAN       -ne 0 ]] && initial_cleanup
+[[ $RESTRUCTURE -ne 0 ]] && restructure
+[[ $DIFFS       -ne 0 ]] && make_diffs
+[[ $SUMMARY     -ne 0 ]] && summary
+[[ $REPLACE     -ne 0 ]] && replace

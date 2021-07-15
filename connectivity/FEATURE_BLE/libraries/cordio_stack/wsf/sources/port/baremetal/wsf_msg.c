@@ -1,12 +1,10 @@
 /*************************************************************************************************/
 /*!
- *  \file   wsf_msg.c
+ *  \file
  *
  *  \brief  Message passing service.
  *
- *  Copyright (c) 2009-2018 Arm Ltd. All Rights Reserved.
- *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,12 +32,15 @@
   Data Types
 **************************************************************************************************/
 
-/* Internal message buf structure */
+/*! \brief Internal message buf structure */
 typedef struct wsfMsg_tag
 {
   struct wsfMsg_tag   *pNext;
   wsfHandlerId_t      handlerId;
 } wsfMsg_t;
+
+/*! \brief Size of wsfMsg header. */
+const uint8_t WSF_MSG_HDR_SIZE = sizeof(wsfMsg_t);
 
 /*************************************************************************************************/
 /*!

@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -131,16 +131,16 @@ uint8_t LlExtCreateConn(const LlExtInitParam_t *pInitParam, const LlExtInitScanP
   }
 
   if ((LL_API_PARAM_CHECK == 1) &&
-      ((pInitParam->initPhys & ~validInitPhys) || (pInitParam->initPhys == 0)))
-  {
-    return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
-  }
-
-  if ((LL_API_PARAM_CHECK == 1) &&
       ((pInitParam->initPhys & supportedPhys) != pInitParam->initPhys))
   {
     LL_TRACE_WARN0("Unsupported PHY bit was set");
     return LL_ERROR_CODE_UNSUPPORTED_FEATURE_PARAM_VALUE;
+  }
+
+  if ((LL_API_PARAM_CHECK == 1) &&
+      ((pInitParam->initPhys & ~validInitPhys) || (pInitParam->initPhys == 0)))
+  {
+    return LL_ERROR_CODE_INVALID_HCI_CMD_PARAMS;
   }
 
   if ((LL_API_PARAM_CHECK == 1) &&

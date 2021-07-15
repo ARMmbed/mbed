@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2013-2019 Arm Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019-2020 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ extern "C" {
 **************************************************************************************************/
 
 /*! \brief      Maximum value of the AuxPtr offset field. */
-#define LCTR_AUX_PTR_MAX_OFFSET         0x3FFF
+#define LCTR_AUX_PTR_MAX_OFFSET         0x1FFF
 
 /*! \brief      Number of shifted bytes for Used PHY field from the AUX Offset. */
 #define LCTR_AUX_OFFS_USED_PHY_SHIFT    13
@@ -137,6 +137,9 @@ typedef struct
   uint8_t       perChIdx;           /*!< Periodic LL Channel. */
   bool_t        shutdown;           /*!< Client initiated shutdown flag. */
   uint32_t      perAdvInterUsec;    /*!< Periodic advertising interval in microseconds. */
+
+  bool_t        enableAdi;          /*!< Enable ADI field in Periodic Advertising. */
+  uint16_t      advDID;             /*!< Advertising Data ID. */
 
   uint32_t      advInterMinUsec;    /*!< Periodic Advertising Interval Minimum in microseconds. */
   uint32_t      advInterMaxUsec;    /*!< Periodic Advertising Interval Maximum in BB ticks. */
@@ -238,7 +241,6 @@ typedef struct
 
   /* BB/ISR context */
   bool_t      shutdown;         /*!< Client initiated shutdown flag. */
-  uint8_t     bodTermCnt;       /*!< Number of BOD terminated. */
   BbOpDesc_t  advBod;           /*!< Advertising BOD. */
   BbBleData_t bleData;          /*!< BLE data. */
   BbOpDesc_t  auxAdvBod;        /*!< Auxiliary advertising BOD. */

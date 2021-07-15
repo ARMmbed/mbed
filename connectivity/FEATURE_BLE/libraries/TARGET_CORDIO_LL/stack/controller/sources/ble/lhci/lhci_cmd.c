@@ -203,6 +203,7 @@ static void lhciCommonSendCmdCmplEvt(LhciHdr_t *pCmdHdr, uint8_t status, uint8_t
     case HCI_OPCODE_NOP:
     case HCI_OPCODE_LE_MODIFY_SLEEP_CLK_ACC:
     case HCI_OPCODE_LE_SET_HOST_FEATURE:
+    case HCI_OPCODE_WRITE_AFH_CHAN_ASSESSMENT_MODE:
       lhciPackCmdCompleteEvtStatus(pBuf, status);
       break;
 
@@ -259,6 +260,12 @@ static void lhciCommonSendCmdCmplEvt(LhciHdr_t *pCmdHdr, uint8_t status, uint8_t
       pBuf += lhciPackCmdCompleteEvtStatus(pBuf, status);
       UINT16_TO_BSTREAM(pBuf, txPathComp);
       UINT16_TO_BSTREAM(pBuf, rxPathComp);
+      break;
+    }
+    case HCI_OPCODE_READ_AFH_CHAN_ASSESMENT_MODE:
+    {
+      pBuf += lhciPackCmdCompleteEvtStatus(pBuf, status);
+      UINT8_TO_BSTREAM(pBuf, lhciCb.chanAssesmentMode);
       break;
     }
 
@@ -413,6 +420,17 @@ bool_t lhciCommonDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
     case HCI_OPCODE_NOP:
       paramLen = 1;
       break;
+    case HCI_OPCODE_READ_AFH_CHAN_ASSESMENT_MODE:
+    {
+      paramLen = LHCI_LEN_READ_AFH_CHAN_ASSESMENT_MODE;
+      break;
+    }
+    case HCI_OPCODE_WRITE_AFH_CHAN_ASSESSMENT_MODE:
+    {
+      BSTREAM_TO_UINT8(lhciCb.chanAssesmentMode, pBuf);
+      paramLen = LHCI_LEN_WRITE_AFH_CHAN_ASSESMENT_MODE;
+      break;
+    }
 
     /* --- test --- */
 

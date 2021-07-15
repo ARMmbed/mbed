@@ -4,7 +4,7 @@
  *
  *  \brief  Internal link layer controller isochronous master interface file.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2020 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -90,6 +90,7 @@ void lctrMstSetupBigChannel(lctrBigCtx_t *pBigCtx, LctrAcadBigInfo_t *pBigInfo);
 /* ISR: BOD handlers */
 void lctrMstBisRxCompletion(BbOpDesc_t *pBod, uint8_t *pBuf, uint8_t status);
 void lctrMstBigBeginOp(BbOpDesc_t *pOp);
+void lctrMstBigAbortOp(BbOpDesc_t *pOp);
 void lctrMstBigEndOp(BbOpDesc_t *pOp);
 
 #ifdef __cplusplus

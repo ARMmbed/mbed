@@ -64,6 +64,7 @@ static uint8_t lctrPerScanSetup(lctrPerCreateSyncCtrlBlk_t *pPerCreateSync, lctr
   pPerScanCtx->syncTimeOutMs = LCTR_PER_SYNC_TIMEOUT_TO_MS(pMsg->syncTimeOut);
   pPerScanCtx->createDispId = createDispId;
   pPerScanCtx->repDisabled = pMsg->repDisabled;
+  pPerScanCtx->dupFilterEnable = pMsg->dupFilterEnable;
 
   return LL_SUCCESS;
 }

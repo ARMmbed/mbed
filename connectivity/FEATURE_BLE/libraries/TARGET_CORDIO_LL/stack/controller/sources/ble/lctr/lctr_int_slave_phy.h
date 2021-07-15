@@ -6,7 +6,7 @@
  *
  *  Copyright (c) 2016-2017 ARM Ltd. All Rights Reserved.
  *
- *  Copyright (c) 2019 Packetcraft, Inc.
+ *  Copyright (c) 2019-2021 Packetcraft, Inc.
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -49,6 +49,8 @@ void lctrSendPhyRspPdu(lctrConnCtx_t *pCtx, uint8_t txPhys, uint8_t rxPhys);
 void lctrSendPhyUpdateIndPdu(lctrConnCtx_t *pCtx, uint8_t txPhys, uint8_t rxPhys);
 
 void lctrNotifyHostPhyUpdateInd(lctrConnCtx_t *pCtx, uint8_t status);
+
+bool_t lctrSlvCheckEncOverridePhyUpdate(lctrConnCtx_t *pCtx);
 
 #ifdef __cplusplus
 };
