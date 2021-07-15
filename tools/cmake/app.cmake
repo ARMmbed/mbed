@@ -15,7 +15,9 @@ include(${MBED_CONFIG_PATH}/mbed_config.cmake)
 # Load toolchain file
 if(NOT CMAKE_TOOLCHAIN_FILE OR MBED_TOOLCHAIN_FILE_USED)
     set(MBED_TOOLCHAIN_FILE_USED TRUE CACHE INTERNAL "")
-    include(mbed_toolchain)
+    # We want to bring CMP0123 we set in mbed_toolchain.cmake
+    # to the whole Mbed OS.
+    include(mbed_toolchain NO_POLICY_SCOPE)
 endif()
 
 # Specify available build profiles and add options for the selected build profile

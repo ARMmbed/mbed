@@ -12,11 +12,15 @@ elseif(${MBED_TOOLCHAIN} STREQUAL "ARM")
         "-mcpu=cortex-m4"
         "-mfpu=none"
     )
-#Necessary as the linker does not always detect
-#the architecture from the objectfiles correctly.
-    list(APPEND link_options
-        "--cpu=Cortex-M4.no_fp"
-    )
+    if(deprecated_system_processor)
+        # Normally `--cpu` is not needed, because `armlink` can infer
+        # features from object files. But CMake versions below 3.21
+        # automatically add `--cpu=${CMAKE_SYSTEM_PROCESSOR}` which is
+        # incorrect, so as a workaround we need to add `no_fp`.
+        list(APPEND link_options
+            "--cpu=Cortex-M4.no_fp"
+        )
+    endif()
 endif()
 
 function(mbed_set_cpu_core_definitions target)
