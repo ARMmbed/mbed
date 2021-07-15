@@ -126,7 +126,7 @@ bool USBMIDI::write(MIDIMessage m)
 
         _flags.clear(FLAG_WRITE_DONE);
         USBDevice::write_start(_bulk_in, buf, 4);
-        uint32_t flags = _flags.wait_any(FLAG_WRITE_DONE | FLAG_DISCONNECT, osWaitForever, false);
+        uint32_t flags = _flags.wait_any(FLAG_WRITE_DONE | FLAG_DISCONNECT | FLAG_CONNECT, osWaitForever, false);
         if (flags & FLAG_DISCONNECT) {
             ret = false;
             break;
