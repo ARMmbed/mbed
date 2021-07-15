@@ -19,4 +19,5 @@ target_include_directories(mbed-emac
 target_sources(mbed-emac
     INTERFACE
         stm32xx_emac.cpp
+        stm32xx_eth_irq_callback.cpp
 )
