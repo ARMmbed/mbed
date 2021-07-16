@@ -5,6 +5,7 @@ add_library(mbed-headers-drivers INTERFACE)
 
 target_include_directories(mbed-headers-drivers
     INTERFACE
+        .
         ${mbed-os_SOURCE_DIR}/drivers
         ${mbed-os_SOURCE_DIR}/drivers/include
         ${mbed-os_SOURCE_DIR}/drivers/include/drivers
