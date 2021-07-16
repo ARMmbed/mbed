@@ -1,0 +1,29 @@
+name: run conditional BLE feature compilation
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'connectivity/FEATURE_BLE/**'
+jobs:
+  run-conditional-feature-compilation-test:
+    name: Conditional BLE features compilation tested
+    runs-on: ubuntu-latest
+    container: mbedos/mbed-os-env:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          path: mbed-os
+
+      - name: Build
+        run: |
+          git clone https://github.com/ARMmbed/mbed-os-example-ble.git
+          cd mbed-os-example-ble/BLE_SupportedFeatures
+          ln -s ../../mbed-os mbed-os
+          for f in ../resources/test_configs/*; do
+            echo "Configuration file ${f}: "
+            echo "-------------------------------------------------------------------------"
+            cat "${f}"
+            echo "-------------------------------------------------------------------------"
+            mbed compile -t GCC_ARM -m NRF52840_DK --app-config "${f}"
+          done
