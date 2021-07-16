@@ -5,6 +5,7 @@ add_library(mbed-headers-rtos INTERFACE)
 
 target_include_directories(mbed-headers-rtos
     INTERFACE
+        .
         ${mbed-os_SOURCE_DIR}/rtos/include
         ${mbed-os_SOURCE_DIR}/rtos/include/rtos
 )
