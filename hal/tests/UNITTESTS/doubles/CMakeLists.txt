@@ -28,7 +28,6 @@ target_sources(mbed-stubs-hal
 
 target_link_libraries(mbed-stubs-hal
     PRIVATE
-        mbed-headers-base
         mbed-headers-hal
         mbed-headers-platform
         mbed-stubs-headers

@@ -36,7 +36,6 @@ target_sources(mbed-stubs-rtos
 
 target_link_libraries(mbed-stubs-rtos
     PRIVATE        
-        mbed-headers-base
         mbed-headers-rtos
         mbed-headers-platform
         mbed-headers-drivers

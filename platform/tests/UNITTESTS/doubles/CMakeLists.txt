@@ -39,7 +39,6 @@ target_include_directories(mbed-stubs-platform
 )
 target_link_libraries(mbed-stubs-platform
     PUBLIC
-        mbed-headers-base
         mbed-headers-hal
         mbed-headers-platform
 )
