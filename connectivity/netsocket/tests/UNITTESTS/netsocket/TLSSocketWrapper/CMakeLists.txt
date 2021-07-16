@@ -16,9 +16,7 @@ target_sources(${TEST_NAME}
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/InternetSocket.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/TCPSocket.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/TLSSocketWrapper.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip4string/ip4tos.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/ip6tos.c
-        ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip4string/stoip4.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/stoip6.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libBits/common_functions.c
         test_TLSSocketWrapper.cpp
@@ -34,6 +32,7 @@ target_link_libraries(${TEST_NAME}
         mbed-stubs-headers
         mbed-stubs-mbedtls
         mbed-stubs-netsocket
+        mbed-stubs-nanostack-libservice
         gmock_main
 )
 
