@@ -32,7 +32,6 @@ target_sources(mbed-stubs-blockdevice
 
 target_link_libraries(mbed-stubs-blockdevice
     PRIVATE
-        mbed-headers-base
         mbed-headers-platform
         mbed-headers-blockdevice
 )

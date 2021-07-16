@@ -4,11 +4,18 @@
 add_library(mbed-headers-platform INTERFACE)
 target_include_directories(mbed-headers-platform
     INTERFACE
+        .
+        platform
+        platform/cxxsupport
         ${mbed-os_SOURCE_DIR}/platform/include
         ${mbed-os_SOURCE_DIR}/platform/include/platform
         ${mbed-os_SOURCE_DIR}/platform/randlib/include/mbed-client-randlib/
         ${mbed-os_SOURCE_DIR}/platform/randlib/include/
         ${mbed-os_SOURCE_DIR}/platform/mbed-trace/include
+)
+target_link_libraries(mbed-headers-platform
+    INTERFACE
+        mbed-headers-cmsis
 )
 
 add_library(mbed-stubs-platform)
@@ -32,7 +39,6 @@ target_include_directories(mbed-stubs-platform
 )
 target_link_libraries(mbed-stubs-platform
     PUBLIC
-        mbed-headers-base
         mbed-headers-hal
         mbed-headers-platform
 )

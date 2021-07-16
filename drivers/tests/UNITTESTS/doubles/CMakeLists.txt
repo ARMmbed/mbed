@@ -5,6 +5,7 @@ add_library(mbed-headers-drivers INTERFACE)
 
 target_include_directories(mbed-headers-drivers
     INTERFACE
+        .
         ${mbed-os_SOURCE_DIR}/drivers
         ${mbed-os_SOURCE_DIR}/drivers/include
         ${mbed-os_SOURCE_DIR}/drivers/include/drivers
@@ -27,7 +28,6 @@ target_compile_definitions(mbed-stubs-drivers
 
 target_link_libraries(mbed-stubs-drivers
     PRIVATE
-        mbed-headers-base
         mbed-headers-hal
         mbed-headers-drivers
         mbed-headers-platform

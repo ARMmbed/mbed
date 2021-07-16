@@ -32,7 +32,6 @@ target_include_directories(mbed-stubs-events
 
 target_link_libraries(mbed-stubs-events
     PRIVATE
-        mbed-headers-base
         mbed-headers-drivers
         mbed-headers-hal
         mbed-headers-events

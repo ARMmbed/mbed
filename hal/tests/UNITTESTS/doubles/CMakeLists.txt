@@ -5,6 +5,7 @@ add_library(mbed-headers-hal INTERFACE)
 
 target_include_directories(mbed-headers-hal
     INTERFACE
+        .
         ${mbed-os_SOURCE_DIR}/hal
         ${mbed-os_SOURCE_DIR}/hal/include
 )
@@ -27,7 +28,6 @@ target_sources(mbed-stubs-hal
 
 target_link_libraries(mbed-stubs-hal
     PRIVATE
-        mbed-headers-base
         mbed-headers-hal
         mbed-headers-platform
         mbed-stubs-headers

@@ -16,7 +16,7 @@
  */
 #include "gtest/gtest.h"
 #include "events/equeue.h"
-#include "mbed.h"
+#include "platform/Callback.h"
 #include <unistd.h>
 #include <pthread.h>
 

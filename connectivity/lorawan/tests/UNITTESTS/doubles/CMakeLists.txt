@@ -39,7 +39,6 @@ target_sources(mbed-stubs-lorawan
 
 target_link_libraries(mbed-stubs-lorawan
     PRIVATE
-        mbed-headers-base
         mbed-headers-events
         mbed-headers-hal
         mbed-stubs-headers

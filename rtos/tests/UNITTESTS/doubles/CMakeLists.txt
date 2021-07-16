@@ -5,6 +5,7 @@ add_library(mbed-headers-rtos INTERFACE)
 
 target_include_directories(mbed-headers-rtos
     INTERFACE
+        .
         ${mbed-os_SOURCE_DIR}/rtos/include
         ${mbed-os_SOURCE_DIR}/rtos/include/rtos
 )
@@ -35,7 +36,6 @@ target_sources(mbed-stubs-rtos
 
 target_link_libraries(mbed-stubs-rtos
     PRIVATE        
-        mbed-headers-base
         mbed-headers-rtos
         mbed-headers-platform
         mbed-headers-drivers
