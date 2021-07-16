@@ -22,7 +22,9 @@ target_sources(${TEST_NAME}
 
 target_link_libraries(${TEST_NAME}
     PRIVATE
-        mbed-headers
+        mbed-headers-events
+        mbed-headers-drivers
+        mbed-headers-rtos
         mbed-headers-netsocket
         mbed-headers-cellular
         mbed-stubs

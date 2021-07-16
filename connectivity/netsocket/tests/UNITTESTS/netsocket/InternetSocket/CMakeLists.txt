@@ -6,18 +6,15 @@ set(TEST_NAME netsocket-internet-socket-unittest)
 add_executable(${TEST_NAME})
 
 target_compile_definitions(${TEST_NAME}
-    PRIVATE        
+    PRIVATE
         MBED_CONF_NSAPI_DNS_ADDRESSES_LIMIT=10
 )
 
 target_sources(${TEST_NAME}
     PRIVATE
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/SocketAddress.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/NetworkStack.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/InternetSocket.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip4string/ip4tos.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/ip6tos.c
-        ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip4string/stoip4.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/stoip6.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libBits/common_functions.c
         test_InternetSocket.cpp
@@ -25,12 +22,14 @@ target_sources(${TEST_NAME}
 
 target_link_libraries(${TEST_NAME}
     PRIVATE
-        mbed-headers
+        mbed-headers-drivers
+        mbed-headers-rtos
         mbed-headers-nanostack-libservice
         mbed-headers-netsocket
         mbed-stubs
         mbed-stubs-headers
         mbed-stubs-netsocket
+        mbed-stubs-nanostack-libservice
         gmock_main
 )
 

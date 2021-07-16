@@ -14,21 +14,18 @@ target_sources(${TEST_NAME}
     PRIVATE
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/SocketAddress.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/PPPInterface.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/EMACInterface.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/NetworkInterface.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/NetworkStack.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip4string/ip4tos.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/ip6tos.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip4string/stoip4.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/stoip6.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libBits/common_functions.c
-        ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libList/ns_list.c     
         test_PPPInterface.cpp
 )
 
 target_link_libraries(${TEST_NAME}
     PRIVATE
-        mbed-headers
+        mbed-headers-drivers
+        mbed-headers-rtos
         mbed-headers-nanostack-libservice
         mbed-headers-mbedtls
         mbed-headers-netsocket
